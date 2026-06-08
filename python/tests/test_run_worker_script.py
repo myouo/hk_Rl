@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -27,6 +28,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         learner="127.0.0.1:5600",
         registry=str(tmp_path / "checkpoints"),
         batch_dir=str(tmp_path / "batches"),
+        heartbeat_jsonl=str(tmp_path / "heartbeats.jsonl"),
         worker_id="game-pc-1",
         steps=None,
         max_consecutive_failures=5,
@@ -43,6 +45,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "batch_dir": str(tmp_path / "batches"),
         "dry_run": True,
         "enable_macro_actions": True,
+        "heartbeat_jsonl": str(tmp_path / "heartbeats.jsonl"),
         "learner": "127.0.0.1:5600",
         "learner_upload_enabled": True,
         "latest_checkpoint": 1,
@@ -141,6 +144,33 @@ def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:
     loaded = load_rollout_batch(path)
     assert loaded.policy_version == 4
     np.testing.assert_array_equal(loaded.rewards, np.array([[1.0]], dtype=np.float32))
+
+
+def test_run_worker_heartbeat_sink_writes_coordinator_jsonl(tmp_path: Path) -> None:
+    module = _load_script("run_worker.py")
+    written: list[None] = []
+    sink = module._make_heartbeat_sink(
+        str(tmp_path / "nested" / "heartbeats.jsonl"),
+        "game/pc:1",
+        written,
+    )
+    assert sink is not None
+
+    sink({"sps": 12.5, "status": "running"})
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "nested" / "heartbeats.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert written == [None]
+    assert records == [
+        {
+            "payload": {"sps": 12.5, "status": "running"},
+            "worker_id": "game_pc_1",
+        }
+    ]
 
 
 def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None:

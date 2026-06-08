@@ -125,6 +125,7 @@ python scripts/train.py \
 python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+  --heartbeat-jsonl runs/worker-heartbeats.jsonl \
   --dry-run
 
 python scripts/run_learner.py \
@@ -150,6 +151,7 @@ python scripts/run_worker.py \
   --task configs/tasks/gruz_mother.yaml \
   --learner 127.0.0.1:5600 \
   --registry http://127.0.0.1:8000/ \
+  --heartbeat-jsonl runs/worker-heartbeats.jsonl \
   --steps 2048
 ```
 

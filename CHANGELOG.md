@@ -90,6 +90,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Checkpoint registries now publish relative checkpoint paths, and worker
   CheckpointClient can pull hash-verified checkpoints from local/file or HTTP(S)
   registry endpoints.
+- `run_worker.py` can now append coordinator-compatible heartbeat JSONL for
+  offline/fallback monitoring snapshots.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

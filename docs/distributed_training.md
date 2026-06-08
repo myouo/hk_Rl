@@ -142,6 +142,10 @@ from the returned clean-reset observation.
 `scripts/run_worker.py --tasks task_a.yaml task_b.yaml ...` installs a simple
 round-robin provider for smoke/curriculum testing before a remote coordinator is
 connected.
+`scripts/run_worker.py --heartbeat-jsonl FILE` appends each worker heartbeat in
+the same `{worker_id, payload}` JSONL envelope consumed by
+`scripts/run_coordinator.py --heartbeat-jsonl FILE` for offline/fallback
+monitoring snapshots.
 
 ## 8. Monitoring snapshot
 

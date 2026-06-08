@@ -46,6 +46,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
     p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
+    p.add_argument("--heartbeat-jsonl", help="append worker heartbeats to JSONL")
     p.add_argument(
         "--worker-id", default="worker-0", help="stable worker id for batch names"
     )
@@ -108,6 +109,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "dry_run": True,
             "batch_dir": args.batch_dir,
             "enable_macro_actions": task.action.enable_macro_actions,
+            "heartbeat_jsonl": args.heartbeat_jsonl,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
             "latest_checkpoint": latest_checkpoint,
@@ -126,6 +128,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     spooled_batches: list[str] = []
+    heartbeats: list[None] = []
     uploaded_batches: list[bool] = []
     worker = GameWorker(
         env=env,
@@ -141,6 +144,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             auth_token=resolve_auth_token(cfg) if args.learner is not None else None,
             uploaded=uploaded_batches,
         ),
+        heartbeat_sink=_make_heartbeat_sink(
+            args.heartbeat_jsonl, args.worker_id, heartbeats
+        ),
         task_provider=_make_task_provider(tasks),
         max_consecutive_failures=args.max_consecutive_failures,
     )
@@ -153,6 +159,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "consecutive_failures": worker.consecutive_failures,
             "dry_run": False,
             "enable_macro_actions": task.action.enable_macro_actions,
+            "heartbeat_jsonl": args.heartbeat_jsonl,
+            "heartbeats_written": len(heartbeats),
             "last_error": worker.last_error,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
@@ -244,6 +252,35 @@ def _checkpoint_auth_token(cfg: Any, registry_endpoint: str | None) -> str | Non
     if urlparse(registry_endpoint).scheme in ("http", "https"):
         return resolve_auth_token(cfg)
     return None
+
+
+def _make_heartbeat_sink(
+    path: str | None,
+    worker_id: str,
+    written: list[None],
+) -> Callable[[dict[str, Any]], None] | None:
+    if path is None:
+        return None
+
+    target = Path(path)
+    safe_worker = _safe_filename_component(worker_id)
+
+    def sink(payload: dict[str, Any]) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "payload": payload,
+                        "worker_id": safe_worker,
+                    },
+                    sort_keys=True,
+                )
+            )
+            fh.write("\n")
+        written.append(None)
+
+    return sink
 
 
 def _make_batch_uploader(
