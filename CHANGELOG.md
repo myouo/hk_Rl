@@ -78,6 +78,8 @@ the project version tracks the **schema_version** + roadmap phase.
   collected batches with the loaded learner policy version.
 - GameWorker run loop now supports injectable rollout upload and heartbeat
   callbacks for learner/coordinator integration.
+- GameWorker now recovers from transient env/transport failures with bounded
+  retries, reconnect/reset, crash heartbeats, and `worker_crash_count` metrics.
 - FrameStack wrapper now stacks dict observation feature axes and updates the
   Gym observation space for short-history MLP baselines.
 - ScriptedAggroPolicy now provides a mask-aware heuristic baseline that approaches

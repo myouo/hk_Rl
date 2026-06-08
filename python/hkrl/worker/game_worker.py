@@ -38,7 +38,11 @@ class GameWorker:
         learner_endpoint: str | None = None,
         batch_uploader: Callable[[RolloutBatch], None] | None = None,
         heartbeat_sink: Callable[[dict[str, Any]], None] | None = None,
+        max_consecutive_failures: int = 3,
     ) -> None:
+        if max_consecutive_failures < 0:
+            raise ValueError("max_consecutive_failures must be non-negative")
+
         self.env = env
         self.model = model
         self.cfg = config
@@ -46,6 +50,7 @@ class GameWorker:
         self.learner_endpoint = learner_endpoint
         self.batch_uploader = batch_uploader
         self.heartbeat_sink = heartbeat_sink
+        self.max_consecutive_failures = max_consecutive_failures
         self.device = _model_device(model)
         action_space: Any = env.action_space
         observation_space: Any = env.observation_space
@@ -73,23 +78,33 @@ class GameWorker:
         self._info: dict[str, Any] = {}
         self._rnn_state = model.initial_state(batch_size=1, device=self.device)
         self.last_batch: RolloutBatch | None = None
+        self.worker_crash_count = 0
+        self.consecutive_failures = 0
+        self.last_error: str | None = None
 
     def run(self, total_steps: int | None = None) -> None:
         """Sampling loop. Handles reset failures, reconnect, and weight reloads.
 
-        Phase 3 keeps this local-only and stores the most recent batch on
-        ``last_batch``. Phase 6 wires upload and checkpoint reload.
+        A transient env/transport failure clears partial rollout state, emits a
+        heartbeat with ``worker_crash_count``, reconnects when the env exposes a
+        transport, and resumes sampling. Repeated failures eventually surface to
+        avoid an infinite retry loop.
         """
         if total_steps is not None and total_steps <= 0:
             raise ValueError("total_steps must be positive")
 
         steps = 0
         while total_steps is None or steps < total_steps:
-            batch = self.collect_rollout()
-            self.last_batch = batch
-            self._upload_batch(batch)
-            self._emit_heartbeat(batch)
-            steps += int(batch.rewards.size)
+            try:
+                batch = self.collect_rollout()
+                self.last_batch = batch
+                self._upload_batch(batch)
+                self._emit_heartbeat(batch)
+                self.consecutive_failures = 0
+                self.last_error = None
+                steps += int(batch.rewards.size)
+            except Exception as exc:
+                self._handle_runtime_failure(exc)
 
     def collect_rollout(self) -> RolloutBatch:
         """Fill one flat rollout and return a GAE-ready RolloutBatch."""
@@ -179,8 +194,52 @@ class GameWorker:
                 "learner_endpoint": self.learner_endpoint,
                 "policy_version": self.policy_version,
                 "rollout_steps": int(batch.rewards.size),
+                "status": "running",
+                "worker_crash_count": self.worker_crash_count,
             }
         )
+
+    def _emit_crash_heartbeat(self, exc: Exception) -> None:
+        if self.heartbeat_sink is None:
+            return
+        self.heartbeat_sink(
+            {
+                "checkpoint_version": self.checkpoint_version,
+                "error": f"{type(exc).__name__}: {exc}",
+                "learner_endpoint": self.learner_endpoint,
+                "policy_version": self.policy_version,
+                "rollout_steps": 0,
+                "status": "recovering",
+                "worker_crash_count": self.worker_crash_count,
+            }
+        )
+
+    def _handle_runtime_failure(self, exc: Exception) -> None:
+        self.worker_crash_count += 1
+        self.consecutive_failures += 1
+        self.last_error = f"{type(exc).__name__}: {exc}"
+        self._emit_crash_heartbeat(exc)
+        if self.consecutive_failures > self.max_consecutive_failures:
+            raise RuntimeError(
+                f"game worker exceeded max_consecutive_failures={self.max_consecutive_failures}"
+            ) from exc
+        self._recover_env()
+
+    def _recover_env(self) -> None:
+        self.buffer.clear()
+        self._obs = None
+        self._info = {}
+        self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+
+        transport = getattr(self.env, "transport", None)
+        reconnect = getattr(transport, "reconnect", None)
+        if callable(reconnect):
+            reconnect(timeout_s=10.0)
+            return
+
+        env_reconnect = getattr(self.env, "reconnect", None)
+        if callable(env_reconnect):
+            env_reconnect()
 
     def _ensure_reset(self) -> None:
         if self._obs is None:

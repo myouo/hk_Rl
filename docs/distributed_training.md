@@ -67,7 +67,16 @@ Distinct from the env transport. TCP/gRPC/ZeroMQ across machines; Ray actors are
 a future option for the coordinator/worker fabric. Security per PRD §9.10: LAN/
 localhost only, token auth, hash-verified checkpoints, command whitelist.
 
-## 7. PyTorch + CUDA note
+## 7. Worker recovery
+
+`GameWorker.run()` treats transient env/transport failures as recoverable up to a
+bounded consecutive-failure limit. On failure it clears partial rollout state,
+resets RNN hidden state, emits a heartbeat with `status = recovering` and
+`worker_crash_count`, calls the env transport's `reconnect()` when available, and
+then forces a clean `reset()` before collecting the next batch. Persistent
+failures surface as errors instead of spinning forever.
+
+## 8. PyTorch + CUDA note
 
 `torch` is intentionally unpinned to a specific CUDA build in `pyproject.toml`.
 Install the matching wheel per machine (GPU learner vs CPU-only worker). Workers
