@@ -156,6 +156,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - `TrainConfig` now preserves typed `learner`, `coordinator`, and `security`
   runtime settings, and `scripts/run_learner.py` consumes YAML learner defaults
   unless CLI flags explicitly override them.
+- Learner and coordinator entry points now validate service bind addresses
+  against `security.bind_scope` before startup.
 - Config models now reject unknown keys and invalid enum values to prevent
   silent YAML misconfiguration.
 - `scripts/run_learner.py` can now ingest NPZ RolloutBatch directories and run

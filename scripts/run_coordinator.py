@@ -21,7 +21,12 @@ from typing import Any
 
 from hkrl.coordinator.coordinator import Coordinator, WorkerRecord
 from hkrl.coordinator.task_sampler import TaskSampler
-from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
+from hkrl.utils.config import (
+    TaskConfig,
+    load_task_config,
+    load_train_config,
+    validate_bind_address,
+)
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -49,9 +54,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
     tasks = _load_tasks(args.tasks)
     task_ids = [task.task_id for task in tasks]
+    bind = validate_bind_address(args.bind or cfg.coordinator.bind, cfg.security.bind_scope)
     coordinator = Coordinator(
         TaskSampler(task_ids, seed=cfg.seed if args.seed is None else args.seed),
-        bind=args.bind or cfg.coordinator.bind,
+        bind=bind,
         heartbeat_timeout_s=(
             cfg.coordinator.heartbeat_timeout_s
             if args.heartbeat_timeout_s is None

@@ -143,6 +143,44 @@ def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
     assert summary["publish_every_updates"] == 3
 
 
+def test_run_learner_rejects_wildcard_bind_for_localhost_scope(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "localhost.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "minibatch_size: 2",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+                "learner:",
+                "  bind: 0.0.0.0:5600",
+                "security:",
+                "  bind_scope: localhost",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        bind=None,
+        batch_dir=None,
+        checkpoint_dir=str(tmp_path),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    with pytest.raises(ValueError, match="loopback"):
+        module.run_from_args(args)
+
+
 def test_run_learner_infers_layout_from_task_configs(tmp_path: Path) -> None:
     module = _load_script("run_learner.py")
     root = Path(__file__).parents[2]

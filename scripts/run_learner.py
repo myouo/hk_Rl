@@ -24,7 +24,12 @@ from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import DEFAULT_N_MACROS, make_observation_space
 from hkrl.training.batch_io import load_rollout_batch
-from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
+from hkrl.utils.config import (
+    TaskConfig,
+    load_task_config,
+    load_train_config,
+    validate_bind_address,
+)
 from hkrl.utils.registry import get
 
 
@@ -59,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
-    bind = args.bind or cfg.learner.bind
+    bind = validate_bind_address(args.bind or cfg.learner.bind, cfg.security.bind_scope)
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
     max_staleness = cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
     publish_every_updates = (

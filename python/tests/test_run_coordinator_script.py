@@ -115,6 +115,41 @@ def test_run_coordinator_rejects_duplicate_worker_ids() -> None:
         raise AssertionError("expected duplicate worker ids to fail")
 
 
+def test_run_coordinator_rejects_wildcard_bind_for_localhost_scope(tmp_path: Path) -> None:
+    module = _load_script("run_coordinator.py")
+    root = Path(__file__).parents[2]
+    config = tmp_path / "localhost.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "coordinator:",
+                "  bind: 0.0.0.0:5610",
+                "security:",
+                "  bind_scope: localhost",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        tasks=[str(root / "configs/tasks/gruz_mother.yaml")],
+        bind=None,
+        num_workers=1,
+        worker_ids=None,
+        heartbeat_timeout_s=None,
+        heartbeat_jsonl=None,
+        seed=None,
+        dry_run=True,
+    )
+
+    try:
+        module.run_from_args(args)
+    except ValueError as exc:
+        assert "loopback" in str(exc)
+    else:
+        raise AssertionError("expected localhost scope wildcard bind to fail")
+
+
 def _load_script(name: str) -> ModuleType:
     path = Path(__file__).parents[2] / "scripts" / name
     spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)

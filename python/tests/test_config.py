@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 import yaml
-from hkrl.utils.config import load_task_config, load_train_config, load_yaml, resolve_auth_token
+from hkrl.utils.config import (
+    load_task_config,
+    load_train_config,
+    load_yaml,
+    resolve_auth_token,
+    validate_bind_address,
+)
 
 
 def _write_yaml(path: Path, data: dict[str, object]) -> None:
@@ -134,3 +140,19 @@ def test_resolve_auth_token_returns_none_when_disabled() -> None:
     config = load_train_config(Path("../configs/train/ppo_mlp.yaml"))
 
     assert resolve_auth_token(config, {}) is None
+
+
+def test_validate_bind_address_accepts_scoped_binds() -> None:
+    assert validate_bind_address("127.0.0.1:5600", "localhost") == "127.0.0.1:5600"
+    assert validate_bind_address("[::1]:5600", "localhost") == "[::1]:5600"
+    assert validate_bind_address("0.0.0.0:5600", "lan") == "0.0.0.0:5600"
+    assert validate_bind_address("192.168.1.20:5600", "lan") == "192.168.1.20:5600"
+
+
+def test_validate_bind_address_rejects_out_of_scope_binds() -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        validate_bind_address("0.0.0.0:5600", "localhost")
+    with pytest.raises(ValueError, match="public IP"):
+        validate_bind_address("8.8.8.8:5600", "lan")
+    with pytest.raises(ValueError, match="host:port"):
+        validate_bind_address("127.0.0.1", "localhost")

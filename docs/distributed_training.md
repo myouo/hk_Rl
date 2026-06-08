@@ -92,6 +92,9 @@ When `security.require_token` is true, Python TCP clients read the token from
 auth frame. This covers local training, workers, and evaluator env connections.
 The mod reads the same `HKRL_AUTH_TOKEN` environment variable to enable
 server-side token verification.
+Learner/coordinator service binds are validated against `security.bind_scope`:
+`localhost` requires a loopback bind, while `lan` rejects public IP literals and
+allows private, loopback, or wildcard binds for firewall-scoped LAN deployments.
 
 ## 6. Transport for batches/weights
 

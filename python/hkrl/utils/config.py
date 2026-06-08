@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, Literal
 
@@ -211,3 +212,61 @@ def resolve_auth_token(
             f"{config.security.auth_token_env!r} is not set"
         )
     return token
+
+
+def validate_bind_address(bind: str, bind_scope: Literal["lan", "localhost"]) -> str:
+    """Validate a runtime service bind address against the configured scope."""
+    host, port = _split_bind(bind)
+    if not 0 <= port <= 65535:
+        raise ValueError(f"bind port must be in [0, 65535], got {port}")
+
+    if bind_scope == "localhost":
+        if not _is_loopback_host(host):
+            raise ValueError(
+                f"bind_scope='localhost' requires a loopback bind address, got {bind!r}"
+            )
+        return bind
+
+    if bind_scope == "lan":
+        if _is_public_ip_literal(host):
+            raise ValueError(f"bind_scope='lan' must not bind to public IP {host!r}")
+        return bind
+
+    raise ValueError(f"unsupported bind_scope {bind_scope!r}")
+
+
+def _split_bind(bind: str) -> tuple[str, int]:
+    if bind.startswith("["):
+        host, sep, rest = bind[1:].partition("]")
+        if sep != "]" or not rest.startswith(":"):
+            raise ValueError(f"bind must be host:port, got {bind!r}")
+        port_text = rest[1:]
+    else:
+        host, sep, port_text = bind.rpartition(":")
+        if sep != ":" or not host:
+            raise ValueError(f"bind must be host:port, got {bind!r}")
+
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError(f"bind port must be an integer, got {port_text!r}") from exc
+    return host, port
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_public_ip_literal(host: str) -> bool:
+    try:
+        address = ip_address(host)
+    except ValueError:
+        return False
+    if address.is_unspecified:
+        return False
+    return address.is_global
