@@ -6,24 +6,34 @@ namespace HKRLEnvMod.Transport
     /// </summary>
     public sealed class Heartbeat
     {
+        private float _lastActivity;
+        private bool _hasActivity;
+
         public float TimeoutSeconds { get; }
 
         public Heartbeat(float timeoutSeconds = 5.0f)
         {
+            if (timeoutSeconds <= 0.0f)
+            {
+                throw new System.ArgumentOutOfRangeException(
+                    nameof(timeoutSeconds),
+                    "timeoutSeconds must be positive");
+            }
+
             TimeoutSeconds = timeoutSeconds;
         }
 
         /// <summary>Called from the main thread each tick with current game time.</summary>
         public void Touch(float now)
         {
-            // TODO(phase-1): record last activity.
+            _lastActivity = now;
+            _hasActivity = true;
         }
 
         /// <summary>True if no activity within TimeoutSeconds.</summary>
         public bool IsStale(float now)
         {
-            // TODO(phase-1): compare now - lastActivity to TimeoutSeconds.
-            return false;
+            return _hasActivity && now - _lastActivity > TimeoutSeconds;
         }
     }
 }

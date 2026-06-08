@@ -42,6 +42,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - JSONL metric sink for scalar and per-episode training/evaluation records.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
+- Mod-side protocol foundations: typed reward event buffering, heartbeat
+  liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
+  encoding via generated FlatBuffers bindings.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
