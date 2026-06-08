@@ -9,22 +9,47 @@ namespace HKRLEnvMod.Env
     /// </summary>
     public sealed class SimControl
     {
-        private float _baseFixedDelta = Time.fixedDeltaTime;
+        private readonly float _baseFixedDelta = Time.fixedDeltaTime;
+        private float _activeScale = 1.0f;
+        private bool _paused;
 
         /// <summary>Set the simulation time scale (1.0 = normal).</summary>
         public void SetTimeScale(float scale)
         {
-            // TODO(phase-2): set Time.timeScale and adjust fixedDeltaTime consistently.
+            if (scale <= 0.0f)
+            {
+                throw new System.ArgumentOutOfRangeException(
+                    nameof(scale),
+                    "time scale must be positive");
+            }
+
+            _activeScale = scale;
+            _paused = false;
+            Time.timeScale = scale;
+            Time.fixedDeltaTime = _baseFixedDelta * scale;
         }
 
         public void Pause()
         {
-            // TODO(phase-1): Time.timeScale = 0.
+            if (_paused)
+            {
+                return;
+            }
+
+            _paused = true;
+            Time.timeScale = 0.0f;
         }
 
         public void Resume()
         {
-            // TODO(phase-1): restore previous time scale.
+            if (!_paused)
+            {
+                return;
+            }
+
+            _paused = false;
+            Time.timeScale = _activeScale;
+            Time.fixedDeltaTime = _baseFixedDelta * _activeScale;
         }
     }
 }

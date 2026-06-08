@@ -60,6 +60,8 @@ the project version tracks the **schema_version** + roadmap phase.
   computes action masks, and enqueues StepResponse frames.
 - HKRLEnvMod now starts the TCP server, wires StepController into the persistent
   FixedUpdate driver, and disposes transport resources on driver destruction.
+- Mod SimControl now applies time scale, pause, and resume through Unity
+  `Time.timeScale`/`fixedDeltaTime` on the main thread.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
