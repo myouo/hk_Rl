@@ -105,6 +105,7 @@ class HKRLEnv(gym.Env):
             raise EnvProtocolError("reset reached RUNNING without an observation")
 
         self._running = True
+        self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
         return obs, self._info_from_response(response)
@@ -130,6 +131,7 @@ class HKRLEnv(gym.Env):
         if response.observation is None:
             raise EnvProtocolError("step response did not include an observation")
 
+        self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
         reward = self.reward_fn(response.reward_events, dt=float(self.task.action.action_repeat))
@@ -205,6 +207,42 @@ class HKRLEnv(gym.Env):
         if response.tick_id != tick_id:
             raise EnvProtocolError(f"tick_id mismatch: sent={tick_id}, received={response.tick_id}")
         return response
+
+    def _validate_observation(self, observation: protocol.DecodedObservation) -> None:
+        arrays = (
+            np.asarray(observation.global_state, dtype=np.float32),
+            np.asarray(observation.player_state, dtype=np.float32),
+            np.asarray(observation.entities, dtype=np.float32),
+        )
+        for name, array in zip(("global", "player", "entities"), arrays, strict=True):
+            if not np.isfinite(array).all():
+                raise EnvProtocolError(f"observation {name} contains non-finite values")
+
+        entities = arrays[2]
+        if entities.size == 0:
+            entities = entities.reshape((0, 0))
+        elif entities.ndim != 2:
+            raise EnvProtocolError(f"entities must be rank-2, got shape {entities.shape}")
+
+        mask = np.asarray(observation.entity_mask, dtype=bool).reshape(-1)
+        if len(mask) != entities.shape[0]:
+            raise EnvProtocolError(
+                f"entity_mask length {len(mask)} != entities length {entities.shape[0]}"
+            )
+        if entities.shape[1] > 13:
+            hp = entities[:, 12]
+            max_hp = entities[:, 13]
+            invalid_hp = (max_hp > 0.0) & (hp > max_hp)
+            if bool(invalid_hp.any()):
+                raise EnvProtocolError("entity hp exceeds max_hp")
+
+        if self._task_requires_boss():
+            if entities.shape[1] <= 1:
+                raise EnvProtocolError("boss task observation contains no boss entity")
+            valid_entities = entities[mask]
+            has_boss = bool((valid_entities[:, 1] == float(protocol.EntityType.BOSS)).any())
+            if not has_boss:
+                raise EnvProtocolError("boss task observation contains no boss entity")
 
     def _next_tick_id(self) -> int:
         tick_id = self._tick_id
@@ -282,3 +320,6 @@ class HKRLEnv(gym.Env):
         if len(global_state) <= 8:
             return 0
         return int(global_state[8])
+
+    def _task_requires_boss(self) -> bool:
+        return bool(self.task.task_id and self.task.task_id != "smoke")

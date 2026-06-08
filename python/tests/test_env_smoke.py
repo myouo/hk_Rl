@@ -231,6 +231,64 @@ def test_env_rejects_mismatched_entity_mask() -> None:
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
+def test_env_rejects_non_finite_observation_values() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                entity_pos_x=float("nan"),
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="non-finite"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
+def test_env_rejects_entity_hp_above_max_hp() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                entity_hp=31,
+                entity_max_hp=30,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="hp exceeds max_hp"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
+def test_env_rejects_boss_task_without_boss_entity() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                entity_type=protocol.EntityType.PROJECTILE,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="no boss entity"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
 @pytest.mark.integration
 def test_random_policy_episode() -> None:
     pytest.skip("requires live Hollow Knight + HKRLEnvMod (phase 1+)")
@@ -245,12 +303,23 @@ def _build_response(
     include_entity_mask: bool = True,
     reward_kind: protocol.RewardEventKind | None = None,
     reward_amount: float = 0.0,
+    entity_type: protocol.EntityType = protocol.EntityType.BOSS,
+    entity_hp: int = 20,
+    entity_max_hp: int = 30,
+    entity_pos_x: float = 0.0,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
         builder, FbStepResponse.StepResponseStartActionMaskVector, [True]
     )
-    observation = _build_observation(builder, include_entity_mask=include_entity_mask)
+    observation = _build_observation(
+        builder,
+        include_entity_mask=include_entity_mask,
+        entity_type=entity_type,
+        entity_hp=entity_hp,
+        entity_max_hp=entity_max_hp,
+        entity_pos_x=entity_pos_x,
+    )
     reward_events = 0
     if reward_kind is not None:
         reward_event = _build_reward_event(builder, reward_kind, reward_amount)
@@ -275,10 +344,24 @@ def _build_response(
     return bytes(builder.Output())
 
 
-def _build_observation(builder: flatbuffers.Builder, *, include_entity_mask: bool) -> int:
+def _build_observation(
+    builder: flatbuffers.Builder,
+    *,
+    include_entity_mask: bool,
+    entity_type: protocol.EntityType,
+    entity_hp: int,
+    entity_max_hp: int,
+    entity_pos_x: float,
+) -> int:
     global_state = _build_global_state(builder)
     player_state = _build_player_state(builder)
-    entity_state = _build_entity_state(builder)
+    entity_state = _build_entity_state(
+        builder,
+        entity_type=entity_type,
+        entity_hp=entity_hp,
+        entity_max_hp=entity_max_hp,
+        entity_pos_x=entity_pos_x,
+    )
     entities = _build_offset_vector(
         builder, FbObservation.ObservationStartEntitiesVector, [entity_state]
     )
@@ -311,12 +394,20 @@ def _build_player_state(builder: flatbuffers.Builder) -> int:
     return FbPlayerState.PlayerStateEnd(builder)
 
 
-def _build_entity_state(builder: flatbuffers.Builder) -> int:
+def _build_entity_state(
+    builder: flatbuffers.Builder,
+    *,
+    entity_type: protocol.EntityType,
+    entity_hp: int,
+    entity_max_hp: int,
+    entity_pos_x: float,
+) -> int:
     FbEntityState.EntityStateStart(builder)
     FbEntityState.EntityStateAddEntityId(builder, 1)
-    FbEntityState.EntityStateAddEntityType(builder, protocol.EntityType.BOSS)
-    FbEntityState.EntityStateAddHp(builder, 20)
-    FbEntityState.EntityStateAddMaxHp(builder, 30)
+    FbEntityState.EntityStateAddEntityType(builder, entity_type)
+    FbEntityState.EntityStateAddPosX(builder, entity_pos_x)
+    FbEntityState.EntityStateAddHp(builder, entity_hp)
+    FbEntityState.EntityStateAddMaxHp(builder, entity_max_hp)
     return FbEntityState.EntityStateEnd(builder)
 
 
