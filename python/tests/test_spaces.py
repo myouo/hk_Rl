@@ -31,6 +31,11 @@ def test_action_mask_layout_with_macros_grows() -> None:
     assert with_macro == base + spaces.DEFAULT_N_MACROS + 1
 
 
+def test_action_mask_layout_rejects_negative_macro_count() -> None:
+    with pytest.raises(ValueError, match="n_macros"):
+        spaces.action_mask_layout(enable_macro=True, n_macros=-1)
+
+
 def test_duration_ticks_match_count() -> None:
     assert len(spaces.DURATION_TICKS) == spaces.N_DURATION
 

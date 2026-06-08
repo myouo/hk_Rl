@@ -125,6 +125,9 @@ def action_mask_layout(enable_macro: bool = True, n_macros: int = DEFAULT_N_MACR
     Order: movement_x(3), aim_y(3), buttons(9), duration(4), [macro(n_macros+1)].
     The mod's ``ActionMasker`` writes the mask in exactly this order.
     """
+    if n_macros < 0:
+        raise ValueError("n_macros must be non-negative")
+
     layout = [f"movement_x:{i}" for i in range(N_MOVEMENT_X)]
     layout += [f"aim_y:{i}" for i in range(N_AIM_Y)]
     layout += [f"button:{name}" for name in BUTTON_BITS]
