@@ -97,6 +97,8 @@ the project version tracks the **schema_version** + roadmap phase.
   collection.
 - APPO intake now rejects empty RolloutBatches before queuing so learner
   accepted/rejected counts match usable training data.
+- APPO intake now rejects in-memory RolloutBatches with non-finite training
+  values before queuing.
 - RolloutBatch now supports in-memory NPZ serialization and an authenticated TCP
   batch intake path from `run_worker --learner` to `run_learner --intake-count`.
 - Checkpoint registries now publish relative checkpoint paths, and worker

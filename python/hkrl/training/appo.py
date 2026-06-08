@@ -49,6 +49,8 @@ class APPO:
         """
         if batch.rewards.size == 0:
             return False
+        if not _batch_has_finite_training_values(batch):
+            return False
         if batch.policy_version > current_version:
             return False
         if current_version - batch.policy_version > self.max_staleness:
@@ -220,6 +222,23 @@ def _tensor_batch(batches: list[RolloutBatch], device: torch.device) -> _TensorB
 
 def _concat(batches: list[RolloutBatch], field: str) -> np.ndarray:
     return np.concatenate([np.asarray(getattr(batch, field)) for batch in batches], axis=0)
+
+
+def _batch_has_finite_training_values(batch: RolloutBatch) -> bool:
+    for field in (
+        "obs_global",
+        "obs_player",
+        "obs_entities",
+        "log_probs",
+        "values",
+        "advantages",
+        "returns",
+        "rewards",
+        "prev_rewards",
+    ):
+        if not np.isfinite(np.asarray(getattr(batch, field))).all():
+            return False
+    return batch.rnn_states is None or bool(np.isfinite(np.asarray(batch.rnn_states)).all())
 
 
 def _flatten_time_env(array: object, device: torch.device, *, dtype: torch.dtype) -> Tensor:

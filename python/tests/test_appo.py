@@ -33,6 +33,22 @@ def test_appo_ingest_rejects_empty_batches() -> None:
     assert appo.queued_batches == 0
 
 
+def test_appo_ingest_rejects_non_finite_batches() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rnn_batch(policy_version=3)
+    batch.rewards[0, 0] = np.nan
+
+    assert not appo.ingest(batch, current_version=3)
+
+    batch = _rnn_batch(policy_version=3)
+    assert batch.rnn_states is not None
+    batch.rnn_states[0, 0, 0, 0] = np.inf
+
+    assert not appo.ingest(batch, current_version=3)
+    assert appo.queued_batches == 0
+
+
 def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> None:
     torch.manual_seed(123)
     model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
