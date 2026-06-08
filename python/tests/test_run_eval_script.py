@@ -143,6 +143,19 @@ def test_run_eval_writes_output_json(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8").endswith("\n")
 
 
+def test_run_eval_writes_replay_jsonl(tmp_path: Path) -> None:
+    module = _load_script("run_eval.py")
+    path = tmp_path / "nested" / "replay.jsonl"
+    sink = module._make_replay_sink(str(path))
+    assert sink is not None
+
+    sink({"step": 1, "task_id": "gruz"})
+
+    assert [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] == [
+        {"step": 1, "task_id": "gruz"}
+    ]
+
+
 def test_run_eval_builds_reproducibility_metadata() -> None:
     module = _load_script("run_eval.py")
     task = TaskConfig(task_id="gruz_mother", wire_id=3, scene="GG_Gruz_Mother")
@@ -154,6 +167,7 @@ def test_run_eval_builds_reproducibility_metadata() -> None:
         max_steps=123,
         no_normalize=False,
         policy="mlp",
+        replay_jsonl="runs/replay.jsonl",
         seeds=[4, 5],
         train_config="configs/train/ppo_mlp.yaml",
     )
@@ -169,6 +183,7 @@ def test_run_eval_builds_reproducibility_metadata() -> None:
         "model": "mlp",
         "normalize": True,
         "policy": "mlp",
+        "replay_jsonl": "runs/replay.jsonl",
         "seeds": [4, 5],
         "task_ids": ["gruz_mother"],
         "task_wire_ids": {"gruz_mother": 3},

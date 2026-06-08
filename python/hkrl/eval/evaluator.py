@@ -31,6 +31,7 @@ class Evaluator:
         seeds: Sequence[int],
         env_factory: Callable[[TaskConfig], Any] | None = None,
         max_steps_per_episode: int = 4096,
+        replay_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         if not tasks:
             raise ValueError("tasks must not be empty")
@@ -44,6 +45,7 @@ class Evaluator:
         self.seeds = list(seeds)
         self.env_factory = env_factory
         self.max_steps_per_episode = max_steps_per_episode
+        self.replay_sink = replay_sink
 
     def evaluate(self, episodes_per_task: int = 20) -> dict[str, dict[str, float]]:
         """Return ``{task_id: {win_rate, damage_taken, time_to_kill, ...}}``."""
@@ -57,7 +59,12 @@ class Evaluator:
             env = self.env_factory(task)
             try:
                 episodes = [
-                    self._run_episode(env, self.seeds[idx % len(self.seeds)])
+                    self._run_episode(
+                        env,
+                        self.seeds[idx % len(self.seeds)],
+                        task=task,
+                        episode_index=idx,
+                    )
                     for idx in range(episodes_per_task)
                 ]
             finally:
@@ -66,7 +73,14 @@ class Evaluator:
             results[task.task_id] = _aggregate(episodes)
         return results
 
-    def _run_episode(self, env: Any, seed: int) -> _EpisodeResult:
+    def _run_episode(
+        self,
+        env: Any,
+        seed: int,
+        *,
+        task: TaskConfig,
+        episode_index: int,
+    ) -> _EpisodeResult:
         obs, info = env.reset(seed=seed)
         rnn_state = self._initial_rnn_state()
         total_reward = 0.0
@@ -96,6 +110,18 @@ class Evaluator:
             if event_metrics.death_reason:
                 death_reason = event_metrics.death_reason
             won = won or event_metrics.won
+            self._emit_replay_step(
+                task=task,
+                seed=seed,
+                episode_index=episode_index,
+                step=steps,
+                action=action,
+                reward=reward,
+                terminated=terminated,
+                truncated=truncated,
+                info=info,
+                event_metrics=event_metrics,
+            )
 
             if terminated or truncated:
                 break
@@ -142,6 +168,45 @@ class Evaluator:
             enable_macro = "macro" in env.action_space.spaces
             return action_tensor_to_env_action(action[0], enable_macro=enable_macro), next_state
         return self.model.act(obs, action_mask), None
+
+    def _emit_replay_step(
+        self,
+        *,
+        task: TaskConfig,
+        seed: int,
+        episode_index: int,
+        step: int,
+        action: Any,
+        reward: float,
+        terminated: bool,
+        truncated: bool,
+        info: dict[str, Any],
+        event_metrics: _EventMetrics,
+    ) -> None:
+        if self.replay_sink is None:
+            return
+        self.replay_sink(
+            {
+                "action": _jsonable(action),
+                "damage_dealt": event_metrics.damage_dealt,
+                "damage_taken": event_metrics.damage_taken,
+                "death_reason": event_metrics.death_reason,
+                "episode": episode_index,
+                "episode_id": int(info.get("episode_id", 0)),
+                "heal_amount": event_metrics.heal_amount,
+                "heal_count": event_metrics.heal_count,
+                "invalid_actions": event_metrics.invalid_actions,
+                "reward": float(reward),
+                "seed": int(seed),
+                "step": int(step),
+                "task_id": task.task_id,
+                "terminated": bool(terminated),
+                "truncated": bool(truncated),
+                "type": "eval_step",
+                "wire_id": int(task.wire_id),
+                "won": event_metrics.won,
+            }
+        )
 
     def regression_report(
         self, baseline: dict[str, dict[str, float]], current: dict[str, dict[str, float]]
@@ -269,6 +334,20 @@ def _mean(values: Any) -> float:
     if not items:
         return 0.0
     return float(sum(items) / len(items))
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def _obs_to_tensor(obs: Any, device: torch.device) -> dict[str, torch.Tensor]:

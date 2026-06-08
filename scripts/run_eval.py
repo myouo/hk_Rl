@@ -67,6 +67,9 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--baseline", help="optional baseline metrics JSON for regression diff"
     )
+    p.add_argument(
+        "--replay-jsonl", help="optional path to write per-step replay JSONL"
+    )
     p.add_argument("--output", help="optional path to write metrics JSON")
     return p
 
@@ -97,6 +100,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         seeds=args.seeds,
         env_factory=env_factory,
         max_steps_per_episode=args.max_steps,
+        replay_sink=_make_replay_sink(getattr(args, "replay_jsonl", None)),
     )
     metrics = evaluator.evaluate(episodes_per_task=args.episodes)
     output: dict[str, Any] = {
@@ -125,6 +129,7 @@ def _build_metadata(
         "model": train_cfg.model.name,
         "normalize": not bool(args.no_normalize),
         "policy": args.policy,
+        "replay_jsonl": getattr(args, "replay_jsonl", None),
         "seeds": [int(seed) for seed in args.seeds],
         "task_ids": [task.task_id for task in tasks],
         "task_wire_ids": {task.task_id: task.wire_id for task in tasks},
@@ -238,6 +243,21 @@ def _write_output(output: dict[str, Any], path: Path) -> None:
     path.write_text(
         json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+
+def _make_replay_sink(path: str | None) -> Any:
+    if path is None:
+        return None
+
+    target = Path(path)
+
+    def sink(record: dict[str, Any]) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, sort_keys=True))
+            fh.write("\n")
+
+    return sink
 
 
 def _load_baseline_metrics(path: Path) -> dict[str, dict[str, float]]:

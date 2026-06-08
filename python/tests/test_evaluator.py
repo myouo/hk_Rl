@@ -67,6 +67,34 @@ def test_evaluator_regression_report_returns_win_rate_delta() -> None:
     assert report == {"a": -0.25, "b": -0.25, "c": 1.0}
 
 
+def test_evaluator_emits_step_replay_records() -> None:
+    task = TaskConfig(task_id="fake_boss", wire_id=9, scene="FakeScene")
+    action_space = spaces.make_action_space(enable_macro=False)
+    records: list[dict[str, Any]] = []
+    evaluator = Evaluator(
+        ScriptedAggroPolicy(action_space),
+        tasks=[task],
+        seeds=[0],
+        env_factory=lambda _: FakeEvalEnv(),
+        max_steps_per_episode=3,
+        replay_sink=records.append,
+    )
+
+    evaluator.evaluate(episodes_per_task=1)
+
+    assert len(records) == 2
+    assert records[0]["type"] == "eval_step"
+    assert records[0]["task_id"] == "fake_boss"
+    assert records[0]["wire_id"] == 9
+    assert records[0]["seed"] == 0
+    assert records[0]["episode"] == 0
+    assert records[0]["step"] == 1
+    assert isinstance(records[0]["action"], dict)
+    assert records[0]["damage_dealt"] == 1.0
+    assert records[1]["won"] is True
+    assert records[1]["terminated"] is True
+
+
 def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
     task = TaskConfig(task_id="fake_boss", scene="FakeScene")
     model = StatefulActorCritic()

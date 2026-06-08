@@ -31,6 +31,10 @@ Decisions are driven by **shaping-free** metrics, in priority order:
 The evaluator ([`../python/hkrl/eval/evaluator.py`](../python/hkrl/eval/evaluator.py))
 computes these on fixed seeds/tasks, isolated from training, to catch the
 "reward up, win rate down" failure (PRD §9.4).
+`scripts/run_eval.py --replay-jsonl FILE` can additionally emit per-step replay
+records with task/seed/episode/step, action, reward, terminal flags, and
+event-derived metrics. Replay JSONL is debugging evidence; capability decisions
+still use the aggregated shaping-free metrics above.
 
 ## 3. SPS, not FPS (PRD §9.6)
 

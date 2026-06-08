@@ -92,6 +92,8 @@ the project version tracks the **schema_version** + roadmap phase.
   registry endpoints.
 - `run_worker.py` can now append coordinator-compatible heartbeat JSONL for
   offline/fallback monitoring snapshots.
+- Evaluator and `run_eval.py` can now emit per-step replay JSONL for fixed-seed
+  evaluation debugging.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
