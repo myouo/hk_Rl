@@ -39,6 +39,7 @@ the project version tracks the **schema_version** + roadmap phase.
   observations to Gymnasium spaces.
 - NormalizeObservation wrapper now scales player/entity positions, velocities,
   hp/soul, hitboxes, and timers using the shared space constants.
+- JSONL metric sink for scalar and per-episode training/evaluation records.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

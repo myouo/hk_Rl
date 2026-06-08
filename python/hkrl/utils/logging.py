@@ -7,8 +7,9 @@ decision metric — see docs/metrics.md.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Any, Protocol
+from typing import IO, Any, Protocol
 
 
 class MetricSink(Protocol):
@@ -28,24 +29,49 @@ class JsonlSink:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        # TODO(phase-2): open file handle, ensure parent dir.
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh: IO[str] | None = self.path.open("a", encoding="utf-8")
 
     def log_scalar(self, key: str, value: float, step: int) -> None:
-        raise NotImplementedError  # TODO(phase-2)
+        self._write(
+            {
+                "type": "scalar",
+                "key": key,
+                "value": float(value),
+                "step": int(step),
+            }
+        )
 
     def log_episode(self, record: dict[str, Any]) -> None:
-        raise NotImplementedError  # TODO(phase-2)
+        payload = dict(record)
+        payload.setdefault("type", "episode")
+        self._write(payload)
 
     def flush(self) -> None:
-        raise NotImplementedError  # TODO(phase-2)
+        if self._fh is not None:
+            self._fh.flush()
 
     def close(self) -> None:
-        raise NotImplementedError  # TODO(phase-2)
+        if self._fh is None:
+            return
+        self._fh.close()
+        self._fh = None
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        if self._fh is None:
+            raise RuntimeError("JsonlSink is closed")
+        self._fh.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def make_sink(kind: str = "jsonl", **kwargs: Any) -> MetricSink:
-    """Factory for a metric sink. kind in {jsonl, tensorboard, wandb, multi}.
+    """Factory for a metric sink. Currently supports ``jsonl``."""
+    if kind == "jsonl":
+        path = kwargs.pop("path", None)
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs))
+            raise TypeError(f"unknown JsonlSink kwargs: {unknown}")
+        if path is None:
+            raise TypeError("make_sink('jsonl') requires path=")
+        return JsonlSink(path)
 
-    TODO(phase-2/P1): tensorboard/wandb backends behind the ``logging`` extra.
-    """
-    raise NotImplementedError
+    raise ValueError(f"unknown metric sink kind: {kind}")
