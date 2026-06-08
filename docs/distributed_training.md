@@ -155,7 +155,10 @@ connected.
 `scripts/run_worker.py --heartbeat-jsonl FILE` appends each worker heartbeat in
 the same `{worker_id, payload}` JSONL envelope consumed by
 `scripts/run_coordinator.py --heartbeat-jsonl FILE` for offline/fallback
-monitoring snapshots.
+monitoring snapshots. Successful rollout heartbeats include
+`rollout_duration_s` and `sps = rollout_steps / rollout_duration_s`; recovering
+heartbeats report zero for both fields so dashboards do not treat a failed
+partial rollout as throughput.
 
 ## 8. Monitoring snapshot
 

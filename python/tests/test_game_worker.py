@@ -174,6 +174,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
     )
     uploaded: list[Any] = []
     heartbeats: list[dict[str, Any]] = []
+    clock = AdvancingClock(step=0.5)
     worker = GameWorker(
         env=env,  # type: ignore[arg-type]
         model=model,
@@ -181,6 +182,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
         learner_endpoint="learner:5600",
         batch_uploader=uploaded.append,
         heartbeat_sink=heartbeats.append,
+        clock=clock,
     )
 
     worker.run(total_steps=4)
@@ -192,7 +194,9 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "checkpoint_version": -1,
             "learner_endpoint": "learner:5600",
             "policy_version": 0,
+            "rollout_duration_s": 0.5,
             "rollout_steps": 2,
+            "sps": 4.0,
             "status": "running",
             "worker_crash_count": 0,
         },
@@ -200,7 +204,9 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "checkpoint_version": -1,
             "learner_endpoint": "learner:5600",
             "policy_version": 0,
+            "rollout_duration_s": 0.5,
             "rollout_steps": 2,
+            "sps": 4.0,
             "status": "running",
             "worker_crash_count": 0,
         },
@@ -243,7 +249,9 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
         "error": "TimeoutError: simulated transport timeout",
         "learner_endpoint": None,
         "policy_version": 0,
+        "rollout_duration_s": 0.0,
         "rollout_steps": 0,
+        "sps": 0.0,
         "status": "recovering",
         "worker_crash_count": 1,
     }
@@ -455,6 +463,17 @@ class EnvWrapper:
         self, action: dict[str, Any]
     ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         return self.env.step(action)
+
+
+class AdvancingClock:
+    def __init__(self, step: float) -> None:
+        self.step = step
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        current = self.now
+        self.now += self.step
+        return current
 
 
 class FakeCheckpointClient:

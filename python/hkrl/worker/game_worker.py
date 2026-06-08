@@ -7,6 +7,7 @@ NEVER crosses the remote network.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from numbers import Integral
 from typing import Any
@@ -41,6 +42,7 @@ class GameWorker:
         heartbeat_sink: Callable[[dict[str, Any]], None] | None = None,
         task_provider: Callable[[], Any | None] | None = None,
         max_consecutive_failures: int = 3,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         if max_consecutive_failures < 0:
             raise ValueError("max_consecutive_failures must be non-negative")
@@ -54,6 +56,7 @@ class GameWorker:
         self.heartbeat_sink = heartbeat_sink
         self.task_provider = task_provider
         self.max_consecutive_failures = max_consecutive_failures
+        self._clock = clock or time.monotonic
         self.device = _model_device(model)
         action_space: Any = env.action_space
         observation_space: Any = env.observation_space
@@ -96,6 +99,8 @@ class GameWorker:
         self.worker_crash_count = 0
         self.consecutive_failures = 0
         self.last_error: str | None = None
+        self.last_rollout_duration_s = 0.0
+        self.last_sps = 0.0
 
     def run(self, total_steps: int | None = None) -> None:
         """Sampling loop. Handles reset failures, reconnect, and weight reloads.
@@ -123,6 +128,7 @@ class GameWorker:
 
     def collect_rollout(self) -> RolloutBatch:
         """Fill one flat rollout and return a GAE-ready RolloutBatch."""
+        started_at = self._clock()
         self.buffer.clear()
         self._maybe_reload_checkpoint()
         self._maybe_switch_task()
@@ -196,7 +202,9 @@ class GameWorker:
             gamma=self.cfg.gamma,
             gae_lambda=self.cfg.gae_lambda,
         )
-        return self.buffer.to_batch(policy_version=self.policy_version)
+        batch = self.buffer.to_batch(policy_version=self.policy_version)
+        self._record_rollout_timing(batch, started_at)
+        return batch
 
     def _maybe_reload_checkpoint(self) -> bool:
         if self.checkpoint_client is None:
@@ -254,7 +262,9 @@ class GameWorker:
                 "checkpoint_version": self.checkpoint_version,
                 "learner_endpoint": self.learner_endpoint,
                 "policy_version": self.policy_version,
+                "rollout_duration_s": self.last_rollout_duration_s,
                 "rollout_steps": int(batch.rewards.size),
+                "sps": self.last_sps,
                 "status": "running",
                 "worker_crash_count": self.worker_crash_count,
             }
@@ -269,7 +279,9 @@ class GameWorker:
                 "error": f"{type(exc).__name__}: {exc}",
                 "learner_endpoint": self.learner_endpoint,
                 "policy_version": self.policy_version,
+                "rollout_duration_s": 0.0,
                 "rollout_steps": 0,
+                "sps": 0.0,
                 "status": "recovering",
                 "worker_crash_count": self.worker_crash_count,
             }
@@ -342,6 +354,11 @@ class GameWorker:
     def _clear_memory_context(self) -> None:
         self._prev_action = np.zeros((1, self.action_dim), dtype=np.int64)
         self._prev_reward = np.zeros((1,), dtype=np.float32)
+
+    def _record_rollout_timing(self, batch: RolloutBatch, started_at: float) -> None:
+        duration = max(0.0, self._clock() - started_at)
+        self.last_rollout_duration_s = duration
+        self.last_sps = float(batch.rewards.size) / duration if duration > 0.0 else 0.0
 
 
 def action_tensor_to_env_action(
