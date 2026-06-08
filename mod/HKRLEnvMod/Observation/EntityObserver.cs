@@ -1,5 +1,7 @@
 namespace HKRLEnvMod.Observation
 {
+    using System.Collections.Generic;
+
     /// <summary>
     /// Builds the variable-count entity list (bosses/enemies/projectiles/hazards),
     /// delegating to the specialized observers and the EntityRegistry for stable ids.
@@ -13,10 +15,22 @@ namespace HKRLEnvMod.Observation
         private readonly ProjectileObserver _projectile = new();
         private readonly HazardObserver _hazard = new();
 
-        public void Collect(/* out entities[], out entity_mask[] */)
+        public IReadOnlyList<EntityObservation> Collect(PlayerObservation player, int maxEntities = 64)
         {
-            // TODO(phase-4): gather entities, assign stable ids, compute rel_*,
-            // threat_score; top-k filter; aggregate remainder into a summary token.
+            _ = player;
+            var entities = new List<EntityObservation>();
+            _boss.ReadInto(entities);
+            _projectile.ReadInto(entities);
+            _hazard.ReadInto(entities);
+            _registry.PruneDead(new HashSet<int>());
+
+            if (entities.Count <= maxEntities)
+            {
+                return entities;
+            }
+
+            entities.Sort((left, right) => right.ThreatScore.CompareTo(left.ThreatScore));
+            return entities.GetRange(0, maxEntities);
         }
     }
 }

@@ -16,14 +16,37 @@ namespace HKRLEnvMod.Observation
         /// <summary>Return the stable id for a Unity object (allocating if new).</summary>
         public int GetStableId(int unityInstanceId)
         {
-            // TODO(phase-4): lookup/insert; track liveness for recycling.
-            return 0;
+            if (_objToStableId.TryGetValue(unityInstanceId, out var stableId))
+            {
+                return stableId;
+            }
+
+            stableId = _nextId++;
+            _objToStableId[unityInstanceId] = stableId;
+            return stableId;
         }
 
         /// <summary>Drop ids for objects no longer present this frame.</summary>
         public void PruneDead(HashSet<int> aliveInstanceIds)
         {
-            // TODO(phase-4)
+            if (aliveInstanceIds == null)
+            {
+                throw new System.ArgumentNullException(nameof(aliveInstanceIds));
+            }
+
+            var dead = new List<int>();
+            foreach (var instanceId in _objToStableId.Keys)
+            {
+                if (!aliveInstanceIds.Contains(instanceId))
+                {
+                    dead.Add(instanceId);
+                }
+            }
+
+            foreach (var instanceId in dead)
+            {
+                _objToStableId.Remove(instanceId);
+            }
         }
     }
 }

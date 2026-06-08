@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Google.FlatBuffers;
+using HKRLEnvMod.Observation;
 using HKRLEnvMod.Rewards;
 
 namespace HKRLEnvMod.Transport
@@ -117,7 +118,8 @@ namespace HKRLEnvMod.Transport
             bool terminated = false,
             bool truncated = false,
             string? info = null,
-            ulong episodeId = 0)
+            ulong episodeId = 0,
+            ObservationSnapshot? observation = null)
         {
             if (request == null)
             {
@@ -135,7 +137,8 @@ namespace HKRLEnvMod.Transport
                 terminated,
                 truncated,
                 info,
-                episodeId);
+                episodeId,
+                observation);
         }
 
         public static byte[] EncodeStepResponse(
@@ -149,14 +152,15 @@ namespace HKRLEnvMod.Transport
             bool terminated = false,
             bool truncated = false,
             string? info = null,
-            ulong episodeId = 0)
+            ulong episodeId = 0,
+            ObservationSnapshot? observation = null)
         {
             var builder = new FlatBufferBuilder(256);
             var rewardEventVector = BuildRewardEvents(builder, rewardEvents);
             var actionMaskVector = HKRL.StepResponse.CreateActionMaskVector(
                 builder,
                 actionMask ?? Array.Empty<bool>());
-            var observationOffset = BuildMinimalObservation(builder, episodeId);
+            var observationOffset = BuildObservation(builder, observation, episodeId);
             var infoOffset = string.IsNullOrEmpty(info)
                 ? default(StringOffset)
                 : builder.CreateString(info);
@@ -177,6 +181,36 @@ namespace HKRLEnvMod.Transport
                 infoOffset);
             HKRL.StepResponse.FinishStepResponseBuffer(builder, response);
             return AddLengthPrefix(builder.SizedByteArray());
+        }
+
+        private static Offset<HKRL.Observation> BuildObservation(
+            FlatBufferBuilder builder,
+            ObservationSnapshot? snapshot,
+            ulong episodeId)
+        {
+            if (snapshot == null)
+            {
+                return BuildMinimalObservation(builder, episodeId);
+            }
+
+            var globalOffset = BuildGlobalState(builder, snapshot.Global);
+            var playerOffset = BuildPlayerState(builder, snapshot.Player);
+            var entityOffsets = new Offset<HKRL.EntityState>[snapshot.Entities.Count];
+            for (var i = 0; i < snapshot.Entities.Count; i++)
+            {
+                entityOffsets[i] = BuildEntityState(builder, snapshot.Entities[i]);
+            }
+
+            var entitiesOffset = HKRL.Observation.CreateEntitiesVector(builder, entityOffsets);
+            var entityMaskOffset = HKRL.Observation.CreateEntityMaskVector(
+                builder,
+                EntityMaskToArray(snapshot.EntityMask, snapshot.Entities.Count));
+            return HKRL.Observation.CreateObservation(
+                builder,
+                globalOffset,
+                playerOffset,
+                entitiesOffset,
+                entityMaskOffset);
         }
 
         private static Offset<HKRL.Observation> BuildMinimalObservation(
@@ -208,6 +242,99 @@ namespace HKRLEnvMod.Transport
                 playerOffset,
                 entitiesOffset,
                 entityMaskOffset);
+        }
+
+        private static Offset<HKRL.GlobalState> BuildGlobalState(
+            FlatBufferBuilder builder,
+            GlobalObservation global)
+        {
+            return HKRL.GlobalState.CreateGlobalState(
+                builder,
+                scene_hash: global.SceneHash,
+                arena_id: global.ArenaId,
+                task_id: global.TaskId,
+                difficulty: global.Difficulty,
+                time_in_episode: global.TimeInEpisode,
+                time_scale: global.TimeScale,
+                fixed_delta_time: global.FixedDeltaTime,
+                stage_index: global.StageIndex,
+                episode_id: global.EpisodeId);
+        }
+
+        private static Offset<HKRL.PlayerState> BuildPlayerState(
+            FlatBufferBuilder builder,
+            PlayerObservation player)
+        {
+            return HKRL.PlayerState.CreatePlayerState(
+                builder,
+                pos_x: player.PosX,
+                pos_y: player.PosY,
+                vel_x: player.VelX,
+                vel_y: player.VelY,
+                hp: player.Hp,
+                max_hp: player.MaxHp,
+                soul: player.Soul,
+                max_soul: player.MaxSoul,
+                facing: player.Facing,
+                on_ground: player.OnGround,
+                double_jump_available: player.DoubleJumpAvailable,
+                can_attack: player.CanAttack,
+                can_cast: player.CanCast,
+                can_focus: player.CanFocus);
+        }
+
+        private static Offset<HKRL.EntityState> BuildEntityState(
+            FlatBufferBuilder builder,
+            EntityObservation entity)
+        {
+            return HKRL.EntityState.CreateEntityState(
+                builder,
+                entity_id: entity.EntityId,
+                entity_type: entity.EntityType,
+                team: entity.Team,
+                prefab_hash: entity.PrefabHash,
+                fsm_name_hash: entity.FsmNameHash,
+                fsm_state_hash: entity.FsmStateHash,
+                pos_x: entity.PosX,
+                pos_y: entity.PosY,
+                rel_x: entity.RelX,
+                rel_y: entity.RelY,
+                vel_x: entity.VelX,
+                vel_y: entity.VelY,
+                hp: entity.Hp,
+                max_hp: entity.MaxHp,
+                hurtbox_center_x: entity.HurtboxCenterX,
+                hurtbox_center_y: entity.HurtboxCenterY,
+                hurtbox_size_x: entity.HurtboxSizeX,
+                hurtbox_size_y: entity.HurtboxSizeY,
+                hitbox_active: entity.HitboxActive,
+                damage: entity.Damage,
+                ttl: entity.Ttl,
+                phase: entity.Phase,
+                threat_score: entity.ThreatScore,
+                flags: entity.Flags);
+        }
+
+        private static bool[] EntityMaskToArray(IReadOnlyList<bool> mask, int entityCount)
+        {
+            if (mask.Count == entityCount)
+            {
+                var values = new bool[mask.Count];
+                for (var i = 0; i < mask.Count; i++)
+                {
+                    values[i] = mask[i];
+                }
+
+                return values;
+            }
+
+            var fallback = new bool[entityCount];
+            for (var i = 0; i < fallback.Length; i++)
+            {
+                fallback[i] = true;
+            }
+
+            return fallback;
         }
 
         private static DecodedAction DecodeAction(HKRL.Action? action)

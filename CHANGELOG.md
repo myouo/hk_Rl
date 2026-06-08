@@ -92,6 +92,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod observation path now returns a minimal global/player snapshot and empty
   entity/mask lists without throwing, ready for later boss/entity enrichment.
 - Mod debug overlay now renders a minimal toggleable HKRL status/SPS panel.
+- Mod observation snapshots now carry structured EntityObservation records,
+  stable entity id registry plumbing, snapshot-to-FlatBuffers encoding, and
+  StepController observation collection for the Phase 4 entity-list path.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

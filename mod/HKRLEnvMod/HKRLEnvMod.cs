@@ -1,6 +1,7 @@
 using System;
 using HKRLEnvMod.Action;
 using HKRLEnvMod.Env;
+using HKRLEnvMod.Observation;
 using HKRLEnvMod.Rewards;
 using HKRLEnvMod.Transport;
 using Modding;
@@ -97,7 +98,8 @@ namespace HKRLEnvMod
                     rewards,
                     new EpisodeLifecycle(),
                     new ActionMasker(),
-                    new Heartbeat());
+                    new Heartbeat(),
+                    new ObservationCollector());
                 _server.Start();
                 _configured = true;
                 global::HKRLEnvMod.Debug.Logger.Info(

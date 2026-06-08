@@ -1,4 +1,5 @@
 using HKRLEnvMod.Action;
+using HKRLEnvMod.Observation;
 using HKRLEnvMod.Rewards;
 using HKRLEnvMod.Transport;
 
@@ -18,6 +19,7 @@ namespace HKRLEnvMod.Env
         private readonly EpisodeLifecycle _lifecycle;
         private readonly ActionMasker _masker;
         private readonly Heartbeat _heartbeat;
+        private readonly ObservationCollector _observations;
         private ulong _serverTick;
 
         public StepController(TcpServer server)
@@ -27,7 +29,8 @@ namespace HKRLEnvMod.Env
                 new RewardEventBuffer(),
                 new EpisodeLifecycle(),
                 new ActionMasker(),
-                new Heartbeat())
+                new Heartbeat(),
+                new ObservationCollector())
         {
         }
 
@@ -37,7 +40,8 @@ namespace HKRLEnvMod.Env
             RewardEventBuffer rewards,
             EpisodeLifecycle lifecycle,
             ActionMasker masker,
-            Heartbeat heartbeat)
+            Heartbeat heartbeat,
+            ObservationCollector observations)
         {
             _server = server;
             _actions = actions;
@@ -45,6 +49,7 @@ namespace HKRLEnvMod.Env
             _lifecycle = lifecycle;
             _masker = masker;
             _heartbeat = heartbeat;
+            _observations = observations;
         }
 
         /// <summary>Called once per FixedUpdate. Never blocks on the network.</summary>
@@ -65,6 +70,7 @@ namespace HKRLEnvMod.Env
             }
 
             var terminated = IsTerminal(state);
+            var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
             var response = MessageCodec.EncodeStepResponse(
                 request,
                 _serverTick,
@@ -74,7 +80,8 @@ namespace HKRLEnvMod.Env
                 _masker.Compute(),
                 terminated,
                 truncated: false,
-                episodeId: _lifecycle.EpisodeId);
+                episodeId: _lifecycle.EpisodeId,
+                observation: observation);
             _server.OutboundResponses.Enqueue(response);
         }
 
