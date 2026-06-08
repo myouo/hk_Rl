@@ -140,6 +140,8 @@ the project version tracks the **schema_version** + roadmap phase.
   and reloadable JSONL metadata for worker verification.
 - CheckpointClient now pulls local/file registry checkpoints with sha256
   verification before loading weights for hot-swaps.
+- CheckpointClient now rejects registry entries whose checkpoint paths escape the
+  registry root.
 - LearnerServer now provides in-process RolloutBatch intake, APPO updates,
   policy-version accounting, and checkpoint publishing through the registry.
 - `scripts/run_learner.py` now builds a config-driven learner model/server and

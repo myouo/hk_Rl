@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,30 @@ def test_checkpoint_client_rejects_unknown_version(tmp_path: Path) -> None:
 
     with pytest.raises(KeyError, match="unknown checkpoint version"):
         client.pull(99)
+
+
+def test_checkpoint_client_rejects_paths_outside_registry_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.pt"
+    torch.save({"model_state_dict": {}}, outside)
+    registry_root = tmp_path / "registry"
+    registry_root.mkdir()
+    (registry_root / "index.jsonl").write_text(
+        json.dumps(
+            {
+                "created_step": 1,
+                "path": str(outside),
+                "policy_version": 1,
+                "sha256": "unused",
+                "version": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = CheckpointClient(str(registry_root), verify_hash=False)
+
+    with pytest.raises(ValueError, match="escapes registry root"):
+        client.pull(1)
 
 
 def test_checkpoint_client_rejects_unsupported_endpoint() -> None:

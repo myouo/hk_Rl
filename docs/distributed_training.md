@@ -98,6 +98,9 @@ server-side token verification.
 Distinct from the env transport. TCP/gRPC/ZeroMQ across machines; Ray actors are
 a future option for the coordinator/worker fabric. Security per PRD §9.10: LAN/
 localhost only, token auth, hash-verified checkpoints, command whitelist.
+Local file checkpoint clients also reject index entries whose checkpoint path
+escapes the registry root, so a compromised or malformed index cannot redirect a
+worker to arbitrary local files.
 
 ## 7. Worker recovery
 

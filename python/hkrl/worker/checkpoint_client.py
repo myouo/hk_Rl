@@ -113,7 +113,13 @@ def _checkpoint_path(root: Path, path: str) -> Path:
     checkpoint_path = Path(path)
     if not checkpoint_path.is_absolute():
         checkpoint_path = root / checkpoint_path
-    return checkpoint_path
+    resolved_root = root.resolve()
+    resolved_checkpoint = checkpoint_path.expanduser().resolve()
+    try:
+        resolved_checkpoint.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("checkpoint path escapes registry root") from exc
+    return resolved_checkpoint
 
 
 def _sha256_file(path: Path) -> str:
