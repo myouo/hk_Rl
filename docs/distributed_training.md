@@ -30,8 +30,8 @@ batched multi-env inference, which we don't need here.
 
 ```text
 obs_global, obs_player, obs_entities, entity_mask,
-actions, log_probs, values, rewards, dones, truncateds,
-action_masks, prev_actions, rnn_states,
+actions, log_probs, values, advantages, returns,
+rewards, dones, truncateds, action_masks, prev_actions, rnn_states,
 episode_ids, task_ids, policy_version
 ```
 

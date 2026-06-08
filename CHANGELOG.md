@@ -48,6 +48,9 @@ the project version tracks the **schema_version** + roadmap phase.
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
   entity-mask padding suppression and exposes act/evaluate_actions for PPO.
+- Synchronous PPO now runs clipped policy/value updates over flat rollout
+  batches, reports core training metrics, and exports advantages/returns in
+  RolloutBatch.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

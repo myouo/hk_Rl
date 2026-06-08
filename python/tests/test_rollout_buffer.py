@@ -20,6 +20,8 @@ def test_rollout_batch_has_required_fields() -> None:
         "actions",
         "log_probs",
         "values",
+        "advantages",
+        "returns",
         "rewards",
         "dones",
         "truncateds",
@@ -118,6 +120,8 @@ def test_rollout_buffer_add_compute_batch_and_clear() -> None:
     assert batch.policy_version == 5
     assert batch.obs_global.shape == (2, 1, 2)
     assert batch.actions.shape == (2, 1, 2)
+    np.testing.assert_allclose(batch.advantages[:, 0], [2.0, 1.0])
+    np.testing.assert_allclose(batch.returns[:, 0], [2.0, 1.0])
     np.testing.assert_allclose(buffer.advantages[:, 0], [2.0, 1.0])
     np.testing.assert_allclose(buffer.returns[:, 0], [2.0, 1.0])
     np.testing.assert_array_equal(batch.episode_ids[:, 0], np.array([7, 7], dtype=np.uint64))

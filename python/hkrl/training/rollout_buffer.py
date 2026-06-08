@@ -25,6 +25,8 @@ class RolloutBatch:
     actions: np.ndarray
     log_probs: np.ndarray
     values: np.ndarray
+    advantages: np.ndarray
+    returns: np.ndarray
     rewards: np.ndarray
     dones: np.ndarray
     truncateds: np.ndarray
@@ -141,6 +143,8 @@ class RolloutBuffer:
             actions=self.actions[:length].copy(),
             log_probs=self.log_probs[:length].copy(),
             values=self.values[:length].copy(),
+            advantages=self.advantages[:length].copy(),
+            returns=self.returns[:length].copy(),
             rewards=self.rewards[:length].copy(),
             dones=self.dones[:length].copy(),
             truncateds=self.truncateds[:length].copy(),
