@@ -14,6 +14,7 @@ import gymnasium as gym
 
 from hkrl.protocol import LifecycleState, StatusCode
 from hkrl.reward import DefaultReward
+from hkrl.spaces import make_action_space, make_observation_space
 from hkrl.transport.base import Transport
 from hkrl.utils.config import TaskConfig
 
@@ -39,10 +40,13 @@ class HKRLEnv(gym.Env):
         self.transport = transport
         self.task = task
         self.reward_fn = reward_fn or DefaultReward(task.reward)
-        # TODO(phase-2): build self.observation_space / self.action_space from
-        # hkrl.spaces using task.observation / task.action.
-        self.observation_space: gym.Space[Any]
-        self.action_space: gym.Space[Any]
+        self.observation_space = make_observation_space(
+            max_entities=task.observation.max_entities,
+            tier=task.observation.tier,
+        )
+        self.action_space = make_action_space(
+            enable_macro=task.action.enable_macro_actions,
+        )
         self._tick_id = 0
         self._episode_id = 0
 
@@ -74,8 +78,7 @@ class HKRLEnv(gym.Env):
 
     def close(self) -> None:
         """Close the transport. Idempotent."""
-        # TODO(phase-2): self.transport.close()
-        raise NotImplementedError
+        self.transport.close()
 
     # -- helpers --------------------------------------------------------------
     def _await_running(self, timeout_s: float) -> StatusCode:

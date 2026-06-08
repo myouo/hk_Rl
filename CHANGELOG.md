@@ -27,6 +27,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
 - Mask-aware random policy for local smoke tests and scripted baseline plumbing.
+- HKRLEnv construction now wires task-driven Gymnasium spaces and idempotent
+  transport close behavior.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
