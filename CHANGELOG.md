@@ -51,6 +51,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod action mask layout now mirrors Python ordering and applies basic
   player-readiness rules for jump, dash, attack, cast, focus, and nail-art
   buttons.
+- Mod primitive action path now maps decoded wire actions into movement/aim/button
+  input state with button-bit clamping and duration hold bookkeeping.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

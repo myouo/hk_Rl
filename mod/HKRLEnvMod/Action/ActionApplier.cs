@@ -1,4 +1,4 @@
-using System;
+using HKRLEnvMod.Transport;
 
 namespace HKRLEnvMod.Action
 {
@@ -9,15 +9,74 @@ namespace HKRLEnvMod.Action
     /// </summary>
     public sealed class ActionApplier
     {
+        private static readonly int[] DurationTicks = { 1, 2, 4, 8 };
+
         private readonly InputInjector _input = new();
         private readonly MacroActionScheduler _macros = new();
+        private PrimitiveInput _heldInput = PrimitiveInput.Noop;
+        private int _heldTicksRemaining;
+
+        public PrimitiveInput CurrentInput => _input.Current;
 
         /// <summary>Apply one action for this tick (held for `duration` ticks).</summary>
-        public void Apply(/* decoded Action */)
+        public void Apply(DecodedAction action)
         {
-            // TODO(phase-1): if macro_id >= 0 expand via scheduler, else inject
-            // movement_x/aim_y/buttons; honor duration + action_repeat.
-            throw new NotImplementedException();
+            if (_heldTicksRemaining > 0)
+            {
+                _input.Apply(_heldInput);
+                _heldTicksRemaining--;
+                return;
+            }
+
+            if (action.MacroId >= 0)
+            {
+                _macros.Begin(action.MacroId);
+            }
+
+            var primitive = ToPrimitive(action);
+            _heldInput = primitive;
+            _heldTicksRemaining = DurationFromIndex(action.DurationIdx) - 1;
+            _input.Apply(primitive);
+        }
+
+        public void Clear()
+        {
+            _heldInput = PrimitiveInput.Noop;
+            _heldTicksRemaining = 0;
+            _input.Clear();
+        }
+
+        private static PrimitiveInput ToPrimitive(DecodedAction action)
+        {
+            return new PrimitiveInput(
+                MovementFromWire(action.MovementX),
+                AimFromWire(action.AimY),
+                action.Buttons);
+        }
+
+        private static int MovementFromWire(byte movementX)
+        {
+            return movementX switch
+            {
+                0 => -1,
+                2 => 1,
+                _ => 0
+            };
+        }
+
+        private static int AimFromWire(byte aimY)
+        {
+            return aimY switch
+            {
+                0 => -1,
+                2 => 1,
+                _ => 0
+            };
+        }
+
+        private static int DurationFromIndex(byte durationIdx)
+        {
+            return DurationTicks[durationIdx < DurationTicks.Length ? durationIdx : 0];
         }
     }
 }
