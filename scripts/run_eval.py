@@ -31,6 +31,10 @@ from hkrl import spaces
 from hkrl.env import HKRLEnv
 from hkrl.eval.evaluator import Evaluator
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
+from hkrl.learner.checkpoint_payload import (
+    validate_checkpoint_payload,
+    validate_model_state_dict,
+)
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
@@ -175,12 +179,18 @@ def _build_policy(
         if args.policy == "mlp"
         else _build_configured_policy(task, train_cfg)
     )
-    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict):
-        state = state.get("model_state_dict", state.get("state_dict", state))
+    state = _extract_model_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
     model.load_state_dict(state)
     model.eval()
     return model
+
+
+def _extract_model_state_dict(payload: object) -> Any:
+    if isinstance(payload, dict) and "model_state_dict" in payload:
+        return validate_checkpoint_payload(payload)["model_state_dict"]
+    if isinstance(payload, dict) and "state_dict" in payload:
+        return validate_model_state_dict(payload["state_dict"], name="state_dict")
+    return validate_model_state_dict(payload, name="state_dict")
 
 
 def _build_mlp_policy(task: TaskConfig, train_cfg: TrainConfig) -> MlpActorCritic:

@@ -14,16 +14,25 @@ def validate_checkpoint_payload(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("checkpoint payload must be a dictionary")
 
-    model_state = payload.get("model_state_dict")
-    if not isinstance(model_state, Mapping):
-        raise ValueError("checkpoint missing model_state_dict")
-    _validate_state_mapping("model_state_dict", model_state)
+    validate_model_state_dict(payload.get("model_state_dict"), name="model_state_dict")
 
     policy_version = payload.get("policy_version")
     if policy_version is not None:
         _validate_non_negative_int("policy_version", policy_version)
 
     return payload
+
+
+def validate_model_state_dict(
+    state: object,
+    *,
+    name: str = "model_state_dict",
+) -> Mapping[Any, Any]:
+    """Return a state-dict mapping after checking tensor structure and finiteness."""
+    if not isinstance(state, Mapping):
+        raise ValueError(f"checkpoint missing {name}")
+    _validate_state_mapping(name, state)
+    return state
 
 
 def _validate_state_mapping(name: str, state: Mapping[Any, Any]) -> None:

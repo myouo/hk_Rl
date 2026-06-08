@@ -9,6 +9,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import torch
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
@@ -77,6 +78,27 @@ def test_run_eval_builds_configured_recurrent_policy_from_checkpoint_registry(
     policy = module._build_policy(args, task)
 
     assert isinstance(policy, EntityAttentionRecurrentAC)
+
+
+def test_run_eval_rejects_non_finite_checkpoint_weights(tmp_path: Path) -> None:
+    module = _load_script("run_eval.py")
+    root = Path(__file__).parents[2]
+    task = TaskConfig(task_id="gruz_mother", scene="GG_Gruz_Mother")
+    model = _mlp_for_task(task)
+    state = model.state_dict()
+    first_key = next(iter(state))
+    state[first_key] = torch.full_like(state[first_key], float("nan"))
+    checkpoint = tmp_path / "bad.pt"
+    torch.save({"model_state_dict": state}, checkpoint)
+    args = argparse.Namespace(
+        policy="mlp",
+        checkpoint=str(checkpoint),
+        checkpoint_dir=None,
+        train_config=str(root / "configs/train/ppo_mlp.yaml"),
+    )
+
+    with pytest.raises(ValueError, match="non-finite"):
+        module._build_policy(args, task)
 
 
 def test_run_eval_resolves_checkpoint_directory_argument(tmp_path: Path) -> None:

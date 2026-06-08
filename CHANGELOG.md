@@ -183,6 +183,8 @@ the project version tracks the **schema_version** + roadmap phase.
   before writing checkpoint files or index entries.
 - Checkpoint publishing and worker pulls now reject malformed payloads and
   non-finite model-state tensors before weights can be loaded.
+- Evaluator checkpoint loading now applies the same model-state tensor
+  validation before `load_state_dict`.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,
