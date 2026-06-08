@@ -1,7 +1,7 @@
-"""Env import/wiring smoke tests (no live game required).
+"""Env protocol and validation tests (no live game required).
 
-Behavioral env tests need a live HKRLEnvMod connection and are marked
-``integration`` (skipped by default). Here we only assert the class wires up.
+Live rollout tests need a running HKRLEnvMod connection and are marked
+``integration`` (skipped by default).
 """
 
 from __future__ import annotations
@@ -291,7 +291,7 @@ def test_env_rejects_boss_task_without_boss_entity() -> None:
 
 @pytest.mark.integration
 def test_random_policy_episode() -> None:
-    pytest.skip("requires live Hollow Knight + HKRLEnvMod (phase 1+)")
+    pytest.skip("requires live Hollow Knight + HKRLEnvMod TCP connection")
 
 
 def _build_response(

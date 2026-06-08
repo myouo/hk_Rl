@@ -11,9 +11,9 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "hk-rl" }]
 
-# Runtime deps kept minimal at the interface-skeleton stage; pin precisely as
-# implementations land (see docs/architecture.md). torch is intentionally NOT
-# pinned to a CUDA build here — install the appropriate wheel per machine.
+# Runtime deps cover the local env, model, training, worker, and learner path.
+# torch is intentionally NOT pinned to a CUDA build here; install the
+# appropriate wheel per machine.
 dependencies = [
     "numpy>=1.24",
     "gymnasium>=0.29",
@@ -50,7 +50,7 @@ exclude = ["hkrl/schema/HKRL"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-# Skeleton files intentionally contain unused args / NotImplementedError bodies.
+# Abstract base classes intentionally leave protocol methods without bodies.
 ignore = ["B027", "RUF012"]
 
 [tool.ruff.lint.per-file-ignores]

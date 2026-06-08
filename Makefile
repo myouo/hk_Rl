@@ -45,7 +45,7 @@ fmt: ## ruff format
 typecheck: ## mypy
 	cd $(PKG_DIR) && mypy hkrl
 
-test: ## pytest (collection must succeed even for skeleton)
+test: ## pytest unit suite
 	cd $(PKG_DIR) && pytest
 
 smoke: ## Run random-policy smoke against a live env (Phase 2+)

@@ -1,9 +1,9 @@
-"""Pytest fixtures and import-safety for the skeleton stage.
+"""Pytest fixtures and import-safety checks.
 
-At the interface-placeholder stage, tests assert that the package *imports* and
-that constants/layouts are self-consistent. Behavioral tests are marked xfail/skip
-until their phase lands (see per-file markers). Integration tests requiring a live
-game connection are marked ``integration`` and skipped by default.
+Unit tests exercise protocol layout, env validation, rollout/training helpers,
+and distributed plumbing without requiring a live Hollow Knight process.
+Integration tests requiring a live game connection are marked ``integration`` and
+skipped by default.
 """
 
 from __future__ import annotations

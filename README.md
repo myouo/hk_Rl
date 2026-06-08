@@ -56,7 +56,7 @@ docs/      规范文档与 ADR
 scripts/   codegen / train / worker / learner / eval 入口
 ```
 
-## 快速开始（占位骨架阶段）
+## 快速开始
 
 ```bash
 # 1. 创建并启用 Conda 开发环境
@@ -113,14 +113,19 @@ make install-hooks
 bindings，再执行格式检查、lint、typecheck 和 tests。如果本机有 `hkrl` Conda
 环境，hook 会自动通过 `conda run -n hkrl` 执行检查。
 
-> ⚠️ 当前为**接口级占位骨架**：目录、签名、文档与协议已就位，具体实现按 [Roadmap](./AGENTS.md#roadmap) Phase 0→8 推进。
-> Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。
+> ⚠️ Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。
+> 需要真实游戏进程的 smoke / eval / training 命令必须在运行 HKRLEnvMod 的机器上执行。
 
 ## 当前状态
 
-**Phase 0/1/2 基础推进中**：schema、CI、Python transport、Gymnasium Env、
-step/reset 协议 helper、observation normalization、随机策略 smoke 入口已就位。
-下一步优先级（P0）：mod 侧 step/reset server、action mask、reward events、单 Boss baseline。
+Roadmap 已推进到 **Phase 8**：本地 Gym env、step/reset lifecycle、TCP/SHM
+transport、reward events、action mask、entity observation、PPO/RecurrentPPO/APPO、
+worker/learner/checkpoint/coordinator/evaluator 等核心路径均已落地并由
+`make check` 覆盖。
+
+本仓库当前仍有两个需要真实外部环境验证的边界：HKRLEnvMod 的 C# 编译依赖本机
+Hollow Knight Managed 程序集与 HK Modding API；端到端 smoke/eval/training 依赖
+运行中的 Hollow Knight + HKRLEnvMod TCP 服务。
 
 ## License
 

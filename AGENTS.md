@@ -64,7 +64,7 @@ mod/HKRLEnvMod/    C# env-server mod (HK Modding API)
 python/hkrl/       Python package
   transport/ schema(gen)/ models/ training/ worker/ learner/ coordinator/ eval/ utils/
   env.py spaces.py reward.py wrappers.py protocol.py
-python/tests/      pytest (skeleton: import + layout consistency; xfail behavioral)
+python/tests/      pytest unit suite; live game/mod checks are integration-skipped
 configs/           tasks/*.yaml, train/*.yaml, base.yaml
 docs/              specs + adr/
 scripts/           gen_schema.sh, train.py, run_worker.py, run_learner.py, run_eval.py
@@ -126,9 +126,8 @@ and the **action-mask index order** (`hkrl/spaces.py` ↔ mod `InputInjector` /
 - Register new components via the registry; select via config. Don't hardcode.
 - Import heavy deps (torch/gymnasium) at module scope only where the module truly
   needs them, so `import hkrl` stays light.
-- New behavior ships with a test. Skeleton tests assert imports + layout
-  consistency; behavioral tests are `xfail(strict=True)` until their phase, then
-  flip to real assertions.
+- New behavior ships with a test. Unit tests should run without Hollow Knight;
+  live game/mod checks are marked `integration` and skipped by default.
 
 **C#**
 - **Network thread never touches Unity objects.** All game access on the main
@@ -181,7 +180,7 @@ hacking — trust the evaluator. ([`docs/reward_design.md`](./docs/reward_design
 make gen-schema     # if you touched schema/hkrl.fbs (needs flatc)
 make lint           # ruff
 make typecheck      # mypy
-make test           # pytest (collection must succeed; xfail = not-yet-implemented)
+make test           # pytest unit suite
 # behavioral / integration (needs a live game + mod):
 python scripts/train.py --config configs/train/ppo_mlp.yaml --task configs/tasks/gruz_mother.yaml --smoke
 ```
