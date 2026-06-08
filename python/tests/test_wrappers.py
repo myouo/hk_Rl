@@ -6,6 +6,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 from hkrl import spaces
+from hkrl.utils.config import TaskConfig
 from hkrl.wrappers import FrameStack, NormalizeObservation, ObservationTier
 
 
@@ -84,6 +85,23 @@ def test_normalize_observation_rejects_mismatched_entity_mask() -> None:
         wrapper.observation(observation)
 
 
+def test_normalize_observation_set_task_refreshes_spaces() -> None:
+    env = SwitchingEnv()
+    wrapper = NormalizeObservation(env)
+    task = _task(max_entities=3, enable_macro=False)
+
+    obs, info = wrapper.set_task(task)
+
+    assert info["task_id"] == 7
+    assert wrapper.observation_space["entities"].shape == (
+        3,
+        spaces.ENTITY_FEATURE_DIMS["privileged"],
+    )
+    assert "macro" not in wrapper.action_space.spaces
+    assert obs["entities"].shape == (3, spaces.ENTITY_FEATURE_DIMS["privileged"])
+    assert env.options_seen == {"difficulty": "attuned"}
+
+
 def test_observation_tier_slices_player_and_entity_features() -> None:
     wrapper = ObservationTier(DummyEnv(), tier="human_visible")
     observation = {
@@ -111,6 +129,19 @@ def test_observation_tier_slices_player_and_entity_features() -> None:
 def test_observation_tier_rejects_unknown_tier() -> None:
     with pytest.raises(ValueError, match="unknown observation tier"):
         ObservationTier(DummyEnv(), tier="debug")
+
+
+def test_observation_tier_set_task_refreshes_tiered_space() -> None:
+    wrapper = ObservationTier(SwitchingEnv(), tier="human_visible")
+
+    obs, _ = wrapper.set_task(_task(max_entities=4))
+
+    assert wrapper.observation_space["entities"].shape == (
+        4,
+        spaces.ENTITY_FEATURE_DIMS["human_visible"],
+    )
+    assert obs["player"].shape == (spaces.PLAYER_FEATURE_DIMS["human_visible"],)
+    assert obs["entities"].shape == (4, spaces.ENTITY_FEATURE_DIMS["human_visible"])
 
 
 def test_frame_stack_stacks_feature_axes_and_updates_space() -> None:
@@ -143,6 +174,67 @@ def test_frame_stack_stacks_feature_axes_and_updates_space() -> None:
 def test_frame_stack_rejects_non_positive_k() -> None:
     with pytest.raises(ValueError, match="positive"):
         FrameStack(CountingEnv(), k=0)
+
+
+def test_frame_stack_set_task_refreshes_space_and_reseeds_frames() -> None:
+    env = SwitchingCountingEnv()
+    wrapper = FrameStack(env, k=2)
+    obs, _ = wrapper.reset()
+    np.testing.assert_array_equal(obs["global"], np.array([0, 1, 0, 1], dtype=np.float32))
+
+    obs, info = wrapper.set_task(_task(max_entities=3, enable_macro=False))
+
+    assert info["task_id"] == 7
+    assert wrapper.observation_space["entities"].shape == (3, 2)
+    assert "macro" not in wrapper.action_space.spaces
+    np.testing.assert_array_equal(obs["global"], np.array([10, 11, 10, 11], dtype=np.float32))
+    np.testing.assert_array_equal(
+        obs["entities"],
+        np.array([[10, 10], [11, 11], [12, 12]], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(obs["entity_mask"], np.array([1, 1, 0], dtype=np.int8))
+
+
+def _task(max_entities: int, *, enable_macro: bool = True) -> TaskConfig:
+    return TaskConfig(
+        task_id="switch",
+        wire_id=7,
+        scene="GG_Switch",
+        observation={"max_entities": max_entities},
+        action={"enable_macro_actions": enable_macro},
+    )
+
+
+class SwitchingEnv(gym.Env):
+    action_space = spaces.make_action_space(enable_macro=True)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.observation_space = spaces.make_observation_space(max_entities=2, tier="privileged")
+        self.action_space = spaces.make_action_space(enable_macro=True)
+        self.options_seen: dict[str, object] | None = None
+
+    def set_task(
+        self, task: TaskConfig, *, options: dict[str, object] | None = None
+    ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
+        self.options_seen = {"difficulty": task.difficulty} if options is None else options
+        self.observation_space = spaces.make_observation_space(
+            max_entities=task.observation.max_entities,
+            tier="privileged",
+        )
+        self.action_space = spaces.make_action_space(enable_macro=task.action.enable_macro_actions)
+        return self._obs(task.observation.max_entities), {"task_id": task.wire_id}
+
+    def _obs(self, max_entities: int) -> dict[str, np.ndarray]:
+        return {
+            "global": np.zeros((spaces.GLOBAL_FEATURE_DIM,), dtype=np.float32),
+            "player": np.zeros((spaces.PLAYER_FEATURE_DIMS["privileged"],), dtype=np.float32),
+            "entities": np.zeros(
+                (max_entities, spaces.ENTITY_FEATURE_DIMS["privileged"]),
+                dtype=np.float32,
+            ),
+            "entity_mask": np.ones((max_entities,), dtype=np.int8),
+        }
 
 
 class CountingEnv(gym.Env):
@@ -181,4 +273,39 @@ class CountingEnv(gym.Env):
             "player": np.full((3,), self.t, dtype=np.float32),
             "entities": np.array([[self.t], [self.t + 1]], dtype=np.float32),
             "entity_mask": np.array([1, 0], dtype=np.int8),
+        }
+
+
+class SwitchingCountingEnv(CountingEnv):
+    def set_task(
+        self, task: TaskConfig, *, options: dict[str, object] | None = None
+    ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
+        del options
+        self.t = 10
+        self.observation_space = gym.spaces.Dict(
+            {
+                "global": gym.spaces.Box(low=-10, high=20, shape=(2,), dtype=np.float32),
+                "player": gym.spaces.Box(low=-10, high=20, shape=(3,), dtype=np.float32),
+                "entities": gym.spaces.Box(
+                    low=-10,
+                    high=20,
+                    shape=(task.observation.max_entities, 1),
+                    dtype=np.float32,
+                ),
+                "entity_mask": gym.spaces.MultiBinary(task.observation.max_entities),
+            }
+        )
+        self.action_space = spaces.make_action_space(enable_macro=task.action.enable_macro_actions)
+        return self._obs(), {"task_id": task.wire_id}
+
+    def _obs(self) -> dict[str, np.ndarray]:
+        max_entities = int(self.observation_space["entity_mask"].n)
+        entity_values = np.arange(self.t, self.t + max_entities, dtype=np.float32).reshape(-1, 1)
+        mask = np.zeros((max_entities,), dtype=np.int8)
+        mask[: min(2, max_entities)] = 1
+        return {
+            "global": np.array([self.t, self.t + 1], dtype=np.float32),
+            "player": np.full((3,), self.t, dtype=np.float32),
+            "entities": entity_values,
+            "entity_mask": mask,
         }

@@ -22,6 +22,14 @@ class NormalizeObservation(gym.ObservationWrapper):
     Uses the constants in ``hkrl.spaces`` so ablations stay consistent.
     """
 
+    def set_task(
+        self, task: Any, *, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        obs, info = _call_set_task(self.env, task, options=options)
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        return self.observation(obs), info
+
     def observation(self, observation: Any) -> Any:
         if not isinstance(observation, dict):
             return observation
@@ -52,6 +60,14 @@ class ObservationTier(gym.ObservationWrapper):
 
         self.tier = tier
         self.observation_space = _tier_observation_space(env.observation_space, tier)
+
+    def set_task(
+        self, task: Any, *, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        obs, info = _call_set_task(self.env, task, options=options)
+        self.observation_space = _tier_observation_space(self.env.observation_space, self.tier)
+        self.action_space = self.env.action_space
+        return self.observation(obs), info
 
     def observation(self, observation: Any) -> Any:
         if not isinstance(observation, dict):
@@ -89,6 +105,17 @@ class FrameStack(gym.Wrapper):
         self._frames: deque[Any] = deque(maxlen=k)
         self.observation_space = _stack_observation_space(env.observation_space, k)
 
+    def set_task(
+        self, task: Any, *, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        obs, info = _call_set_task(self.env, task, options=options)
+        self.observation_space = _stack_observation_space(self.env.observation_space, self.k)
+        self.action_space = self.env.action_space
+        self._frames.clear()
+        for _ in range(self.k):
+            self._frames.append(_copy_observation(obs))
+        return self._stack_frames(), info
+
     def reset(self, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
         obs, info = self.env.reset(**kwargs)
         self._frames.clear()
@@ -103,6 +130,17 @@ class FrameStack(gym.Wrapper):
 
     def _stack_frames(self) -> Any:
         return _stack_observations(list(self._frames))
+
+
+def _call_set_task(
+    env: gym.Env, task: Any, *, options: dict[str, Any] | None = None
+) -> tuple[Any, dict[str, Any]]:
+    set_task = getattr(env, "set_task", None)
+    if not callable(set_task):
+        raise AttributeError(f"{type(env).__name__} does not expose set_task(task)")
+    if options is None:
+        return set_task(task)
+    return set_task(task, options=options)
 
 
 def _normalize_player(player: np.ndarray) -> None:
