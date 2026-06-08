@@ -6,9 +6,8 @@
 
     Assembly references below point at a LOCAL Hollow Knight install + Modding
     API. These paths are machine-specific: set HollowKnightManaged in a local
-    Directory.Build.props / .csproj.user (NOT committed). Compilation is deferred
-    until Phase 0 configures a game install; this project is interface-level
-    placeholder until then.
+    Directory.Build.props / .csproj.user (NOT committed). CI can generate schema
+    bindings, but full mod compilation requires those local game assemblies.
   -->
 
   <PropertyGroup>

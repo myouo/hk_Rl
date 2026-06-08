@@ -24,7 +24,7 @@ Debug/            Overlay, Logger, SnapshotRecorder
 Schema/           generated FlatBuffers C# (gitignored; `make gen-schema-cs`)
 ```
 
-## Building (deferred to Phase 0)
+## Building
 
 Compilation needs a local Hollow Knight install + Modding API assemblies. The
 `.csproj` references resolve from `$(HollowKnightManaged)` — set this in a local,
@@ -41,6 +41,7 @@ uncommitted `Directory.Build.props` or `HKRLEnvMod.csproj.user`:
 Then `make gen-schema-cs` to generate `Schema/HKRL.*`, and build with `dotnet
 build` / your IDE. Drop the resulting DLL into the game's `Mods/` folder.
 
-This tree is **interface-level placeholder**; implement per the roadmap
-([`../AGENTS.md`](../AGENTS.md#roadmap)), starting with Transport + StepController +
-Player/Boss observers + reset lifecycle (P0).
+The mod tree now contains the core environment-server components: transport,
+step/reset lifecycle, action application/masking, reward-event buffering,
+debugging helpers, and player/entity observation plumbing. Full compile and
+behavioral verification still require a local Hollow Knight + Modding API setup.

@@ -28,8 +28,9 @@ Standardize on the **Hollow Knight Modding API** (MonoMod-based).
 - `HKRLEnvMod` subclasses the Modding API `Mod` type; references the game's
   managed assemblies + the API (paths are machine-local, kept out of source).
 - Harmony patches for hooks (damage/heal/death/scene).
-- Compilation needs a configured game install — deferred to Phase 0; the C# tree
-  is interface-level placeholder until then.
+- Compilation needs a configured game install; CI can generate FlatBuffers
+  bindings, while full mod build/test runs on a machine with Hollow Knight and
+  the Modding API assemblies installed.
 
 ## Alternatives rejected
 

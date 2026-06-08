@@ -16,8 +16,9 @@ Layout (see ../README.md and ../../docs/architecture.md):
     eval/         evaluator, scripted policies
     utils/        config, logging, metrics, seeding, registry
 
-Everything is interface-level placeholder at this stage; implementations land
-per the roadmap (see ../../AGENTS.md#roadmap).
+Most Python-side roadmap scaffolding now has executable implementations and
+focused tests. Live game behavior still depends on HKRLEnvMod running inside a
+configured Hollow Knight install (see ../../AGENTS.md#verify-your-changes).
 """
 
 from __future__ import annotations

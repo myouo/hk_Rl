@@ -17,12 +17,12 @@ namespace HKRLEnvMod.Observation
 
         public IReadOnlyList<EntityObservation> Collect(PlayerObservation player, int maxEntities = 64)
         {
-            _ = player;
             var entities = new List<EntityObservation>();
-            _boss.ReadInto(entities);
-            _projectile.ReadInto(entities);
-            _hazard.ReadInto(entities);
-            _registry.PruneDead(new HashSet<int>());
+            var aliveInstanceIds = new HashSet<int>();
+            _boss.ReadInto(entities, _registry, aliveInstanceIds, player);
+            _projectile.ReadInto(entities, _registry, aliveInstanceIds, player);
+            _hazard.ReadInto(entities, _registry, aliveInstanceIds, player);
+            _registry.PruneDead(aliveInstanceIds);
 
             if (entities.Count <= maxEntities)
             {

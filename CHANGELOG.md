@@ -130,8 +130,8 @@ the project version tracks the **schema_version** + roadmap phase.
   a timeout, and returns concrete reset failure status codes.
 - Mod reward hook scaffolds now install a shared RewardEventBuffer and expose
   typed event recorders for damage, death, heal/soul, and scene-change events.
-- Mod observation path now returns a minimal global/player snapshot and empty
-  entity/mask lists without throwing, ready for later boss/entity enrichment.
+- Mod observation path now returns global/player snapshots plus best-effort
+  boss/projectile/hazard entity records with stable ids and threat scores.
 - Mod debug overlay now renders a minimal toggleable HKRL status/SPS panel.
 - Mod observation snapshots now carry structured EntityObservation records,
   stable entity id registry plumbing, snapshot-to-FlatBuffers encoding, and
