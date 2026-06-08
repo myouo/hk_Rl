@@ -57,6 +57,40 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}
 
 
+def test_game_worker_hot_swaps_new_checkpoint_before_rollout() -> None:
+    env = FakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    checkpoint_client = FakeCheckpointClient(
+        {
+            "model_state_dict": model.state_dict(),
+            "policy_version": 7,
+        }
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        checkpoint_client=checkpoint_client,  # type: ignore[arg-type]
+    )
+
+    batch = worker.collect_rollout()
+
+    assert checkpoint_client.latest_calls == 1
+    assert checkpoint_client.pulled_versions == [1]
+    assert worker.checkpoint_version == 1
+    assert worker.policy_version == 7
+    assert batch.policy_version == 7
+
+
 class FakeEnv:
     def __init__(self) -> None:
         self.observation_space = make_observation_space(max_entities=4, tier="privileged")
@@ -92,3 +126,18 @@ class FakeEnv:
             "episode_id": episode_id,
             "action_mask": np.ones((19,), dtype=bool),
         }
+
+
+class FakeCheckpointClient:
+    def __init__(self, state: dict[str, Any]) -> None:
+        self.state = state
+        self.latest_calls = 0
+        self.pulled_versions: list[int] = []
+
+    def latest_version(self) -> int:
+        self.latest_calls += 1
+        return 1
+
+    def pull(self, version: int) -> dict[str, Any]:
+        self.pulled_versions.append(version)
+        return self.state

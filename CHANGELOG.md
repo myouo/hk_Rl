@@ -68,6 +68,8 @@ the project version tracks the **schema_version** + roadmap phase.
   RolloutBatch.
 - GameWorker can now collect local single-env rollouts with model inference,
   action-mask handling, tensor-to-env action conversion, and GAE bootstrap.
+- GameWorker now hot-swaps verified checkpoint weights before rollouts and tags
+  collected batches with the loaded learner policy version.
 - FrameStack wrapper now stacks dict observation feature axes and updates the
   Gym observation space for short-history MLP baselines.
 - ScriptedAggroPolicy now provides a mask-aware heuristic baseline that approaches

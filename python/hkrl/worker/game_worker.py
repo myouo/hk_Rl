@@ -7,6 +7,8 @@ NEVER crosses the remote network.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from numbers import Integral
 from typing import Any
 
 import numpy as np
@@ -62,11 +64,12 @@ class GameWorker:
             },
         )
         self.policy_version = 0
+        self.checkpoint_version = -1
         self._obs: Any | None = None
         self._info: dict[str, Any] = {}
         self._rnn_state = model.initial_state(batch_size=1, device=self.device)
         self.last_batch: RolloutBatch | None = None
-        # TODO(phase-6): uploader, heartbeat, policy_version hot-swap.
+        # TODO(phase-6): uploader + heartbeat.
 
     def run(self, total_steps: int | None = None) -> None:
         """Sampling loop. Handles reset failures, reconnect, and weight reloads.
@@ -86,6 +89,7 @@ class GameWorker:
     def collect_rollout(self) -> RolloutBatch:
         """Fill one flat rollout and return a GAE-ready RolloutBatch."""
         self.buffer.clear()
+        self._maybe_reload_checkpoint()
         self.model.eval()
         self._ensure_reset()
 
@@ -135,6 +139,27 @@ class GameWorker:
             gae_lambda=self.cfg.gae_lambda,
         )
         return self.buffer.to_batch(policy_version=self.policy_version)
+
+    def _maybe_reload_checkpoint(self) -> bool:
+        if self.checkpoint_client is None:
+            return False
+
+        latest_version = self.checkpoint_client.latest_version()
+        if latest_version < 0 or latest_version <= self.checkpoint_version:
+            return False
+
+        state = self.checkpoint_client.pull(latest_version)
+        model_state = state.get("model_state_dict")
+        if not isinstance(model_state, Mapping):
+            raise ValueError("checkpoint missing model_state_dict")
+        self.model.load_state_dict(model_state)
+        self.checkpoint_version = latest_version
+        policy_version = state.get("policy_version", latest_version)
+        if not isinstance(policy_version, Integral):
+            raise ValueError("checkpoint policy_version must be an integer")
+        self.policy_version = int(policy_version)
+        self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        return True
 
     def _ensure_reset(self) -> None:
         if self._obs is None:
