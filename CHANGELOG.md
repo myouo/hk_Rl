@@ -50,6 +50,8 @@ the project version tracks the **schema_version** + roadmap phase.
   and emits padded, burn-in masked sequence batches split at episode boundaries.
 - RecurrentPPO now runs clipped sequence updates with hidden-state inputs,
   burn-in/padding loss masks, and PPO training metrics.
+- APPO now accepts bounded-staleness RolloutBatches, rejects stale/future policy
+  versions, and runs queued PPO-style updates for remote learner intake.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
