@@ -52,6 +52,9 @@ the project version tracks the **schema_version** + roadmap phase.
   learned entity type/stable-id embeddings for attention/recurrent policies.
 - Phase 5 entity attention modules now provide masked Transformer pooling and
   player cross-attention with safe all-padding handling.
+- EntityAttentionRecurrentAC now assembles encoders, masked entity attention,
+  GRU/LSTM memory, and hybrid policy/value heads for single-step and sequence
+  forward/evaluate paths.
 - Synchronous PPO now runs clipped policy/value updates over flat rollout
   batches, reports core training metrics, and exports advantages/returns in
   RolloutBatch.
