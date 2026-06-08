@@ -81,6 +81,13 @@ python scripts/run_eval.py \
   --episodes 5 \
   --seeds 0 1 2
 
+# 评估本地训练产物时可直接指定 registry 目录，自动加载 latest checkpoint
+python scripts/run_eval.py \
+  --policy mlp \
+  --checkpoint-dir checkpoints \
+  --tasks configs/tasks/gruz_mother.yaml \
+  --episodes 5
+
 # 5. 本地 MLP+PPO 训练（需要本地 HKRLEnvMod TCP）
 python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \

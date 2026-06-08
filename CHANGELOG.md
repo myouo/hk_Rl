@@ -100,6 +100,8 @@ the project version tracks the **schema_version** + roadmap phase.
   monitoring metrics for active/lost workers, SPS, assignments, and crashes.
 - `scripts/run_eval.py` now runs fixed-seed evaluator jobs for scripted or MLP
   checkpoint policies and emits JSON metrics/regression output.
+- `scripts/run_eval.py` can now load MLP policies from a CheckpointRegistry
+  directory by selecting the latest indexed checkpoint.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - Local MLP+PPO checkpoints are now published through `CheckpointRegistry` with

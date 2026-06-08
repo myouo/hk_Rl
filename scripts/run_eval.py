@@ -26,16 +26,18 @@ from hkrl import spaces
 from hkrl.env import HKRLEnv
 from hkrl.eval.evaluator import Evaluator
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
+from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.transport.tcp import TcpTransport
 from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
 from hkrl.wrappers import NormalizeObservation
 
 
-def main() -> int:
+def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Evaluator")
     p.add_argument("--policy", choices=("scripted", "mlp"), default="scripted")
-    p.add_argument("--checkpoint")
+    p.add_argument("--checkpoint", help="checkpoint .pt file or CheckpointRegistry directory")
+    p.add_argument("--checkpoint-dir", help="CheckpointRegistry directory; loads latest version")
     p.add_argument("--train-config", default="configs/train/ppo_mlp.yaml")
     p.add_argument("--tasks", nargs="+", required=True)
     p.add_argument("--episodes", type=int, default=20)
@@ -45,8 +47,17 @@ def main() -> int:
     p.add_argument("--max-steps", type=int, default=4096)
     p.add_argument("--no-normalize", action="store_true")
     p.add_argument("--baseline", help="optional baseline metrics JSON for regression diff")
-    args = p.parse_args()
+    return p
 
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_argparser().parse_args(argv)
+    output = run_from_args(args)
+    print(json.dumps(output, indent=2, sort_keys=True))
+    return 0
+
+
+def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     tasks = [load_task_config(path) for path in args.tasks]
     policy = _build_policy(args, tasks[0])
 
@@ -69,8 +80,7 @@ def main() -> int:
             baseline = json.load(fh)
         output["regression"] = evaluator.regression_report(baseline, metrics)
 
-    print(json.dumps(output, indent=2, sort_keys=True))
-    return 0
+    return output
 
 
 def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
@@ -79,8 +89,7 @@ def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
             spaces.make_action_space(enable_macro=task.action.enable_macro_actions)
         )
 
-    if args.checkpoint is None:
-        raise SystemExit("--checkpoint is required with --policy mlp")
+    checkpoint_path = _resolve_checkpoint_path(args)
 
     train_cfg = load_train_config(args.train_config)
     observation_space = spaces.make_observation_space(
@@ -97,12 +106,34 @@ def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
         hidden=train_cfg.model.rnn_hidden or 256,
         enable_macro=task.action.enable_macro_actions,
     )
-    state = torch.load(Path(args.checkpoint), map_location="cpu")
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     if isinstance(state, dict):
         state = state.get("model_state_dict", state.get("state_dict", state))
     model.load_state_dict(state)
     model.eval()
     return model
+
+
+def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
+    checkpoint = getattr(args, "checkpoint", None)
+    checkpoint_dir = getattr(args, "checkpoint_dir", None)
+    if checkpoint is None and checkpoint_dir is None:
+        raise SystemExit("--checkpoint or --checkpoint-dir is required with --policy mlp")
+
+    if checkpoint_dir is not None:
+        return _latest_registry_checkpoint(Path(checkpoint_dir))
+
+    path = Path(checkpoint)
+    if path.is_dir():
+        return _latest_registry_checkpoint(path)
+    return path
+
+
+def _latest_registry_checkpoint(root: Path) -> Path:
+    latest = CheckpointRegistry(str(root)).latest()
+    if latest is None:
+        raise SystemExit(f"checkpoint registry is empty: {root}")
+    return Path(latest.path)
 
 
 if __name__ == "__main__":
