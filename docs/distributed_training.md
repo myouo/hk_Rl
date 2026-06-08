@@ -89,8 +89,9 @@ settings fail during startup.
 
 When `security.require_token` is true, Python TCP clients read the token from
 `security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the initial
-auth frame. The mod reads the same `HKRL_AUTH_TOKEN` environment variable to
-enable server-side token verification.
+auth frame. This covers local training, workers, and evaluator env connections.
+The mod reads the same `HKRL_AUTH_TOKEN` environment variable to enable
+server-side token verification.
 
 ## 6. Transport for batches/weights
 

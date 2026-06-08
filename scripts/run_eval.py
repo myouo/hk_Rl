@@ -29,7 +29,7 @@ from hkrl.eval.scripted_policies import ScriptedAggroPolicy
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.transport.tcp import TcpTransport
-from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
+from hkrl.utils.config import TaskConfig, TrainConfig, load_task_config, load_train_config, resolve_auth_token
 from hkrl.wrappers import NormalizeObservation
 
 
@@ -59,10 +59,11 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     tasks = [load_task_config(path) for path in args.tasks]
-    policy = _build_policy(args, tasks[0])
+    train_cfg = load_train_config(args.train_config)
+    policy = _build_policy(args, tasks[0], train_cfg)
 
     def env_factory(task: TaskConfig) -> Any:
-        env = HKRLEnv(transport=TcpTransport(host=args.host, port=args.port), task=task)
+        env = HKRLEnv(transport=_build_transport(args, train_cfg), task=task)
         return env if args.no_normalize else NormalizeObservation(env)
 
     evaluator = Evaluator(
@@ -83,7 +84,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     return output
 
 
-def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
+def _build_policy(
+    args: argparse.Namespace, task: TaskConfig, train_cfg: TrainConfig | None = None
+) -> Any:
     if args.policy == "scripted":
         return ScriptedAggroPolicy(
             spaces.make_action_space(
@@ -94,7 +97,7 @@ def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
 
     checkpoint_path = _resolve_checkpoint_path(args)
 
-    train_cfg = load_train_config(args.train_config)
+    train_cfg = train_cfg or load_train_config(args.train_config)
     observation_space = spaces.make_observation_space(
         max_entities=task.observation.max_entities,
         tier=task.observation.tier,
@@ -116,6 +119,14 @@ def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
     model.load_state_dict(state)
     model.eval()
     return model
+
+
+def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> TcpTransport:
+    return TcpTransport(
+        host=args.host,
+        port=args.port,
+        auth_token=resolve_auth_token(train_cfg),
+    )
 
 
 def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:

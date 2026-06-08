@@ -54,6 +54,32 @@ def test_run_eval_requires_checkpoint_for_mlp_policy() -> None:
         module._resolve_checkpoint_path(args)
 
 
+def test_run_eval_transport_uses_configured_auth_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script("run_eval.py")
+    config = tmp_path / "eval.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "security:",
+                "  require_token: true",
+                "  auth_token_env: HKRL_EVAL_TOKEN",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HKRL_EVAL_TOKEN", "secret")
+    cfg = module.load_train_config(config)
+    args = argparse.Namespace(host="127.0.0.2", port=6000)
+
+    transport = module._build_transport(args, cfg)
+
+    assert transport.host == "127.0.0.2"
+    assert transport.port == 6000
+    assert transport.auth_token == "secret"
+
+
 def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
     observation_space = make_observation_space(
         max_entities=task.observation.max_entities,
