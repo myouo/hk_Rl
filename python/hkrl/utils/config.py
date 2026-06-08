@@ -54,10 +54,10 @@ class ActionConfig(StrictConfigModel):
 class TaskConfig(StrictConfigModel):
     """One boss/arena task (configs/tasks/*.yaml). Mirrors PRD §12.1."""
 
-    task_id: str
+    task_id: str = Field(min_length=1)
     wire_id: int = Field(default=0, ge=0)
-    scene: str
-    difficulty: str = "attuned"
+    scene: str = Field(min_length=1)
+    difficulty: str = Field(default="attuned", min_length=1)
     time_limit_seconds: int = Field(default=180, ge=1)
     player: dict[str, Any] = Field(default_factory=dict)
     reward: RewardWeights = Field(default_factory=RewardWeights)
@@ -68,7 +68,7 @@ class TaskConfig(StrictConfigModel):
 class ModelConfig(StrictConfigModel):
     """Selects + configures an ActorCritic (registry name + kwargs). PRD §12.2."""
 
-    name: str = "entity_attention_gru"
+    name: str = Field(default="entity_attention_gru", min_length=1)
     entity_hidden: int = Field(default=128, ge=1)
     attention_layers: int = Field(default=2, ge=1)
     attention_heads: int = Field(default=4, ge=1)
@@ -78,9 +78,9 @@ class ModelConfig(StrictConfigModel):
 
 class TransportConfig(StrictConfigModel):
     name: Literal["tcp", "shm"] = "tcp"
-    host: str = "127.0.0.1"
+    host: str = Field(default="127.0.0.1", min_length=1)
     port: int = Field(default=5555, ge=0, le=65535)
-    shm_name: str = "hkrl_env"
+    shm_name: str = Field(default="hkrl_env", min_length=1)
     req_slots: int = Field(default=8, ge=1)
     resp_slots: int = Field(default=8, ge=1)
 
@@ -88,16 +88,16 @@ class TransportConfig(StrictConfigModel):
 class LearnerRuntimeConfig(StrictConfigModel):
     """Remote learner runtime settings (docs/distributed_training.md §5)."""
 
-    bind: str = "0.0.0.0:5600"
+    bind: str = Field(default="0.0.0.0:5600", min_length=1)
     max_staleness: int = Field(default=4, ge=0)
-    checkpoint_dir: str = "checkpoints"
+    checkpoint_dir: str = Field(default="checkpoints", min_length=1)
     publish_every_updates: int = Field(default=1, ge=1)
 
 
 class CoordinatorRuntimeConfig(StrictConfigModel):
     """Coordinator runtime settings for worker fleets."""
 
-    bind: str = "0.0.0.0:5610"
+    bind: str = Field(default="0.0.0.0:5610", min_length=1)
     num_workers: int = Field(default=1, ge=1)
     heartbeat_timeout_s: float = Field(default=30.0, gt=0)
 
@@ -107,7 +107,7 @@ class SecurityConfig(StrictConfigModel):
 
     bind_scope: Literal["lan", "localhost"] = "lan"
     require_token: bool = False
-    auth_token_env: str = "HKRL_AUTH_TOKEN"
+    auth_token_env: str = Field(default="HKRL_AUTH_TOKEN", min_length=1)
 
 
 class TrainConfig(StrictConfigModel):

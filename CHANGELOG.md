@@ -149,6 +149,8 @@ the project version tracks the **schema_version** + roadmap phase.
   RolloutBatch NPZ v2 payload contract.
 - Train/task config loading now rejects invalid numeric ranges such as
   zero rollout steps, out-of-range action repeats, and invalid service ports.
+- Train/task config loading now rejects empty required strings such as task ids,
+  scene names, model names, bind addresses, and checkpoint directories.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

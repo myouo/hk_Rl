@@ -158,6 +158,29 @@ def test_load_task_config_rejects_invalid_action_repeat(tmp_path: Path) -> None:
         load_task_config(config)
 
 
+def test_load_config_rejects_empty_required_strings(tmp_path: Path) -> None:
+    train_config = tmp_path / "train.yaml"
+    _write_yaml(
+        train_config,
+        {
+            "model": {"name": ""},
+            "transport": {"host": "", "shm_name": ""},
+            "learner": {"bind": "", "checkpoint_dir": ""},
+            "coordinator": {"bind": ""},
+            "security": {"auth_token_env": ""},
+        },
+    )
+
+    with pytest.raises(ValueError, match="String should have at least 1 character"):
+        load_train_config(train_config)
+
+    task_config = tmp_path / "task.yaml"
+    _write_yaml(task_config, {"task_id": "", "scene": ""})
+
+    with pytest.raises(ValueError, match="String should have at least 1 character"):
+        load_task_config(task_config)
+
+
 def test_resolve_auth_token_uses_configured_environment() -> None:
     config = load_train_config(Path("../configs/train/remote_learner.yaml"))
 
