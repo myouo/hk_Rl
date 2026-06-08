@@ -130,6 +130,8 @@ the project version tracks the **schema_version** + roadmap phase.
   directory by selecting the latest indexed checkpoint.
 - `scripts/run_eval.py` can now write evaluator metrics/regression JSON to an
   output path while still printing the summary to stdout.
+- `scripts/run_eval.py --baseline` now accepts either raw per-task metrics or a
+  previous evaluator output object containing a top-level `metrics` field.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - Local MLP+PPO checkpoints are now published through `CheckpointRegistry` with

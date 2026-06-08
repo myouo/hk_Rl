@@ -92,6 +92,26 @@ def test_run_eval_writes_output_json(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8").endswith("\n")
 
 
+def test_run_eval_loads_wrapped_or_raw_baseline_metrics(tmp_path: Path) -> None:
+    module = _load_script("run_eval.py")
+    raw = tmp_path / "raw.json"
+    wrapped = tmp_path / "wrapped.json"
+    raw.write_text('{"task":{"win_rate":0.5}}\n', encoding="utf-8")
+    wrapped.write_text('{"metrics":{"task":{"win_rate":0.25}}}\n', encoding="utf-8")
+
+    assert module._load_baseline_metrics(raw) == {"task": {"win_rate": 0.5}}
+    assert module._load_baseline_metrics(wrapped) == {"task": {"win_rate": 0.25}}
+
+
+def test_run_eval_rejects_invalid_baseline_metrics(tmp_path: Path) -> None:
+    module = _load_script("run_eval.py")
+    path = tmp_path / "baseline.json"
+    path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="baseline metrics JSON"):
+        module._load_baseline_metrics(path)
+
+
 def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
     observation_space = make_observation_space(
         max_entities=task.observation.max_entities,

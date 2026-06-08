@@ -80,8 +80,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     output: dict[str, Any] = {"metrics": metrics}
 
     if args.baseline:
-        with open(args.baseline, encoding="utf-8") as fh:
-            baseline = json.load(fh)
+        baseline = _load_baseline_metrics(Path(args.baseline))
         output["regression"] = evaluator.regression_report(baseline, metrics)
 
     return output
@@ -135,6 +134,17 @@ def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> TcpTra
 def _write_output(output: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _load_baseline_metrics(path: Path) -> dict[str, dict[str, float]]:
+    with path.open(encoding="utf-8") as fh:
+        payload = json.load(fh)
+    if not isinstance(payload, dict):
+        raise ValueError("baseline metrics JSON must be an object")
+    metrics = payload.get("metrics", payload)
+    if not isinstance(metrics, dict):
+        raise ValueError("baseline metrics must be a task metrics object")
+    return metrics
 
 
 def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
