@@ -217,25 +217,34 @@ def test_env_control_commands_send_pause_resume_and_timescale() -> None:
                 lifecycle=protocol.LifecycleState.RUNNING,
                 include_observation=False,
             ),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                include_observation=False,
+            ),
         ]
     )
     env = HKRLEnv(transport=transport, task=task)
 
     pause_info = env.pause(timeout_s=0.1)
     env.resume(timeout_s=0.1)
+    ping_info = env.ping(timeout_s=0.1)
     env.set_timescale(2.5, timeout_s=0.1)
 
     assert [protocol.Command(req.Command()) for req in transport.requests] == [
         protocol.Command.PAUSE,
         protocol.Command.RESUME,
+        protocol.Command.PING,
         protocol.Command.SET_TIMESCALE,
     ]
     assert all(req.ActionRepeat() == 1 for req in transport.requests)
     assert all(req.TaskId() == 5 for req in transport.requests)
     assert transport.requests[0].TimeScale() == 0.0
     assert transport.requests[1].TimeScale() == 0.0
-    assert transport.requests[2].TimeScale() == pytest.approx(2.5)
+    assert transport.requests[2].TimeScale() == 0.0
+    assert transport.requests[3].TimeScale() == pytest.approx(2.5)
     assert pause_info["task_id"] == 5
+    assert ping_info["server_tick"] == 102
 
 
 def test_env_set_timescale_rejects_non_positive_scale() -> None:

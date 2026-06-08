@@ -152,6 +152,10 @@ class HKRLEnv(gym.Env):
         """Resume the game simulation via the mod's SimControl."""
         return self._control(protocol.Command.RESUME, timeout_s=timeout_s)
 
+    def ping(self, *, timeout_s: float | None = None) -> dict[str, Any]:
+        """Send a liveness probe and return the decoded response info."""
+        return self._control(protocol.Command.PING, timeout_s=timeout_s)
+
     def set_timescale(self, scale: float, *, timeout_s: float | None = None) -> dict[str, Any]:
         """Set Unity Time.timeScale / fixedDeltaTime through the mod."""
         if scale <= 0.0:
