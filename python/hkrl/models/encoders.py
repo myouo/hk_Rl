@@ -8,6 +8,7 @@ discrete entity_type/id go through learned embeddings, never raw ints
 
 from __future__ import annotations
 
+import torch
 from torch import Tensor, nn
 
 
@@ -16,10 +17,10 @@ class GlobalEncoder(nn.Module):
 
     def __init__(self, in_dim: int, hidden: int = 128) -> None:
         super().__init__()
-        # TODO(phase-5): nn.Sequential MLP.
+        self.net = _mlp(in_dim, hidden)
 
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError  # TODO(phase-5)
+        return self.net(x)
 
 
 class PlayerEncoder(nn.Module):
@@ -27,10 +28,10 @@ class PlayerEncoder(nn.Module):
 
     def __init__(self, in_dim: int, hidden: int = 128) -> None:
         super().__init__()
-        # TODO(phase-5): nn.Sequential MLP.
+        self.net = _mlp(in_dim, hidden)
 
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError  # TODO(phase-5)
+        return self.net(x)
 
 
 class EntityEncoder(nn.Module):
@@ -47,9 +48,11 @@ class EntityEncoder(nn.Module):
         n_ids: int = 0,
     ) -> None:
         super().__init__()
+        self.n_types = n_types
+        self.n_ids = n_ids
         self.type_embedding = nn.Embedding(n_types, hidden)
         self.id_embedding = nn.Embedding(n_ids, hidden) if n_ids > 0 else None
-        # TODO(phase-5): feature MLP, combine type+feat(+id).
+        self.feature_mlp = _mlp(feat_dim, hidden)
 
     def forward(
         self,
@@ -57,4 +60,24 @@ class EntityEncoder(nn.Module):
         entity_type: Tensor,
         entity_id: Tensor | None = None,
     ) -> Tensor:
-        raise NotImplementedError  # TODO(phase-5)
+        type_index = entity_type.to(dtype=torch.long).clamp(min=0, max=self.n_types - 1)
+        encoded = self.feature_mlp(entities) + self.type_embedding(type_index)
+
+        if self.id_embedding is not None and entity_id is not None:
+            id_index = torch.remainder(entity_id.to(dtype=torch.long), self.n_ids)
+            encoded = encoded + self.id_embedding(id_index)
+        return encoded
+
+
+def _mlp(in_dim: int, hidden: int) -> nn.Sequential:
+    if in_dim <= 0:
+        raise ValueError("in_dim must be positive")
+    if hidden <= 0:
+        raise ValueError("hidden must be positive")
+
+    return nn.Sequential(
+        nn.Linear(in_dim, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+    )

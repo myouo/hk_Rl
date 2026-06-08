@@ -48,6 +48,8 @@ the project version tracks the **schema_version** + roadmap phase.
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
   entity-mask padding suppression and exposes act/evaluate_actions for PPO.
+- Phase 5 model encoders now embed global, player, and entity features with
+  learned entity type/stable-id embeddings for attention/recurrent policies.
 - Synchronous PPO now runs clipped policy/value updates over flat rollout
   batches, reports core training metrics, and exports advantages/returns in
   RolloutBatch.
