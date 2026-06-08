@@ -159,6 +159,7 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
                 lifecycle=protocol.LifecycleState.RUNNING,
                 reward_kind=protocol.RewardEventKind.DAMAGE_DEALT,
                 reward_amount=3.0,
+                server_tick=102,
             ),
         ]
     )
@@ -185,6 +186,31 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     assert terminated is False
     assert truncated is False
     assert info["reward_events"][0].kind is protocol.RewardEventKind.DAMAGE_DEALT
+
+
+def test_env_step_uses_server_tick_delta_for_reward_dt() -> None:
+    from hkrl.env import HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml").model_copy(update={"wire_id": 12})
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                reward_kind=protocol.RewardEventKind.DAMAGE_DEALT,
+                reward_amount=3.0,
+                server_tick=101,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    _, reward, _, _, _ = env.step(env.action_space.sample())
+
+    assert task.action.action_repeat == 2
+    assert reward == pytest.approx(3.0 + task.reward.time_penalty)
 
 
 def test_env_set_task_sends_wire_id_and_rebuilds_spaces() -> None:
@@ -404,6 +430,7 @@ def _build_response(
     entity_hp: int = 20,
     entity_max_hp: int = 30,
     entity_pos_x: float = 0.0,
+    server_tick: int | None = None,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
@@ -428,7 +455,9 @@ def _build_response(
     FbStepResponse.StepResponseAddSchemaVersion(builder, protocol.SCHEMA_VERSION)
     FbStepResponse.StepResponseAddEnvId(builder, request.EnvId())
     FbStepResponse.StepResponseAddTickId(builder, request.TickId())
-    FbStepResponse.StepResponseAddServerTick(builder, request.TickId() + 100)
+    FbStepResponse.StepResponseAddServerTick(
+        builder, request.TickId() + 100 if server_tick is None else server_tick
+    )
     if include_observation:
         FbStepResponse.StepResponseAddObservation(builder, observation)
     if reward_events:

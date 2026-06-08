@@ -48,6 +48,9 @@ Python exposes these through `HKRLEnv.pause()`, `HKRLEnv.resume()`,
 `HKRLEnv.ping()`, and `HKRLEnv.set_timescale(scale)`.
 For `STEP`, the mod delays the `StepResponse` until all repeated FixedUpdate
 ticks have been applied, or until a terminal reward event ends the episode early.
+The Python env computes reward time deltas from consecutive `server_tick`
+values, so early terminal responses do not overcharge the configured repeat
+count.
 
 ## 4. Reset handshake (ack)
 

@@ -58,6 +58,7 @@ class HKRLEnv(gym.Env):
         self._running = False
         self._env_id = 0
         self._step_timeout_s = 5.0
+        self._last_server_tick: int | None = None
 
     # -- Gym API --------------------------------------------------------------
     def reset(
@@ -102,6 +103,7 @@ class HKRLEnv(gym.Env):
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
+        self._last_server_tick = response.server_tick
         return obs, self._info_from_response(response)
 
     def step(self, action: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
@@ -128,7 +130,9 @@ class HKRLEnv(gym.Env):
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
-        reward = self.reward_fn(response.reward_events, dt=float(self.task.action.action_repeat))
+        elapsed_ticks = self._server_tick_delta(response)
+        reward = self.reward_fn(response.reward_events, dt=float(elapsed_ticks))
+        self._last_server_tick = response.server_tick
         terminated = bool(response.terminated or self._is_terminal(response.lifecycle_state))
         truncated = bool(response.truncated)
         self._running = not (terminated or truncated)
@@ -180,6 +184,7 @@ class HKRLEnv(gym.Env):
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
+        self._last_server_tick = response.server_tick
         return obs, self._info_from_response(response)
 
     def pause(self, *, timeout_s: float | None = None) -> dict[str, Any]:
@@ -302,6 +307,7 @@ class HKRLEnv(gym.Env):
             time_scale=time_scale,
         )
         self._raise_for_error(response, context=command.name.lower())
+        self._last_server_tick = response.server_tick
         return self._info_from_response(response)
 
     def _validate_observation(self, observation: protocol.DecodedObservation) -> None:
@@ -344,6 +350,14 @@ class HKRLEnv(gym.Env):
         tick_id = self._tick_id
         self._tick_id += 1
         return tick_id
+
+    def _server_tick_delta(self, response: protocol.DecodedStepResponse) -> int:
+        if self._last_server_tick is None:
+            return int(self.task.action.action_repeat)
+        delta = int(response.server_tick) - int(self._last_server_tick)
+        if delta <= 0:
+            return int(self.task.action.action_repeat)
+        return delta
 
     @staticmethod
     def _raise_for_error(response: protocol.DecodedStepResponse, *, context: str) -> None:
