@@ -81,7 +81,7 @@ def test_checkpoint_client_rejects_paths_outside_registry_root(tmp_path: Path) -
                 "created_step": 1,
                 "path": str(outside),
                 "policy_version": 1,
-                "sha256": "unused",
+                "sha256": "0" * 64,
                 "version": 1,
             }
         )
@@ -101,7 +101,7 @@ def test_checkpoint_client_rejects_empty_index_path(tmp_path: Path) -> None:
                 "created_step": 1,
                 "path": ".",
                 "policy_version": 1,
-                "sha256": "unused",
+                "sha256": "0" * 64,
                 "version": 1,
             }
         )
@@ -122,6 +122,26 @@ def test_checkpoint_client_rejects_duplicate_index_versions(tmp_path: Path) -> N
     client = CheckpointClient(str(tmp_path))
 
     with pytest.raises(ValueError, match="duplicate checkpoint version"):
+        client.latest_version()
+
+
+def test_checkpoint_client_rejects_invalid_index_metadata(tmp_path: Path) -> None:
+    (tmp_path / "index.jsonl").write_text(
+        json.dumps(
+            {
+                "created_step": -1,
+                "path": "checkpoint.pt",
+                "policy_version": -1,
+                "sha256": "bad",
+                "version": 0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = CheckpointClient(str(tmp_path), verify_hash=False)
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
         client.latest_version()
 
 

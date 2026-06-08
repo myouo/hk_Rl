@@ -139,6 +139,8 @@ the project version tracks the **schema_version** + roadmap phase.
   memory context.
 - Checkpoint registry/client parsing now rejects empty checkpoint paths before
   filesystem or HTTP reads.
+- Checkpoint registry/client parsing now rejects non-positive versions,
+  negative policy/step metadata, and malformed sha256 hashes in index entries.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,

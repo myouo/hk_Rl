@@ -103,12 +103,18 @@ class CheckpointRegistry:
 def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
     path = str(payload["path"])
     _validate_checkpoint_path(path)
+    version = int(payload["version"])
+    policy_version = int(payload["policy_version"])
+    created_step = int(payload["created_step"])
+    sha256 = str(payload["sha256"])
+    _validate_checkpoint_numbers(version, policy_version, created_step)
+    _validate_sha256(sha256)
     return CheckpointMeta(
-        version=int(payload["version"]),
+        version=version,
         path=path,
-        sha256=str(payload["sha256"]),
-        policy_version=int(payload["policy_version"]),
-        created_step=int(payload["created_step"]),
+        sha256=sha256,
+        policy_version=policy_version,
+        created_step=created_step,
     )
 
 
@@ -129,6 +135,20 @@ def _checkpoint_path(root: Path, path: str) -> Path:
 def _validate_checkpoint_path(path: str) -> None:
     if Path(path) == Path("."):
         raise ValueError("checkpoint path must name a file")
+
+
+def _validate_checkpoint_numbers(version: int, policy_version: int, created_step: int) -> None:
+    if version <= 0:
+        raise ValueError("checkpoint version must be positive")
+    if policy_version < 0:
+        raise ValueError("checkpoint policy_version must be non-negative")
+    if created_step < 0:
+        raise ValueError("checkpoint created_step must be non-negative")
+
+
+def _validate_sha256(value: str) -> None:
+    if len(value) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in value):
+        raise ValueError("checkpoint sha256 must be 64 hex characters")
 
 
 def _sha256_file(path: Path) -> str:
