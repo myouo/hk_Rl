@@ -26,6 +26,8 @@ the project version tracks the **schema_version** + roadmap phase.
   composition, deterministic seeding, running metrics, and GAE.
 - Python TCP transport client with uint32-LE length-prefixed framing,
   timeout/disconnect handling, and localhost framing tests.
+- SharedMemoryTransport now implements bounded ring send/recv semantics with
+  connection lifecycle, timeout, reconnect, and capacity handling.
 - Python FlatBuffers StepRequest/StepResponse encode/decode helpers with schema
   version checks, action payload conversion, reward events, masks, and decoded
   observation views.
