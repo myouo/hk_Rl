@@ -17,6 +17,7 @@ import torch
 from hkrl.models.base import ActorCritic
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
 from hkrl.spaces import N_BUTTONS, action_mask_layout
+from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
 from hkrl.worker.checkpoint_client import CheckpointClient
@@ -62,18 +63,28 @@ class GameWorker:
         self.action_mask_dim = len(
             action_mask_layout(enable_macro=self.enable_macro, n_macros=self.n_macros)
         )
-        self.buffer = RolloutBuffer(
-            capacity=config.rollout_steps,
-            num_envs=1,
-            obs_spec={
-                "global": observation_space["global"].shape,
-                "player": observation_space["player"].shape,
-                "entities": observation_space["entities"].shape,
-                "entity_mask": observation_space["entity_mask"].shape,
-                "action": (self.action_dim,),
-                "action_mask": (self.action_mask_dim,),
-            },
-        )
+        obs_spec = {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+            "action": (self.action_dim,),
+            "action_mask": (self.action_mask_dim,),
+        }
+        if config.algorithm == "recurrent_ppo":
+            self.buffer: RolloutBuffer | RecurrentRolloutBuffer = RecurrentRolloutBuffer(
+                capacity=config.rollout_steps,
+                num_envs=1,
+                sequence_length=config.sequence_length,
+                burn_in=config.burn_in,
+                obs_spec=obs_spec,
+            )
+        else:
+            self.buffer = RolloutBuffer(
+                capacity=config.rollout_steps,
+                num_envs=1,
+                obs_spec=obs_spec,
+            )
         self.policy_version = 0
         self.checkpoint_version = -1
         self._obs: Any | None = None
@@ -127,9 +138,10 @@ class GameWorker:
                 dtype=torch.bool,
                 device=self.device,
             )
-            action, log_prob, value, self._rnn_state = self.model.act(
+            rnn_state = self._rnn_state
+            action, log_prob, value, next_rnn_state = self.model.act(
                 obs_tensor,
-                rnn_state=self._rnn_state,
+                rnn_state=rnn_state,
                 action_mask=action_mask_tensor,
             )
             env_action = action_tensor_to_env_action(action[0], enable_macro=self.enable_macro)
@@ -144,12 +156,14 @@ class GameWorker:
                 done=np.array([terminated], dtype=bool),
                 truncated=np.array([truncated], dtype=bool),
                 action_mask=action_mask,
+                rnn_state=rnn_state,
                 episode_id=np.array([int(info.get("episode_id", 0))], dtype=np.uint64),
                 task_id=np.array([int(info.get("task_id", 0))], dtype=np.int64),
             )
 
             self._obs = next_obs
             self._info = next_info
+            self._rnn_state = next_rnn_state
             if terminated or truncated:
                 self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
                 if not self.buffer.is_full():

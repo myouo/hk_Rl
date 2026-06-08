@@ -136,6 +136,8 @@ the project version tracks the **schema_version** + roadmap phase.
   previous evaluator output object containing a top-level `metrics` field.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
+- `scripts/train.py`/`hkrl.cli` now run local recurrent PPO training with
+  GameWorker-collected RNN states and sequence/burn-in minibatches.
 - Local MLP+PPO checkpoints are now published through `CheckpointRegistry` with
   `policy_version`, step metadata, index records, and sha256 verification data.
 - CheckpointRegistry now persists versioned torch checkpoints with sha256 hashes

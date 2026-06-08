@@ -82,6 +82,21 @@ def test_recurrent_buffer_minibatches_sequences() -> None:
     assert all(batch.obs["global"].shape == (1, 1, 1) for batch in batches)
 
 
+def test_recurrent_buffer_exports_flat_rollout_batch() -> None:
+    buffer = _tiny_buffer(capacity=2)
+    for step in range(2):
+        buffer.add(**_transition(step))
+    buffer.compute_returns(last_value=np.array([0.0], dtype=np.float32), gamma=1.0, gae_lambda=1.0)
+
+    batch = buffer.to_batch(policy_version=9)
+
+    assert batch.obs_global.shape == (2, 1, 1)
+    assert batch.actions.shape == (2, 1)
+    assert batch.rewards.shape == (2, 1)
+    assert batch.rnn_states is None
+    assert batch.policy_version == 9
+
+
 def test_recurrent_buffer_rejects_overfill() -> None:
     buffer = _tiny_buffer(capacity=1)
     buffer.add(**_transition(0))

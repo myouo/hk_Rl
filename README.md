@@ -89,13 +89,21 @@ python scripts/run_eval.py \
   --tasks configs/tasks/gruz_mother.yaml \
   --episodes 5
 
-# 5. 本地 MLP+PPO 训练（需要本地 HKRLEnvMod TCP）
+# 5. 本地 PPO/RecurrentPPO 训练（需要本地 HKRLEnvMod TCP）
 python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \
   --task configs/tasks/gruz_mother.yaml \
   --updates 1 \
   --metrics runs/train.jsonl \
   --checkpoint-dir checkpoints
+
+# attention+GRU recurrent PPO 使用 sequence/burn-in buffer
+python scripts/train.py \
+  --config configs/train/ppo_attention_gru.yaml \
+  --task configs/tasks/gruz_mother.yaml \
+  --updates 1 \
+  --metrics runs/train_gru.jsonl \
+  --checkpoint-dir checkpoints_gru
 
 # 指标也可写 CSV
 python scripts/train.py \

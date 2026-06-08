@@ -8,9 +8,14 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
-from hkrl.cli import build_argparser, run_ppo_training_loop, run_random_policy_smoke
+from hkrl.cli import _build_model, build_argparser, run_ppo_training_loop, run_random_policy_smoke
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
+from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
+from hkrl.spaces import make_observation_space
+from hkrl.training.recurrent_ppo import RecurrentPPO
+from hkrl.utils.config import TaskConfig, TrainConfig
 from hkrl.utils.logging import JsonlSink
+from hkrl.utils.registry import get
 
 
 class FakeEnv:
@@ -64,6 +69,41 @@ def test_build_argparser_accepts_csv_metrics_kind() -> None:
 
     assert args.metrics == "runs/smoke.csv"
     assert args.metrics_kind == "csv"
+
+
+def test_training_components_support_recurrent_ppo() -> None:
+    cfg = TrainConfig(
+        algorithm="recurrent_ppo",
+        model={
+            "name": "entity_attention_gru",
+            "entity_hidden": 8,
+            "attention_layers": 1,
+            "attention_heads": 2,
+            "rnn_hidden": 16,
+        },
+    )
+    task = TaskConfig(task_id="gruz_mother", scene="GG_Gruz_Mother")
+    observation_space = make_observation_space(
+        max_entities=task.observation.max_entities,
+        tier=task.observation.tier,
+    )
+
+    model = _build_model(
+        cfg,
+        {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+        },
+        enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
+        max_entities=task.observation.max_entities,
+    )
+    algo = get("algo", cfg.algorithm)(model=model, config=cfg)
+
+    assert isinstance(model, EntityAttentionRecurrentAC)
+    assert isinstance(algo, RecurrentPPO)
 
 
 def test_run_random_policy_smoke_steps_until_done_and_logs(tmp_path: Path) -> None:

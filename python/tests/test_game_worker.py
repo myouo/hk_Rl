@@ -8,7 +8,9 @@ import numpy as np
 import pytest
 import torch
 from hkrl.models.mlp import MlpActorCritic
+from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
 from hkrl.spaces import make_action_space, make_observation_space
+from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer
 from hkrl.utils.config import TaskConfig, TrainConfig
 from hkrl.worker.game_worker import GameWorker, action_tensor_to_env_action
 
@@ -56,6 +58,44 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     assert env.reset_count == 2
     assert len(env.actions) == 4
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}
+
+
+def test_game_worker_collect_rollout_uses_recurrent_buffer() -> None:
+    env = FakeEnv()
+    model = EntityAttentionRecurrentAC(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_hidden=16,
+        enable_macro=False,
+        max_entities=4,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(
+            algorithm="recurrent_ppo",
+            rollout_steps=4,
+            sequence_length=2,
+            burn_in=1,
+            minibatch_size=2,
+        ),
+    )
+
+    batch = worker.collect_rollout()
+
+    assert isinstance(worker.buffer, RecurrentRolloutBuffer)
+    assert batch.rewards.shape == (4, 1)
+    assert batch.policy_version == 0
+    sequences = list(worker.buffer.iter_sequences())
+    assert sequences
+    assert sequences[0].rnn_state is not None
 
 
 def test_game_worker_hot_swaps_new_checkpoint_before_rollout() -> None:

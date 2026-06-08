@@ -11,11 +11,14 @@ import numpy as np
 
 from hkrl.eval.scripted_policies import RandomPolicy
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
-from hkrl.models.mlp import MlpActorCritic
-from hkrl.training.ppo import PPO
+from hkrl.models import mlp as _mlp  # noqa: F401
+from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
+from hkrl.training import ppo as _ppo  # noqa: F401
+from hkrl.training import recurrent_ppo as _recurrent_ppo  # noqa: F401
 from hkrl.transport.factory import make_transport
-from hkrl.utils.config import load_task_config, load_train_config
+from hkrl.utils.config import TrainConfig, load_task_config, load_train_config
 from hkrl.utils.logging import MetricSink, make_sink
+from hkrl.utils.registry import get
 from hkrl.worker.game_worker import GameWorker
 
 
@@ -68,29 +71,29 @@ def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
     task = load_task_config(args.task)
 
-    if cfg.algorithm != "ppo":
-        raise ValueError(f"training CLI currently supports ppo, got {cfg.algorithm!r}")
-    if cfg.model.name != "mlp":
-        raise ValueError(f"training CLI currently supports mlp model, got {cfg.model.name!r}")
+    if cfg.algorithm not in {"ppo", "recurrent_ppo"}:
+        raise ValueError(
+            f"training CLI currently supports ppo/recurrent_ppo, got {cfg.algorithm!r}"
+        )
+    if cfg.algorithm == "ppo" and cfg.model.name != "mlp":
+        raise ValueError("training CLI supports non-MLP models through recurrent_ppo")
     from hkrl.env import HKRLEnv
     from hkrl.wrappers import NormalizeObservation
 
     transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     observation_space: Any = env.observation_space
-    model = MlpActorCritic(
-        {
-            "global": observation_space["global"].shape,
-            "player": observation_space["player"].shape,
-            "entities": observation_space["entities"].shape,
-            "entity_mask": observation_space["entity_mask"].shape,
-        },
-        hidden=cfg.model.rnn_hidden or 256,
+    obs_dims = _obs_dims(observation_space)
+    model = _build_model(
+        cfg,
+        obs_dims,
         enable_macro=task.action.enable_macro_actions,
         n_macros=task.action.n_macro_actions,
+        max_entities=task.observation.max_entities,
     )
     worker = GameWorker(env=env, model=model, config=cfg)
-    algo = PPO(model=model, config=cfg)
+    algo_cls = get("algo", cfg.algorithm)
+    algo = algo_cls(model=model, config=cfg)
     sink = make_sink(args.metrics_kind, path=Path(args.metrics))
 
     try:
@@ -171,6 +174,44 @@ def run_random_policy_smoke(
     sink.log_episode(record)
     sink.flush()
     return record
+
+
+def _obs_dims(observation_space: Any) -> dict[str, tuple[int, ...]]:
+    return {
+        "global": observation_space["global"].shape,
+        "player": observation_space["player"].shape,
+        "entities": observation_space["entities"].shape,
+        "entity_mask": observation_space["entity_mask"].shape,
+    }
+
+
+def _build_model(
+    cfg: TrainConfig,
+    obs_dims: dict[str, tuple[int, ...]],
+    *,
+    enable_macro: bool,
+    n_macros: int,
+    max_entities: int,
+) -> Any:
+    model_cls = get("model", cfg.model.name)
+    if cfg.model.name == "mlp":
+        return model_cls(
+            obs_dims,
+            hidden=cfg.model.rnn_hidden or 256,
+            enable_macro=enable_macro,
+            n_macros=n_macros,
+        )
+    return model_cls(
+        obs_dims,
+        entity_hidden=cfg.model.entity_hidden,
+        attention_layers=cfg.model.attention_layers,
+        attention_heads=cfg.model.attention_heads,
+        rnn_type=cfg.model.rnn_type,
+        rnn_hidden=cfg.model.rnn_hidden,
+        enable_macro=enable_macro,
+        n_macros=n_macros,
+        max_entities=max_entities,
+    )
 
 
 def run_ppo_training_loop(

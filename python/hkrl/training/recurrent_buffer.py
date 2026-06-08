@@ -14,7 +14,12 @@ from typing import Any
 import numpy as np
 
 from hkrl.training.gae import compute_gae
-from hkrl.training.rollout_buffer import _env_array, _flat_env_array, _shape_from_spec
+from hkrl.training.rollout_buffer import (
+    RolloutBatch,
+    _env_array,
+    _flat_env_array,
+    _shape_from_spec,
+)
 
 
 @dataclass(frozen=True)
@@ -153,6 +158,30 @@ class RecurrentRolloutBuffer:
             np.asarray(last_value, dtype=np.float32),
             gamma=gamma,
             gae_lambda=gae_lambda,
+        )
+
+    def to_batch(self, policy_version: int) -> RolloutBatch:
+        """Return a flat RolloutBatch view for logging/upload boundaries."""
+        length = self._length()
+        return RolloutBatch(
+            obs_global=self.obs_global[:length].copy(),
+            obs_player=self.obs_player[:length].copy(),
+            obs_entities=self.obs_entities[:length].copy(),
+            entity_mask=self.entity_mask[:length].copy(),
+            actions=self.actions[:length].copy(),
+            log_probs=self.log_probs[:length].copy(),
+            values=self.values[:length].copy(),
+            advantages=self.advantages[:length].copy(),
+            returns=self.returns[:length].copy(),
+            rewards=self.rewards[:length].copy(),
+            dones=self.dones[:length].copy(),
+            truncateds=self.truncateds[:length].copy(),
+            action_masks=self.action_masks[:length].copy(),
+            prev_actions=self.prev_actions[:length].copy(),
+            rnn_states=None,
+            episode_ids=self.episode_ids[:length].copy(),
+            task_ids=self.task_ids[:length].copy(),
+            policy_version=policy_version,
         )
 
     def iter_sequences(

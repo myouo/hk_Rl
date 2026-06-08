@@ -80,8 +80,10 @@ sequence_length = 32 or 64,  burn_in = optional 8
 
 `initial_state()` returns zeroed hidden state; it is reset at episode boundaries
 (and optionally between bosses in a linear sequence — config-controlled). The
-recurrent buffer (`training/recurrent_buffer.py`) handles sequence chunking,
-masking of padded timesteps, and burn-in.
+`GameWorker` stores the pre-action hidden state for each transition when
+`algorithm: recurrent_ppo`. The recurrent buffer
+(`training/recurrent_buffer.py`) handles sequence chunking, masking of padded
+timesteps, and burn-in.
 
 ## 5. Performance
 
