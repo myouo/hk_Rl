@@ -13,6 +13,7 @@ from __future__ import annotations
 import queue
 
 from hkrl.transport.base import Transport
+from hkrl.transport.tcp import MAX_FRAME_BYTES
 from hkrl.utils.registry import register_transport
 
 
@@ -43,6 +44,7 @@ class SharedMemoryTransport(Transport):
 
     def send(self, frame: bytes) -> None:
         self._require_connected()
+        _validate_frame_size(frame)
         try:
             self._requests.put_nowait(bytes(frame))
         except queue.Full as exc:
@@ -76,6 +78,7 @@ class SharedMemoryTransport(Transport):
 
     def inject_response(self, frame: bytes) -> None:
         """Test/mod-side helper: write one inbound response frame."""
+        _validate_frame_size(frame)
         try:
             self._responses.put_nowait(bytes(frame))
         except queue.Full as exc:
@@ -92,3 +95,8 @@ def _drain(frames: queue.Queue[bytes]) -> None:
             frames.get_nowait()
         except queue.Empty:
             return
+
+
+def _validate_frame_size(frame: bytes) -> None:
+    if len(frame) > MAX_FRAME_BYTES:
+        raise ValueError("shared-memory frame too large")

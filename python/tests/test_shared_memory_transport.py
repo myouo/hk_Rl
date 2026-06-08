@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from hkrl.transport.shared_memory import SharedMemoryTransport
+from hkrl.transport.tcp import MAX_FRAME_BYTES
 
 
 def test_shared_memory_transport_sends_and_receives_frames() -> None:
@@ -66,3 +67,14 @@ def test_shared_memory_transport_rejects_invalid_slots() -> None:
         SharedMemoryTransport(req_slots=0)
     with pytest.raises(ValueError, match="resp_slots"):
         SharedMemoryTransport(resp_slots=0)
+
+
+def test_shared_memory_transport_rejects_oversized_frames() -> None:
+    transport = SharedMemoryTransport()
+    transport.connect()
+    frame = b"x" * (MAX_FRAME_BYTES + 1)
+
+    with pytest.raises(ValueError, match="frame too large"):
+        transport.send(frame)
+    with pytest.raises(ValueError, match="frame too large"):
+        transport.inject_response(frame)

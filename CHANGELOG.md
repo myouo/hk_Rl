@@ -39,6 +39,8 @@ the project version tracks the **schema_version** + roadmap phase.
   env connections.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with
   connection lifecycle, timeout, reconnect, and capacity handling.
+- SharedMemoryTransport now rejects oversized frames using the same 16 MiB cap
+  as TCP transport.
 - Python train/worker/evaluator entry points now construct TCP or shared-memory
   env transports through a config-driven transport factory.
 - Python FlatBuffers StepRequest/StepResponse encode/decode helpers with schema
