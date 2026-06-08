@@ -117,21 +117,30 @@ namespace HKRLEnvMod.Env
                 {
                     latest = MessageCodec.DecodeStepRequest(payload);
                 }
+                catch (SchemaMismatchException exception)
+                {
+                    EnqueueDecodeError(HKRL.StatusCode.SchemaMismatch, exception.Message);
+                }
                 catch (System.Exception exception)
                 {
-                    var response = MessageCodec.EncodeStepResponse(
-                        envId: 0,
-                        tickId: 0,
-                        serverTick: _serverTick,
-                        lifecycleState: _lifecycle.State,
-                        errorCode: HKRL.StatusCode.InternalError,
-                        info: exception.Message,
-                        episodeId: _lifecycle.EpisodeId);
-                    _server.OutboundResponses.Enqueue(response);
+                    EnqueueDecodeError(HKRL.StatusCode.InternalError, exception.Message);
                 }
             }
 
             return latest;
+        }
+
+        private void EnqueueDecodeError(HKRL.StatusCode errorCode, string info)
+        {
+            var response = MessageCodec.EncodeStepResponse(
+                envId: 0,
+                tickId: 0,
+                serverTick: _serverTick,
+                lifecycleState: _lifecycle.State,
+                errorCode: errorCode,
+                info: info,
+                episodeId: _lifecycle.EpisodeId);
+            _server.OutboundResponses.Enqueue(response);
         }
 
         private HKRL.StatusCode Dispatch(DecodedStepRequest request)

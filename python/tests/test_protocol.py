@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import flatbuffers
 import numpy as np
@@ -143,6 +144,17 @@ def test_decode_step_response_rejects_schema_mismatch() -> None:
 
     with pytest.raises(ValueError, match="schema mismatch"):
         protocol.decode_step_response(frame)
+
+
+def test_mod_step_request_schema_mismatch_maps_to_status_code() -> None:
+    root = Path(__file__).parents[2]
+    codec = (root / "mod/HKRLEnvMod/Transport/MessageCodec.cs").read_text(encoding="utf-8")
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "SchemaMismatchException" in codec
+    assert "throw new SchemaMismatchException" in codec
+    assert "catch (SchemaMismatchException" in controller
+    assert "HKRL.StatusCode.SchemaMismatch" in controller
 
 
 def _build_step_response(

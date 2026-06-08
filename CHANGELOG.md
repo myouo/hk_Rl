@@ -112,6 +112,8 @@ the project version tracks the **schema_version** + roadmap phase.
   sampler-weight fallback when `win_rate` is absent.
 - Evaluator regression reports now accept `per_boss_win_rate` as a fallback for
   catastrophic-forgetting win-rate deltas.
+- Mod StepRequest decode failures now report schema-version drift as
+  `StatusCode.SchemaMismatch` instead of a generic internal error.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

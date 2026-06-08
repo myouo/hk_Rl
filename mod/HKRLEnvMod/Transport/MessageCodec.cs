@@ -65,6 +65,14 @@ namespace HKRLEnvMod.Transport
         public float TimeScale { get; }
     }
 
+    public sealed class SchemaMismatchException : InvalidOperationException
+    {
+        public SchemaMismatchException(string message)
+            : base(message)
+        {
+        }
+    }
+
     /// <summary>
     /// Encode/decode FlatBuffers frames using the generated HKRL.* bindings
     /// (mod/HKRLEnvMod/Schema, run `make gen-schema-cs`). Framing = uint32-LE length
@@ -90,7 +98,7 @@ namespace HKRLEnvMod.Transport
             var request = HKRL.StepRequest.GetRootAsStepRequest(new ByteBuffer(payload));
             if (request.SchemaVersion != Protocol.SchemaVersion)
             {
-                throw new InvalidOperationException(
+                throw new SchemaMismatchException(
                     $"schema mismatch: local={Protocol.SchemaVersion}, remote={request.SchemaVersion}");
             }
 
