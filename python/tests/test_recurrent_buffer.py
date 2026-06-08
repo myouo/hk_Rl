@@ -127,6 +127,20 @@ def test_recurrent_buffer_exports_flat_rollout_batch() -> None:
     assert batch.policy_version == 9
 
 
+def test_recurrent_buffer_rejects_flat_lstm_state_export() -> None:
+    buffer = _tiny_buffer(capacity=1)
+    transition = _transition(0)
+    transition["rnn_state"] = (
+        np.zeros((1, 1, 2), dtype=np.float32),
+        np.zeros((1, 1, 2), dtype=np.float32),
+    )
+    buffer.add(**transition)
+    buffer.compute_returns(last_value=np.array([0.0], dtype=np.float32), gamma=1.0, gae_lambda=1.0)
+
+    with pytest.raises(ValueError, match="LSTM"):
+        buffer.to_batch(policy_version=1)
+
+
 def test_recurrent_buffer_rejects_overfill() -> None:
     buffer = _tiny_buffer(capacity=1)
     buffer.add(**_transition(0))

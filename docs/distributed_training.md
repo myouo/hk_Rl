@@ -42,7 +42,9 @@ When a recurrent worker uploads a flat `RolloutBatch`, `rnn_states` is stored as
 `(time, layers, envs, hidden)` and APPO flattens it to per-sample
 `(layers, batch, hidden)` inputs for one-step actor-critic evaluation. Full
 sequence loss with burn-in/truncated-BPTT remains the responsibility of local
-`RecurrentPPO`.
+`RecurrentPPO`. The flat upload format currently supports tensor/GRU recurrent
+states only; LSTM tuple states must stay on the sequence-batch `RecurrentPPO`
+path until the batch format grows an explicit `(h, c)` representation.
 `task_ids` are the numeric task `wire_id` values from task YAML, not the
 human-readable task names used in evaluator output.
 

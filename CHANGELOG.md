@@ -102,6 +102,8 @@ the project version tracks the **schema_version** + roadmap phase.
   `ActionMasker`/`InputInjector` constants to catch cross-language drift.
 - Recurrent rollout sequence chunking now splits at both terminated and truncated
   episode boundaries so hidden state does not leak across resets.
+- Recurrent flat RolloutBatch export now rejects LSTM tuple states explicitly
+  instead of silently dropping them on the APPO upload path.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

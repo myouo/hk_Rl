@@ -379,5 +379,8 @@ def _time_rnn_states(states: list[Any]) -> np.ndarray | None:
     if any(state is None for state in states):
         raise ValueError("cannot mix missing and present rnn_state values")
     if isinstance(states[0], tuple):
-        return None
+        raise ValueError(
+            "flat RolloutBatch rnn_states support tensor/GRU states only; "
+            "use RecurrentPPO sequence batches for LSTM states"
+        )
     return np.stack([np.asarray(state) for state in states], axis=0)
