@@ -64,6 +64,8 @@ the project version tracks the **schema_version** + roadmap phase.
   `Time.timeScale`/`fixedDeltaTime` on the main thread.
 - Mod SceneController now maps known task ids to Godhome scenes and reports
   scene/player/boss readiness from Unity main-thread state.
+- Mod ResetManager now starts task resets, polls scene/player/boss readiness with
+  a timeout, and returns concrete reset failure status codes.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
