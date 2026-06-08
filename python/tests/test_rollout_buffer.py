@@ -216,6 +216,14 @@ def test_rollout_batch_memory_roundtrip_with_rnn_state() -> None:
     _assert_batch_arrays_equal(loaded, batch)
 
 
+def test_rollout_batch_deserialize_rejects_mismatched_time_env_shapes() -> None:
+    batch = _sample_batch(policy_version=12)
+    batch.rewards = np.ones((1, 1), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="time/env shape"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
 def test_rollout_batch_npz_rejects_unknown_format_version(tmp_path: Path) -> None:
     path = tmp_path / "bad.npz"
     with open(path, "wb") as fh:

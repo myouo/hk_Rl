@@ -93,7 +93,7 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
     rnn_states = _array(data, "rnn_states") if _scalar_bool(data, "rnn_states_present") else None
     policy_version = _scalar_int(data, "policy_version")
 
-    return RolloutBatch(
+    batch = RolloutBatch(
         obs_global=arrays["obs_global"],
         obs_player=arrays["obs_player"],
         obs_entities=arrays["obs_entities"],
@@ -113,6 +113,23 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
         task_ids=arrays["task_ids"],
         policy_version=policy_version,
     )
+    _validate_batch_shapes(batch)
+    return batch
+
+
+def _validate_batch_shapes(batch: RolloutBatch) -> None:
+    rewards_shape = np.asarray(batch.rewards).shape
+    if len(rewards_shape) != 2:
+        raise ValueError(f"RolloutBatch rewards must have shape (time, env), got {rewards_shape}")
+
+    expected = rewards_shape[:2]
+    for field in _ARRAY_FIELDS:
+        array = np.asarray(getattr(batch, field))
+        if array.ndim < 2 or array.shape[:2] != expected:
+            raise ValueError(
+                f"RolloutBatch field {field!r} must share time/env shape {expected}, "
+                f"got {array.shape}"
+            )
 
 
 def _array(data: np.lib.npyio.NpzFile, key: str) -> np.ndarray:

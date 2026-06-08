@@ -51,7 +51,9 @@ human-readable task names used in evaluator output.
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner
 integration tests. Network transports for batches should preserve this field
-contract even if they use a different envelope.
+contract even if they use a different envelope. Deserialization rejects batches
+whose fields do not share the same `(time, env)` prefix, so malformed worker
+uploads fail at the intake boundary instead of inside the optimizer.
 
 For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`

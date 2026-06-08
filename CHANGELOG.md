@@ -130,6 +130,8 @@ the project version tracks the **schema_version** + roadmap phase.
   do not repeatedly scan loaded assemblies.
 - Local PPO/RecurrentPPO training now advances the GameWorker policy version
   after each update so subsequent rollouts are tagged with the active weights.
+- RolloutBatch NPZ deserialization now rejects fields with inconsistent
+  `(time, env)` prefixes before they reach learner updates.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
