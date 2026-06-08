@@ -235,6 +235,29 @@ def test_rollout_batch_deserialize_rejects_bad_rnn_state_shape() -> None:
         deserialize_rollout_batch(serialize_rollout_batch(batch))
 
 
+def test_rollout_batch_deserialize_rejects_flat_action_masks() -> None:
+    batch = _sample_batch(policy_version=14)
+    batch.action_masks = np.ones((2, 1), dtype=bool)
+
+    with pytest.raises(ValueError, match="action_masks"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
+def test_rollout_batch_deserialize_rejects_mismatched_prev_action_shape() -> None:
+    batch = _sample_batch(policy_version=15)
+    batch.prev_actions = np.zeros((2, 1, 3), dtype=np.int64)
+
+    with pytest.raises(ValueError, match="prev_actions"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
+def test_rollout_batch_deserialize_rejects_negative_policy_version() -> None:
+    batch = _sample_batch(policy_version=-1)
+
+    with pytest.raises(ValueError, match="policy_version"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
 def test_rollout_batch_npz_rejects_unknown_format_version(tmp_path: Path) -> None:
     path = tmp_path / "bad.npz"
     with open(path, "wb") as fh:

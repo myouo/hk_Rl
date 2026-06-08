@@ -139,6 +139,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - RolloutBatch NPZ format v2 now carries explicit `prev_rewards`; recurrent
   policy training/evaluation receives both `prev_action` and `prev_reward`
   memory context.
+- RolloutBatch NPZ deserialization now rejects negative policy versions, flat
+  action-mask payloads, and `prev_actions` shapes that differ from `actions`.
 - Checkpoint registry/client parsing now rejects empty checkpoint paths before
   filesystem or HTTP reads.
 - Checkpoint registry/client parsing now rejects non-positive versions,

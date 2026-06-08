@@ -93,6 +93,8 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
     arrays = {field: _array(data, field) for field in _ARRAY_FIELDS}
     rnn_states = _array(data, "rnn_states") if _scalar_bool(data, "rnn_states_present") else None
     policy_version = _scalar_int(data, "policy_version")
+    if policy_version < 0:
+        raise ValueError("RolloutBatch policy_version must be non-negative")
 
     batch = RolloutBatch(
         obs_global=arrays["obs_global"],
@@ -132,6 +134,18 @@ def _validate_batch_shapes(batch: RolloutBatch) -> None:
                 f"RolloutBatch field {field!r} must share time/env shape {expected}, "
                 f"got {array.shape}"
             )
+
+    action_masks = np.asarray(batch.action_masks)
+    if action_masks.ndim < 3 or action_masks.shape[-1] <= 0:
+        raise ValueError(
+            "RolloutBatch action_masks must have shape (time, env, mask_dim), "
+            f"got {action_masks.shape}"
+        )
+    if np.asarray(batch.prev_actions).shape != np.asarray(batch.actions).shape:
+        raise ValueError(
+            "RolloutBatch prev_actions must match actions shape, "
+            f"got {np.asarray(batch.prev_actions).shape} vs {np.asarray(batch.actions).shape}"
+        )
 
     if batch.rnn_states is not None:
         rnn_states = np.asarray(batch.rnn_states)
