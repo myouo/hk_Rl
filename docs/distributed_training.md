@@ -103,7 +103,8 @@ a future option for the coordinator/worker fabric. Security per PRD §9.10: LAN/
 localhost only, token auth, hash-verified checkpoints, command whitelist.
 Checkpoint registries and local file checkpoint clients reject index entries
 whose checkpoint path escapes the registry root, so a compromised or malformed
-index cannot redirect workers to arbitrary local files.
+index cannot redirect workers to arbitrary local files. Evaluator registry loads
+also recompute the checkpoint sha256 before loading policy weights.
 
 ## 7. Worker recovery
 

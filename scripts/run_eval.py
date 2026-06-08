@@ -20,6 +20,7 @@ regression diff vs a baseline.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -210,7 +211,22 @@ def _latest_registry_checkpoint(root: Path) -> Path:
     latest = CheckpointRegistry(str(root)).latest()
     if latest is None:
         raise SystemExit(f"checkpoint registry is empty: {root}")
-    return Path(latest.path)
+    path = Path(latest.path)
+    actual_hash = _sha256_file(path)
+    if actual_hash != latest.sha256:
+        raise ValueError(
+            f"checkpoint sha256 mismatch for version {latest.version}: "
+            f"expected {latest.sha256}, got {actual_hash}"
+        )
+    return path
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":

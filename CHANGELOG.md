@@ -137,6 +137,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_eval.py --policy model` now evaluates registry-configured
   ActorCritic checkpoints, including recurrent policies with state carried
   across episode steps.
+- `scripts/run_eval.py` now sha256-verifies CheckpointRegistry entries before
+  loading evaluator policy weights.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - `scripts/train.py`/`hkrl.cli` now run local recurrent PPO training with
