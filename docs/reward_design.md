@@ -62,3 +62,7 @@ Reward events are buffered in the mod and **cleared on reset**
 ([`episode_lifecycle.md`](./episode_lifecycle.md)). After `done`, no new events
 are collected. Each event belongs to exactly one `episode_id`. This prevents the
 classic reset-contamination bug (PRD §9.3).
+
+Mod `StepController` only emits reward events while the lifecycle is `RUNNING`.
+`BossKilled`, `PlayerDeath`, and unexpected `SceneChanged` events route the
+lifecycle to `TERMINATING` and are included in the terminal `StepResponse`.

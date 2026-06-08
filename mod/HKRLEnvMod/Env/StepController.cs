@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HKRLEnvMod.Action;
 using HKRLEnvMod.Observation;
 using HKRLEnvMod.Rewards;
@@ -73,6 +74,17 @@ namespace HKRLEnvMod.Env
                 _rewards.Clear();
             }
 
+            var rewardEvents = _rewards.Drain();
+            if (!_lifecycle.IsRunning)
+            {
+                rewardEvents = System.Array.Empty<RewardEventRecord>();
+            }
+            else if (HasTerminalEvent(rewardEvents))
+            {
+                _lifecycle.RequestTerminate();
+                state = _lifecycle.State;
+            }
+
             var terminated = IsTerminal(state);
             var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
             var response = MessageCodec.EncodeStepResponse(
@@ -80,7 +92,7 @@ namespace HKRLEnvMod.Env
                 _serverTick,
                 state,
                 _lifecycle.ErrorCode,
-                _rewards.Drain(),
+                rewardEvents,
                 _masker.Compute(),
                 terminated,
                 truncated: false,
@@ -165,6 +177,22 @@ namespace HKRLEnvMod.Env
             }
 
             return state;
+        }
+
+        private static bool HasTerminalEvent(IReadOnlyList<RewardEventRecord> rewardEvents)
+        {
+            for (var i = 0; i < rewardEvents.Count; i++)
+            {
+                var kind = rewardEvents[i].Kind;
+                if (kind == HKRL.RewardEventKind.BossKilled
+                    || kind == HKRL.RewardEventKind.PlayerDeath
+                    || kind == HKRL.RewardEventKind.SceneChanged)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsTerminal(HKRL.LifecycleState state)

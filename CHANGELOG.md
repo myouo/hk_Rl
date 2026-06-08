@@ -148,6 +148,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod StepController now gates lifecycle wait states through ResetManager scene /
   player / boss readiness polling and returns reset failure StatusCodes instead
   of advancing to RUNNING unconditionally.
+- Mod StepController now routes terminal reward events into lifecycle
+  termination and suppresses non-running reward events to reduce reset
+  contamination.
 - Mod StepController now drains inbound requests, dispatches reset/step/task/ping
   commands, advances lifecycle, applies running actions, drains reward events,
   computes action masks, and enqueues StepResponse frames.

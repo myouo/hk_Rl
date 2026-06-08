@@ -50,6 +50,9 @@ Mod implementation: `StepController.FixedTick()` starts `ResetManager` on
 `EpisodeLifecycle` leave the wait states after scene/player/boss readiness has
 been confirmed. Reset failures call `EpisodeLifecycle.Fail(status)` and are
 reported through `StepResponse.error_code`.
+While running, terminal reward events (`BossKilled`, `PlayerDeath`,
+`SceneChanged`) call `EpisodeLifecycle.RequestTerminate()` before the response is
+encoded.
 
 ## 4. Worker-side contract
 
