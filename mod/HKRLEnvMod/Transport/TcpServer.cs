@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 
 namespace HKRLEnvMod.Transport
 {
@@ -11,6 +15,17 @@ namespace HKRLEnvMod.Transport
     /// </summary>
     public sealed class TcpServer : IDisposable
     {
+        private const int MaxFrameBytes = 16 * 1024 * 1024;
+
+        private readonly IPAddress _address;
+        private readonly int _port;
+        private readonly object _gate = new();
+
+        private TcpListener? _listener;
+        private TcpClient? _client;
+        private Thread? _thread;
+        private bool _running;
+
         /// <summary>Inbound StepRequest frames, drained by the main thread.</summary>
         public readonly ConcurrentQueue<byte[]> InboundRequests = new();
 
@@ -19,20 +34,187 @@ namespace HKRLEnvMod.Transport
 
         public TcpServer(string host = "127.0.0.1", int port = 5555)
         {
-            // TODO(phase-1): TcpListener, optional token-auth handshake.
+            _address = ResolveAddress(host);
+            _port = port;
         }
 
         /// <summary>Start the network thread (accept + recv/send loop).</summary>
         public void Start()
         {
-            // TODO(phase-1): background thread reading uint32-LE length prefix then
-            // payload into InboundRequests; writing OutboundResponses to the socket.
-            throw new NotImplementedException();
+            lock (_gate)
+            {
+                if (_running)
+                {
+                    return;
+                }
+
+                _running = true;
+                _listener = new TcpListener(_address, _port);
+                _listener.Start();
+                _thread = new Thread(Run)
+                {
+                    IsBackground = true,
+                    Name = "HKRL TcpServer"
+                };
+                _thread.Start();
+            }
         }
 
         public void Dispose()
         {
-            // TODO(phase-1): stop thread, close socket.
+            lock (_gate)
+            {
+                if (!_running)
+                {
+                    return;
+                }
+
+                _running = false;
+                CloseClient();
+                _listener?.Stop();
+                _listener = null;
+            }
+
+            if (_thread != null && _thread.IsAlive)
+            {
+                _thread.Join(millisecondsTimeout: 500);
+            }
+            _thread = null;
+        }
+
+        private void Run()
+        {
+            while (_running)
+            {
+                try
+                {
+                    var listener = _listener;
+                    if (listener == null)
+                    {
+                        return;
+                    }
+
+                    using var client = listener.AcceptTcpClient();
+                    ConfigureClient(client);
+                    _client = client;
+                    ServeClient(client);
+                }
+                catch (SocketException)
+                {
+                    if (_running)
+                    {
+                        CloseClient();
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    return;
+                }
+                catch (IOException)
+                {
+                    CloseClient();
+                }
+                finally
+                {
+                    CloseClient();
+                }
+            }
+        }
+
+        private void ServeClient(TcpClient client)
+        {
+            using var stream = client.GetStream();
+
+            while (_running && client.Connected)
+            {
+                DrainOutbound(stream);
+
+                if (!stream.DataAvailable)
+                {
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                var payload = ReadFrame(stream);
+                if (payload == null)
+                {
+                    return;
+                }
+
+                InboundRequests.Enqueue(payload);
+            }
+        }
+
+        private void DrainOutbound(NetworkStream stream)
+        {
+            while (_running && OutboundResponses.TryDequeue(out var frame))
+            {
+                stream.Write(frame, 0, frame.Length);
+            }
+        }
+
+        private static byte[]? ReadFrame(NetworkStream stream)
+        {
+            var header = new byte[sizeof(int)];
+            if (!ReadExact(stream, header, header.Length))
+            {
+                return null;
+            }
+
+            if (!BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(header);
+            }
+
+            var length = BitConverter.ToInt32(header, 0);
+            if (length < 0 || length > MaxFrameBytes)
+            {
+                throw new IOException($"invalid frame length: {length}");
+            }
+
+            var payload = new byte[length];
+            return ReadExact(stream, payload, payload.Length) ? payload : null;
+        }
+
+        private static bool ReadExact(Stream stream, byte[] buffer, int length)
+        {
+            var offset = 0;
+            while (offset < length)
+            {
+                var read = stream.Read(buffer, offset, length - offset);
+                if (read == 0)
+                {
+                    return false;
+                }
+
+                offset += read;
+            }
+
+            return true;
+        }
+
+        private void CloseClient()
+        {
+            var client = _client;
+            _client = null;
+            client?.Close();
+        }
+
+        private static void ConfigureClient(TcpClient client)
+        {
+            client.NoDelay = true;
+            client.ReceiveTimeout = 1000;
+            client.SendTimeout = 1000;
+        }
+
+        private static IPAddress ResolveAddress(string host)
+        {
+            if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                return IPAddress.Loopback;
+            }
+
+            return IPAddress.Parse(host);
         }
     }
 }

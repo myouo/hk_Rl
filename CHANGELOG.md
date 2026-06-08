@@ -45,6 +45,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
+- Mod TCP server now accepts one client at a time on a background thread,
+  transfers uint32-LE length-prefixed frames through thread-safe queues, and
+  keeps Unity access out of the network loop.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
