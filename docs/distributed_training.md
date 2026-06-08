@@ -44,6 +44,11 @@ pickle-free NPZ file for local spooling, crash recovery, and worker/learner
 integration tests. Network transports for batches should preserve this field
 contract even if they use a different envelope.
 
+For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
+each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
+loads all `*.npz` batches through `LearnerServer.submit()` before serving one
+update cycle.
+
 ## 4. On-policy staleness (PRD §9.5)
 
 PPO is sensitive to stale data. Mitigations:

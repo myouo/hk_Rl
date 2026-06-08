@@ -13,12 +13,16 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 # Import model modules for registry side effects.
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
+from hkrl.training.batch_io import save_rollout_batch
+from hkrl.training.rollout_buffer import RolloutBatch
 from hkrl.utils.config import load_task_config, load_train_config
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
@@ -31,7 +35,10 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True)
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
+    p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
+    p.add_argument("--worker-id", default="worker-0", help="stable worker id for batch names")
     p.add_argument("--steps", type=int, default=None, help="optional finite rollout sample count")
+    p.add_argument("--max-consecutive-failures", type=int, default=3)
     p.add_argument("--dry-run", action="store_true", help="validate wiring without env connection")
     return p
 
@@ -71,11 +78,14 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         return {
             "algorithm": cfg.algorithm,
             "dry_run": True,
+            "batch_dir": args.batch_dir,
             "learner": args.learner,
             "latest_checkpoint": latest_checkpoint,
+            "max_consecutive_failures": args.max_consecutive_failures,
             "model": cfg.model.name,
             "registry": args.registry,
             "task_id": task.task_id,
+            "worker_id": args.worker_id,
         }
 
     if cfg.transport.name != "tcp":
@@ -87,24 +97,33 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
     transport = TcpTransport(host=cfg.transport.host, port=cfg.transport.port)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
+    spooled_batches: list[str] = []
     worker = GameWorker(
         env=env,
         model=model,
         config=cfg,
         checkpoint_client=checkpoint_client,
         learner_endpoint=args.learner,
+        batch_uploader=_make_batch_uploader(args.batch_dir, args.worker_id, spooled_batches),
+        max_consecutive_failures=args.max_consecutive_failures,
     )
     try:
         worker.run(total_steps=args.steps)
         last_batch = worker.last_batch
         return {
             "algorithm": cfg.algorithm,
+            "batch_dir": args.batch_dir,
+            "consecutive_failures": worker.consecutive_failures,
             "dry_run": False,
+            "last_error": worker.last_error,
             "learner": args.learner,
             "model": cfg.model.name,
             "policy_version": worker.policy_version,
             "rollout_steps": 0 if last_batch is None else int(last_batch.rewards.size),
+            "spooled_batches": spooled_batches,
             "task_id": task.task_id,
+            "worker_crash_count": worker.worker_crash_count,
+            "worker_id": args.worker_id,
         }
     finally:
         env.close()
@@ -134,6 +153,34 @@ def _build_model(
         enable_macro=enable_macro,
         max_entities=max_entities,
     )
+
+
+def _make_batch_uploader(
+    batch_dir: str | None,
+    worker_id: str,
+    written: list[str],
+) -> Callable[[RolloutBatch], None] | None:
+    if batch_dir is None:
+        return None
+
+    directory = Path(batch_dir)
+    safe_worker = _safe_filename_component(worker_id)
+    sequence = 0
+
+    def upload(batch: RolloutBatch) -> None:
+        nonlocal sequence
+        sequence += 1
+        path = directory / f"{safe_worker}_{sequence:08d}_v{batch.policy_version:06d}.npz"
+        save_rollout_batch(path, batch)
+        written.append(str(path))
+
+    return upload
+
+
+def _safe_filename_component(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value)
+    safe = safe.strip("._")
+    return safe or "worker"
 
 
 if __name__ == "__main__":

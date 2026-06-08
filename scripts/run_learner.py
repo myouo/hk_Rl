@@ -22,6 +22,7 @@ from hkrl.learner.learner_server import LearnerServer
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
+from hkrl.training.batch_io import load_rollout_batch
 from hkrl.utils.config import load_train_config
 from hkrl.utils.registry import get
 
@@ -30,6 +31,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
     p.add_argument("--bind", default="0.0.0.0:5600")
+    p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
     p.add_argument("--checkpoint-dir", default="checkpoints")
     p.add_argument("--max-staleness", type=int, default=4)
     p.add_argument("--publish-every-updates", type=int, default=1)
@@ -72,16 +74,21 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_staleness=args.max_staleness,
         publish_every_updates=args.publish_every_updates,
     )
+    submitted_batches = _submit_batch_dir(server, args.batch_dir)
     server.serve()
     latest = registry.latest()
     return {
+        "accepted_batches": server.accepted_batches,
         "algorithm": cfg.algorithm,
+        "batch_dir": args.batch_dir,
         "bind": args.bind,
         "checkpoint_dir": registry.root,
         "latest_checkpoint": None if latest is None else latest.version,
         "model": cfg.model.name,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
+        "rejected_batches": server.rejected_batches,
+        "submitted_batches": submitted_batches,
     }
 
 
@@ -103,6 +110,23 @@ def _build_model(cfg: Any, obs_dims: dict[str, tuple[int, ...]], *, max_entities
         enable_macro=True,
         max_entities=max_entities,
     )
+
+
+def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
+    if batch_dir is None:
+        return 0
+
+    directory = Path(batch_dir)
+    if not directory.exists():
+        raise FileNotFoundError(f"batch directory does not exist: {directory}")
+    if not directory.is_dir():
+        raise NotADirectoryError(f"batch path is not a directory: {directory}")
+
+    submitted = 0
+    for path in sorted(directory.glob("*.npz")):
+        server.submit(load_rollout_batch(path))
+        submitted += 1
+    return submitted
 
 
 if __name__ == "__main__":
