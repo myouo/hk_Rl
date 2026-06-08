@@ -44,6 +44,8 @@ in the schema. Highlights:
 `PAUSE`, `RESUME`, and `SET_TIMESCALE` are applied by mod `SimControl` on the
 Unity main thread. Invalid command parameters return `StatusCode.InternalError`
 in the response instead of throwing through `FixedUpdate`.
+Python exposes these through `HKRLEnv.pause()`, `HKRLEnv.resume()`, and
+`HKRLEnv.set_timescale(scale)`.
 
 ## 4. Reset handshake (ack)
 

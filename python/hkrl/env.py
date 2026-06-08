@@ -144,6 +144,24 @@ class HKRLEnv(gym.Env):
         """Close the transport. Idempotent."""
         self.transport.close()
 
+    def pause(self, *, timeout_s: float | None = None) -> dict[str, Any]:
+        """Pause the game simulation via the mod's SimControl."""
+        return self._control(protocol.Command.PAUSE, timeout_s=timeout_s)
+
+    def resume(self, *, timeout_s: float | None = None) -> dict[str, Any]:
+        """Resume the game simulation via the mod's SimControl."""
+        return self._control(protocol.Command.RESUME, timeout_s=timeout_s)
+
+    def set_timescale(self, scale: float, *, timeout_s: float | None = None) -> dict[str, Any]:
+        """Set Unity Time.timeScale / fixedDeltaTime through the mod."""
+        if scale <= 0.0:
+            raise ValueError("scale must be positive")
+        return self._control(
+            protocol.Command.SET_TIMESCALE,
+            timeout_s=timeout_s,
+            time_scale=float(scale),
+        )
+
     # -- helpers --------------------------------------------------------------
     def _await_running(self, timeout_s: float) -> protocol.StatusCode:
         """Poll the mod with no-op STEPs until RUNNING or error/timeout."""
@@ -193,6 +211,7 @@ class HKRLEnv(gym.Env):
         action: Any,
         action_repeat: int,
         timeout_s: float,
+        time_scale: float = 0.0,
     ) -> protocol.DecodedStepResponse:
         tick_id = self._next_tick_id()
         request = protocol.encode_step_request(
@@ -202,12 +221,33 @@ class HKRLEnv(gym.Env):
             tick_id=tick_id,
             action_repeat=action_repeat,
             task_id=self.task.wire_id,
+            time_scale=time_scale,
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))
         if response.tick_id != tick_id:
             raise EnvProtocolError(f"tick_id mismatch: sent={tick_id}, received={response.tick_id}")
         return response
+
+    def _control(
+        self,
+        command: protocol.Command,
+        *,
+        timeout_s: float | None,
+        time_scale: float = 0.0,
+    ) -> dict[str, Any]:
+        timeout = self._step_timeout_s if timeout_s is None else float(timeout_s)
+        if not self.transport.is_connected():
+            self.transport.connect(timeout_s=timeout)
+        response = self._exchange(
+            command,
+            action=None,
+            action_repeat=1,
+            timeout_s=timeout,
+            time_scale=time_scale,
+        )
+        self._raise_for_error(response, context=command.name.lower())
+        return self._info_from_response(response)
 
     def _validate_observation(self, observation: protocol.DecodedObservation) -> None:
         arrays = (

@@ -35,7 +35,9 @@ computes these on fixed seeds/tasks, isolated from training, to catch the
 
 High game FPS ≠ efficient training. Track **samples per second**. Levers:
 `Time.timeScale` / `fixedDeltaTime`, `action_repeat`, parallel instances, reduced
-render quality, fast reset. `reset_duration` is a first-class SPS factor.
+render quality, fast reset. `HKRLEnv.set_timescale(scale)` sends the protocol
+command that mod `SimControl` applies on the Unity main thread. `reset_duration`
+is a first-class SPS factor.
 
 ## 4. Backends
 
