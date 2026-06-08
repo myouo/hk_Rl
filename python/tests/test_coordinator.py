@@ -54,6 +54,69 @@ def test_coordinator_expires_workers_by_heartbeat_timeout() -> None:
     assert coordinator.lost_workers() == ["a"]
 
 
+def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
+    clock = FakeClock()
+    coordinator = Coordinator(TaskSampler(["gruz"], seed=0), heartbeat_timeout_s=5.0, clock=clock)
+    coordinator.register_worker("a", {"host": "game-pc-a"})
+    coordinator.register_worker("b", {"host": "game-pc-b"})
+    coordinator.assign_task("a")
+
+    coordinator.ingest_heartbeat_payload(
+        "a",
+        {
+            "checkpoint_version": 2,
+            "learner_endpoint": "learner:5600",
+            "policy_version": 7,
+            "rollout_steps": 128,
+            "sps": 12.5,
+            "status": "running",
+            "worker_crash_count": 1,
+        },
+    )
+    coordinator.ingest_heartbeat_payload(
+        "b",
+        {
+            "checkpoint_version": 2,
+            "policy_version": 7,
+            "rollout_steps": 128,
+            "sps": 7.5,
+            "status": "running",
+            "worker_crash_count": 0,
+        },
+    )
+
+    record = coordinator.worker_record("a")
+    assert record.info["status"] == "running"
+    assert record.info["learner_endpoint"] == "learner:5600"
+    assert record.metrics["policy_version"] == 7.0
+    assert record.metrics["sps"] == 12.5
+    assert record.metrics["worker_crash_count"] == 1.0
+
+    clock.advance(6.0)
+    coordinator.ingest_heartbeat_payload(
+        "a",
+        {
+            "policy_version": 7,
+            "sps": 10.0,
+            "status": "running",
+            "worker_crash_count": 1,
+        },
+    )
+
+    snapshot = coordinator.metrics_snapshot()
+
+    assert snapshot == {
+        "worker_count": 2.0,
+        "active_worker_count": 1.0,
+        "lost_worker_count": 1.0,
+        "assigned_worker_count": 1.0,
+        "sps": 10.0,
+        "sps_mean": 10.0,
+        "worker_crash_count": 1.0,
+    }
+    assert coordinator.lost_workers() == ["b"]
+
+
 def test_coordinator_rejects_unknown_or_dead_worker_assignment() -> None:
     coordinator = Coordinator(TaskSampler(["gruz"], seed=0), clock=FakeClock())
 

@@ -76,7 +76,14 @@ resets RNN hidden state, emits a heartbeat with `status = recovering` and
 then forces a clean `reset()` before collecting the next batch. Persistent
 failures surface as errors instead of spinning forever.
 
-## 8. PyTorch + CUDA note
+## 8. Monitoring snapshot
+
+Coordinator ingests raw worker heartbeat payloads, splits numeric metrics from
+status fields, and exposes a `metrics_snapshot()` aggregate for dashboards and
+JSONL logging. Fleet SPS is the sum across active workers; lost workers still
+count toward `worker_crash_count` so crash/restart churn remains visible.
+
+## 9. PyTorch + CUDA note
 
 `torch` is intentionally unpinned to a specific CUDA build in `pyproject.toml`.
 Install the matching wheel per machine (GPU learner vs CPU-only worker). Workers

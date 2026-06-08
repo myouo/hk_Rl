@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from numbers import Real
 
 from hkrl.coordinator.task_sampler import TaskSampler
 
@@ -95,6 +96,25 @@ class Coordinator:
         worker.alive = True
         worker.lost_at = None
 
+    def ingest_heartbeat_payload(self, worker_id: str, payload: dict[str, object]) -> None:
+        """Update worker state from a raw GameWorker heartbeat payload.
+
+        GameWorker heartbeats carry both numeric metrics (SPS, policy/checkpoint
+        versions, crash count) and non-numeric status fields. The coordinator
+        stores numeric fields in ``WorkerRecord.metrics`` so monitoring can
+        aggregate them, while preserving status/error fields in ``info``.
+        """
+        metrics: dict[str, float] = {}
+        info: dict[str, object] = {}
+        for key, value in payload.items():
+            if isinstance(value, bool):
+                info[key] = value
+            elif isinstance(value, Real):
+                metrics[key] = float(value)
+            else:
+                info[key] = value
+        self.heartbeat(worker_id, info=info, metrics=metrics)
+
     def expire_workers(self) -> list[str]:
         now = self._clock()
         expired: list[str] = []
@@ -113,6 +133,35 @@ class Coordinator:
 
     def worker_record(self, worker_id: str) -> WorkerRecord:
         return self._require_worker(worker_id)
+
+    def metrics_snapshot(self) -> dict[str, float]:
+        """Return aggregate worker metrics for dashboards/logging.
+
+        ``sps`` is summed across active workers because SPS is a fleet throughput
+        metric; ``sps_mean`` is included for per-worker health inspection.
+        Lost workers still contribute to ``worker_crash_count`` so restarts are
+        not hidden once a worker is expired.
+        """
+        self.expire_workers()
+        records = list(self._workers.values())
+        active = [worker for worker in records if worker.alive]
+        lost = [worker for worker in records if not worker.alive]
+        active_sps = [worker.metrics.get("sps", 0.0) for worker in active]
+        sps_total = sum(active_sps)
+
+        return {
+            "worker_count": float(len(records)),
+            "active_worker_count": float(len(active)),
+            "lost_worker_count": float(len(lost)),
+            "assigned_worker_count": float(
+                sum(1 for worker in active if worker.assigned_task is not None)
+            ),
+            "sps": sps_total,
+            "sps_mean": sps_total / len(active_sps) if active_sps else 0.0,
+            "worker_crash_count": sum(
+                worker.metrics.get("worker_crash_count", 0.0) for worker in records
+            ),
+        }
 
     def _require_worker(self, worker_id: str) -> WorkerRecord:
         try:
