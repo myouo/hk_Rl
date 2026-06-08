@@ -156,6 +156,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod observation collection now catches player/entity/global read failures,
   logs them, and returns a conservative fallback snapshot instead of unwinding
   `FixedUpdate`.
+- Mod StepController now wraps `FixedTick` in a top-level guard that logs
+  unexpected failures and clears pending repeated actions.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

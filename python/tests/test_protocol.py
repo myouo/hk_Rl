@@ -177,6 +177,17 @@ def test_mod_step_controller_reports_wire_invalid_actions() -> None:
     assert "action.DurationIdx > 3" in controller
 
 
+def test_mod_step_controller_guards_fixed_tick() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "FixedTickCore()" in controller
+    assert "catch (System.Exception exception)" in controller
+    assert 'Logger.Error("StepController FixedTick failed"' in controller
+    assert "_repeatRequest = null;" in controller
+    assert "_repeatTicksRemaining = 0;" in controller
+
+
 def test_mod_step_response_mask_uses_player_state() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")

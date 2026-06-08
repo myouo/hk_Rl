@@ -66,6 +66,20 @@ namespace HKRLEnvMod.Env
         /// <summary>Called once per FixedUpdate. Never blocks on the network.</summary>
         public void FixedTick()
         {
+            try
+            {
+                FixedTickCore();
+            }
+            catch (System.Exception exception)
+            {
+                _repeatRequest = null;
+                _repeatTicksRemaining = 0;
+                global::HKRLEnvMod.Debug.Logger.Error("StepController FixedTick failed", exception);
+            }
+        }
+
+        private void FixedTickCore()
+        {
             _serverTick++;
 
             var request = _repeatRequest;
