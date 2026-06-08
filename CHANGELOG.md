@@ -61,6 +61,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - ObservationTier wrapper now slices privileged observations down to reduced or
   human-visible feature sets and updates Gym observation spaces for ablations.
 - JSONL metric sink for scalar and per-episode training/evaluation records.
+- CSV metric sink with a stable scalar/episode envelope and optional custom
+  fieldnames for fixed wide exports.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
 - Flat RolloutBuffer now stores fixed-capacity multi-env PPO transitions,
