@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 
 import numpy as np
 import pytest
+from hkrl.training.batch_io import load_rollout_batch, save_rollout_batch
 from hkrl.training.gae import compute_gae
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 
@@ -167,3 +169,76 @@ def test_rollout_buffer_rejects_overfill() -> None:
     buffer.add(**transition)
     with pytest.raises(RuntimeError, match="full"):
         buffer.add(**transition)
+
+
+def test_rollout_batch_npz_roundtrip(tmp_path: Path) -> None:
+    batch = _sample_batch(policy_version=9)
+    path = save_rollout_batch(tmp_path / "batch.npz", batch)
+
+    loaded = load_rollout_batch(path)
+
+    assert loaded.policy_version == 9
+    assert loaded.rnn_states is None
+    _assert_batch_arrays_equal(loaded, batch)
+
+
+def test_rollout_batch_npz_roundtrip_with_rnn_state(tmp_path: Path) -> None:
+    batch = _sample_batch(
+        policy_version=10,
+        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 6),
+    )
+    path = save_rollout_batch(tmp_path / "nested" / "batch.npz", batch)
+
+    loaded = load_rollout_batch(path)
+
+    assert loaded.policy_version == 10
+    assert loaded.rnn_states is not None
+    np.testing.assert_array_equal(loaded.rnn_states, batch.rnn_states)
+    _assert_batch_arrays_equal(loaded, batch)
+
+
+def test_rollout_batch_npz_rejects_unknown_format_version(tmp_path: Path) -> None:
+    path = tmp_path / "bad.npz"
+    with open(path, "wb") as fh:
+        np.savez_compressed(
+            fh,
+            batch_format_version=np.array([999], dtype=np.int32),
+            policy_version=np.array([1], dtype=np.int64),
+        )
+
+    with pytest.raises(ValueError, match="unsupported RolloutBatch format version"):
+        load_rollout_batch(path)
+
+
+def _sample_batch(
+    *,
+    policy_version: int,
+    rnn_states: np.ndarray | None = None,
+) -> RolloutBatch:
+    return RolloutBatch(
+        obs_global=np.arange(4, dtype=np.float32).reshape(2, 1, 2),
+        obs_player=np.arange(6, dtype=np.float32).reshape(2, 1, 3),
+        obs_entities=np.arange(40, dtype=np.float32).reshape(2, 1, 4, 5),
+        entity_mask=np.array([[[True, True, False, False]], [[True, False, False, False]]]),
+        actions=np.array([[[0, 1]], [[1, 2]]], dtype=np.int64),
+        log_probs=np.array([[-0.1], [-0.2]], dtype=np.float32),
+        values=np.array([[0.3], [0.4]], dtype=np.float32),
+        advantages=np.array([[1.0], [0.5]], dtype=np.float32),
+        returns=np.array([[1.3], [0.9]], dtype=np.float32),
+        rewards=np.array([[1.0], [0.0]], dtype=np.float32),
+        dones=np.array([[False], [True]]),
+        truncateds=np.array([[False], [False]]),
+        action_masks=np.ones((2, 1, 6), dtype=bool),
+        prev_actions=np.array([[[0, 0]], [[0, 1]]], dtype=np.int64),
+        rnn_states=rnn_states,
+        episode_ids=np.array([[7], [7]], dtype=np.uint64),
+        task_ids=np.array([[3], [3]], dtype=np.int64),
+        policy_version=policy_version,
+    )
+
+
+def _assert_batch_arrays_equal(left: RolloutBatch, right: RolloutBatch) -> None:
+    for field in dataclasses.fields(RolloutBatch):
+        if field.name in {"policy_version", "rnn_states"}:
+            continue
+        np.testing.assert_array_equal(getattr(left, field.name), getattr(right, field.name))

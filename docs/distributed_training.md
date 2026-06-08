@@ -39,6 +39,11 @@ Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences fo
 recurrent training preserve `rnn_states` at sequence boundaries and mask padded
 timesteps.
 
+`hkrl/training/batch_io.py` serializes the same bundle as a compressed,
+pickle-free NPZ file for local spooling, crash recovery, and worker/learner
+integration tests. Network transports for batches should preserve this field
+contract even if they use a different envelope.
+
 ## 4. On-policy staleness (PRD §9.5)
 
 PPO is sensitive to stale data. Mitigations:
