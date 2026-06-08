@@ -4,8 +4,9 @@
 Usage:
     python scripts/run_learner.py --config configs/train/remote_learner.yaml
 
-Builds the learner core and checkpoint registry. Network intake is layered on
-top of ``LearnerServer.submit`` in a later Phase 6 increment.
+Builds the learner core and checkpoint registry. For filesystem smoke tests,
+``--batch-dir`` ingests NPZ RolloutBatch files through ``LearnerServer.submit``;
+network intake can use the same server method behind an authenticated endpoint.
 """
 
 from __future__ import annotations

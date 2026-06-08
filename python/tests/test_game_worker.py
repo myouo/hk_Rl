@@ -183,6 +183,32 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
     assert heartbeats[-1]["worker_crash_count"] == 1
 
 
+def test_game_worker_recovery_reconnects_wrapped_env_transport() -> None:
+    inner = FailOnceEnv()
+    env = EnvWrapper(inner)
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        max_consecutive_failures=2,
+    )
+
+    worker.run(total_steps=2)
+
+    assert inner.transport.reconnect_calls == 1
+    assert worker.worker_crash_count == 1
+
+
 def test_game_worker_limits_repeated_runtime_failures() -> None:
     env = AlwaysFailEnv()
     model = MlpActorCritic(
@@ -277,6 +303,21 @@ class FakeTransport:
     def reconnect(self, timeout_s: float = 10.0) -> None:
         del timeout_s
         self.reconnect_calls += 1
+
+
+class EnvWrapper:
+    def __init__(self, env: FakeEnv) -> None:
+        self.env = env
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+
+    def reset(self) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        return self.env.reset()
+
+    def step(
+        self, action: dict[str, Any]
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        return self.env.step(action)
 
 
 class FakeCheckpointClient:

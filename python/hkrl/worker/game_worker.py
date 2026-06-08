@@ -231,15 +231,9 @@ class GameWorker:
         self._info = {}
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
 
-        transport = getattr(self.env, "transport", None)
-        reconnect = getattr(transport, "reconnect", None)
-        if callable(reconnect):
-            reconnect(timeout_s=10.0)
-            return
-
-        env_reconnect = getattr(self.env, "reconnect", None)
-        if callable(env_reconnect):
-            env_reconnect()
+        reconnect = _find_reconnect(self.env)
+        if reconnect is not None:
+            reconnect()
 
     def _ensure_reset(self) -> None:
         if self._obs is None:
@@ -326,3 +320,22 @@ def _model_device(model: ActorCritic) -> torch.device:
         return next(model.parameters()).device
     except StopIteration:
         return torch.device("cpu")
+
+
+def _find_reconnect(env: Any) -> Callable[[], None] | None:
+    current = env
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+
+        transport = getattr(current, "transport", None)
+        transport_reconnect = getattr(transport, "reconnect", None)
+        if callable(transport_reconnect):
+            return lambda: transport_reconnect(timeout_s=10.0)
+
+        env_reconnect = getattr(current, "reconnect", None)
+        if callable(env_reconnect):
+            return env_reconnect
+
+        current = getattr(current, "env", None)
+    return None
