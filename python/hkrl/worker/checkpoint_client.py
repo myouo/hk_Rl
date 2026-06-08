@@ -165,9 +165,11 @@ def _parse_index(lines: Any) -> dict[int, CheckpointMeta]:
 
 
 def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
+    path = str(payload["path"])
+    _validate_checkpoint_path(path)
     return CheckpointMeta(
         version=int(payload["version"]),
-        path=str(payload["path"]),
+        path=path,
         sha256=str(payload["sha256"]),
         policy_version=int(payload["policy_version"]),
         created_step=int(payload["created_step"]),
@@ -175,6 +177,7 @@ def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
 
 
 def _checkpoint_path(root: Path, path: str) -> Path:
+    _validate_checkpoint_path(path)
     checkpoint_path = Path(path)
     if not checkpoint_path.is_absolute():
         checkpoint_path = root / checkpoint_path
@@ -188,6 +191,7 @@ def _checkpoint_path(root: Path, path: str) -> Path:
 
 
 def _checkpoint_url(base_url: str, path: str) -> str:
+    _validate_checkpoint_path(path)
     parsed = urlparse(path)
     if parsed.scheme or parsed.netloc or path.startswith("/"):
         raise ValueError("remote checkpoint paths must be relative to the registry root")
@@ -199,6 +203,11 @@ def _checkpoint_url(base_url: str, path: str) -> str:
     if not url.startswith(base_url):
         raise ValueError("remote checkpoint path escapes registry root")
     return url
+
+
+def _validate_checkpoint_path(path: str) -> None:
+    if Path(path) == Path("."):
+        raise ValueError("checkpoint path must name a file")
 
 
 def _http_get_bytes(url: str, *, auth_token: str | None, timeout_s: float) -> bytes:

@@ -137,6 +137,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - RolloutBatch NPZ format v2 now carries explicit `prev_rewards`; recurrent
   policy training/evaluation receives both `prev_action` and `prev_reward`
   memory context.
+- Checkpoint registry/client parsing now rejects empty checkpoint paths before
+  filesystem or HTTP reads.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

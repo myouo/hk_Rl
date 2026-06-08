@@ -101,9 +101,11 @@ class CheckpointRegistry:
 
 
 def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
+    path = str(payload["path"])
+    _validate_checkpoint_path(path)
     return CheckpointMeta(
         version=int(payload["version"]),
-        path=str(payload["path"]),
+        path=path,
         sha256=str(payload["sha256"]),
         policy_version=int(payload["policy_version"]),
         created_step=int(payload["created_step"]),
@@ -111,6 +113,7 @@ def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
 
 
 def _checkpoint_path(root: Path, path: str) -> Path:
+    _validate_checkpoint_path(path)
     checkpoint_path = Path(path)
     if not checkpoint_path.is_absolute():
         checkpoint_path = root / checkpoint_path
@@ -121,6 +124,11 @@ def _checkpoint_path(root: Path, path: str) -> Path:
     except ValueError as exc:
         raise ValueError("checkpoint path escapes registry root") from exc
     return resolved_checkpoint
+
+
+def _validate_checkpoint_path(path: str) -> None:
+    if Path(path) == Path("."):
+        raise ValueError("checkpoint path must name a file")
 
 
 def _sha256_file(path: Path) -> str:

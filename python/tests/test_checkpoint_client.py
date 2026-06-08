@@ -94,6 +94,26 @@ def test_checkpoint_client_rejects_paths_outside_registry_root(tmp_path: Path) -
         client.pull(1)
 
 
+def test_checkpoint_client_rejects_empty_index_path(tmp_path: Path) -> None:
+    (tmp_path / "index.jsonl").write_text(
+        json.dumps(
+            {
+                "created_step": 1,
+                "path": ".",
+                "policy_version": 1,
+                "sha256": "unused",
+                "version": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = CheckpointClient(str(tmp_path), verify_hash=False)
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        client.latest_version()
+
+
 def test_checkpoint_client_rejects_duplicate_index_versions(tmp_path: Path) -> None:
     registry = CheckpointRegistry(str(tmp_path))
     meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)

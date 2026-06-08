@@ -91,6 +91,20 @@ def test_checkpoint_registry_rejects_paths_outside_root(tmp_path: Path) -> None:
         CheckpointRegistry(str(root))
 
 
+def test_checkpoint_registry_rejects_empty_checkpoint_path(tmp_path: Path) -> None:
+    payload = {
+        "version": 1,
+        "path": "",
+        "sha256": "0" * 64,
+        "policy_version": 1,
+        "created_step": 10,
+    }
+    (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        CheckpointRegistry(str(tmp_path))
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as fh:
