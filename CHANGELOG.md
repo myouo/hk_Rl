@@ -76,6 +76,8 @@ the project version tracks the **schema_version** + roadmap phase.
   and attacks the nearest boss/entity from structured observations.
 - Evaluator now runs fixed-seed task episodes through an injected eval env factory,
   aggregates shaping-free metrics, and reports win-rate regression deltas.
+- TaskSampler now provides seeded weighted task sampling with mastered-task replay
+  and win-rate based reweighting for anti-forgetting curricula.
 - `scripts/run_eval.py` now runs fixed-seed evaluator jobs for scripted or MLP
   checkpoint policies and emits JSON metrics/regression output.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
