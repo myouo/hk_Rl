@@ -35,6 +35,13 @@ def compute_gae(
         raise ValueError("gamma must be in [0, 1]")
     if not 0.0 <= gae_lambda <= 1.0:
         raise ValueError("gae_lambda must be in [0, 1]")
+    for name, array in (
+        ("rewards", rewards),
+        ("values", values),
+        ("last_value", last_value),
+    ):
+        if not np.isfinite(array).all():
+            raise ValueError(f"{name} must contain only finite values")
 
     advantages = np.zeros_like(rewards, dtype=np.float32)
     last_gae = np.zeros(rewards.shape[1], dtype=np.float32)

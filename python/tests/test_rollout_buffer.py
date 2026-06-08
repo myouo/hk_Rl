@@ -88,6 +88,17 @@ def test_compute_gae_truncated_step_bootstraps() -> None:
     np.testing.assert_allclose(returns, np.array([[11.0]], dtype=np.float32))
 
 
+def test_compute_gae_rejects_non_finite_inputs() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        compute_gae(
+            rewards=np.array([[1.0]], dtype=np.float32),
+            values=np.array([[0.0]], dtype=np.float32),
+            dones=np.array([[False]]),
+            truncateds=np.array([[False]]),
+            last_value=np.array([np.inf], dtype=np.float32),
+        )
+
+
 def test_rollout_buffer_add_compute_batch_and_clear() -> None:
     buffer = RolloutBuffer(
         capacity=2,
@@ -175,6 +186,38 @@ def test_rollout_buffer_rejects_overfill() -> None:
     buffer.add(**transition)
     with pytest.raises(RuntimeError, match="full"):
         buffer.add(**transition)
+
+
+def test_rollout_buffer_rejects_non_finite_transition_values() -> None:
+    buffer = RolloutBuffer(
+        capacity=1,
+        num_envs=1,
+        obs_spec={
+            "global": (1,),
+            "player": (1,),
+            "entities": (1, 1),
+            "entity_mask": (1,),
+            "action": (),
+            "action_mask": (1,),
+        },
+    )
+
+    with pytest.raises(ValueError, match="non-finite"):
+        buffer.add(
+            obs={
+                "global": np.array([np.nan], dtype=np.float32),
+                "player": np.zeros((1,), dtype=np.float32),
+                "entities": np.zeros((1, 1), dtype=np.float32),
+                "entity_mask": np.ones((1,), dtype=bool),
+            },
+            action=np.array(0),
+            log_prob=np.array([0.0], dtype=np.float32),
+            value=np.array([0.0], dtype=np.float32),
+            reward=np.array([0.0], dtype=np.float32),
+            done=np.array([False]),
+            truncated=np.array([False]),
+            action_mask=np.array([True]),
+        )
 
 
 def test_rollout_batch_npz_roundtrip(tmp_path: Path) -> None:

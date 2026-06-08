@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
@@ -89,6 +90,53 @@ def test_recurrent_ppo_update_returns_metrics_and_changes_parameters() -> None:
         not torch.equal(previous, current)
         for previous, current in zip(before, model.parameters(), strict=True)
     )
+
+
+def test_recurrent_ppo_update_rejects_non_finite_sequence_values() -> None:
+    model = EntityAttentionRecurrentAC(
+        _obs_spec(),
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_hidden=16,
+        enable_macro=False,
+    )
+    ppo = RecurrentPPO(
+        model,
+        TrainConfig(
+            algorithm="recurrent_ppo",
+            epochs=1,
+            minibatch_size=1,
+            sequence_length=1,
+            burn_in=0,
+        ),
+    )
+    buffer = RecurrentRolloutBuffer(
+        capacity=1,
+        num_envs=1,
+        sequence_length=1,
+        obs_spec={
+            **_obs_spec(),
+            "action": (12,),
+            "action_mask": (_mask_dim(),),
+        },
+    )
+    buffer.add(
+        obs=_numpy_obs(0),
+        action=np.zeros((12,), dtype=np.int64),
+        log_prob=np.array([0.0], dtype=np.float32),
+        value=np.array([0.0], dtype=np.float32),
+        reward=np.array([0.0], dtype=np.float32),
+        done=np.array([False]),
+        truncated=np.array([False]),
+        action_mask=np.ones((_mask_dim(),), dtype=bool),
+        rnn_state=model.initial_state(batch_size=1),
+    )
+    buffer.compute_returns(np.array([0.0], dtype=np.float32), gamma=0.99, gae_lambda=0.95)
+    buffer.advantages[0, 0] = np.inf
+
+    with pytest.raises(ValueError, match="non-finite"):
+        ppo.update(buffer)
 
 
 def _obs_spec() -> dict[str, tuple[int, ...]]:

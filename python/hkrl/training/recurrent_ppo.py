@@ -182,6 +182,7 @@ class _TensorSequence:
 
 
 def _tensor_sequence(sequence: RecurrentSequenceBatch, device: torch.device) -> _TensorSequence:
+    _require_finite_sequence(sequence)
     obs = {
         "global": torch.as_tensor(sequence.obs["global"], dtype=torch.float32, device=device),
         "player": torch.as_tensor(sequence.obs["player"], dtype=torch.float32, device=device),
@@ -215,6 +216,7 @@ def _advantage_stats(
 ) -> tuple[Tensor, Tensor]:
     values: list[Tensor] = []
     for sequence in buffer.iter_sequences():
+        _require_finite_sequence(sequence)
         advantages = torch.as_tensor(sequence.advantages, dtype=torch.float32, device=device)
         loss_mask = torch.as_tensor(sequence.loss_mask, dtype=torch.bool, device=device)
         values.append(advantages[loss_mask])
@@ -265,3 +267,34 @@ def _zero_metrics() -> dict[str, float]:
         "policy_kl": 0.0,
         "grad_norm": 0.0,
     }
+
+
+def _require_finite_sequence(sequence: RecurrentSequenceBatch) -> None:
+    for name in ("global", "player", "entities"):
+        if not np.isfinite(np.asarray(sequence.obs[name])).all():
+            raise ValueError(f"recurrent rollout obs.{name} contains non-finite values")
+    for field in _FINITE_SEQUENCE_FIELDS:
+        if not np.isfinite(np.asarray(getattr(sequence, field))).all():
+            raise ValueError(f"recurrent rollout field {field!r} contains non-finite values")
+    _require_finite_rnn_state(sequence.rnn_state)
+
+
+def _require_finite_rnn_state(state: Any) -> None:
+    if state is None:
+        return
+    if isinstance(state, tuple):
+        for part in state:
+            _require_finite_rnn_state(part)
+        return
+    if not np.isfinite(np.asarray(state)).all():
+        raise ValueError("recurrent rollout rnn_state contains non-finite values")
+
+
+_FINITE_SEQUENCE_FIELDS: tuple[str, ...] = (
+    "old_log_probs",
+    "old_values",
+    "advantages",
+    "returns",
+    "rewards",
+    "prev_rewards",
+)

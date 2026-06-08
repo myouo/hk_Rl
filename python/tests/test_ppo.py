@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
@@ -73,6 +74,35 @@ def test_ppo_update_returns_metrics_and_changes_parameters() -> None:
     )
 
 
+def test_ppo_update_rejects_non_finite_rollout_values() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    ppo = PPO(model, TrainConfig(algorithm="ppo", epochs=1, minibatch_size=1))
+    buffer = RolloutBuffer(
+        capacity=1,
+        num_envs=1,
+        obs_spec={
+            **_obs_spec(),
+            "action": (12,),
+            "action_mask": (N_MOVEMENT_X + N_AIM_Y + N_BUTTONS + N_DURATION,),
+        },
+    )
+    buffer.add(
+        obs=_numpy_obs(0),
+        action=np.zeros((12,), dtype=np.int64),
+        log_prob=np.array([0.0], dtype=np.float32),
+        value=np.array([0.0], dtype=np.float32),
+        reward=np.array([0.0], dtype=np.float32),
+        done=np.array([False]),
+        truncated=np.array([False]),
+        action_mask=np.ones((_mask_dim(),), dtype=bool),
+    )
+    buffer.compute_returns(np.array([0.0], dtype=np.float32), gamma=0.99, gae_lambda=0.95)
+    buffer.returns[0, 0] = np.nan
+
+    with pytest.raises(ValueError, match="non-finite"):
+        ppo.update(buffer)
+
+
 def _obs_spec() -> dict[str, tuple[int, ...]]:
     return {
         "global": (2,),
@@ -98,3 +128,7 @@ def _torch_obs(obs: dict[str, np.ndarray]) -> dict[str, torch.Tensor]:
         "entities": torch.as_tensor(obs["entities"][None, :, :]),
         "entity_mask": torch.as_tensor(obs["entity_mask"][None, :]),
     }
+
+
+def _mask_dim() -> int:
+    return N_MOVEMENT_X + N_AIM_Y + N_BUTTONS + N_DURATION

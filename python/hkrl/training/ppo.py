@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from torch import Tensor, nn
 
@@ -155,6 +156,7 @@ class _TensorBatch:
 
 def _tensor_batch(buffer: RolloutBuffer, device: torch.device) -> _TensorBatch:
     batch = buffer.to_batch(policy_version=0)
+    _require_finite_batch(batch)
     obs = {
         "global": _flatten_time_env(batch.obs_global, device, dtype=torch.float32),
         "player": _flatten_time_env(batch.obs_player, device, dtype=torch.float32),
@@ -205,3 +207,22 @@ def _model_device(model: ActorCritic) -> torch.device:
         return next(model.parameters()).device
     except StopIteration:
         return torch.device("cpu")
+
+
+def _require_finite_batch(batch: object) -> None:
+    for field in _FINITE_BATCH_FIELDS:
+        if not np.isfinite(np.asarray(getattr(batch, field))).all():
+            raise ValueError(f"rollout field {field!r} contains non-finite values")
+
+
+_FINITE_BATCH_FIELDS: tuple[str, ...] = (
+    "obs_global",
+    "obs_player",
+    "obs_entities",
+    "log_probs",
+    "values",
+    "advantages",
+    "returns",
+    "rewards",
+    "prev_rewards",
+)

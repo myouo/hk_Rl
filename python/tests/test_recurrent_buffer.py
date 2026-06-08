@@ -153,6 +153,15 @@ def test_recurrent_buffer_rejects_overfill() -> None:
         buffer.add(**_transition(1))
 
 
+def test_recurrent_buffer_rejects_non_finite_rnn_state() -> None:
+    buffer = _tiny_buffer(capacity=1)
+    transition = _transition(0)
+    transition["rnn_state"] = np.array([[[np.nan, 0.0]]], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        buffer.add(**transition)
+
+
 def _tiny_buffer(capacity: int, sequence_length: int = 1) -> RecurrentRolloutBuffer:
     return RecurrentRolloutBuffer(
         capacity=capacity,

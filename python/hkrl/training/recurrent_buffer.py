@@ -18,6 +18,7 @@ from hkrl.training.rollout_buffer import (
     RolloutBatch,
     _env_array,
     _flat_env_array,
+    _require_finite,
     _shape_from_spec,
 )
 
@@ -147,6 +148,8 @@ class RecurrentRolloutBuffer:
             self.num_envs,
         ).astype(np.int64)
         self.rnn_states[idx] = _copy_rnn_state(transition.get("rnn_state"))
+        _require_finite_stored_transition(self, idx)
+        _require_finite_rnn_state("rnn_state", self.rnn_states[idx])
 
         self.pos += 1
         self._full = self.pos >= self.capacity
@@ -165,10 +168,13 @@ class RecurrentRolloutBuffer:
             gamma=gamma,
             gae_lambda=gae_lambda,
         )
+        _require_finite("advantages", self.advantages[:length])
+        _require_finite("returns", self.returns[:length])
 
     def to_batch(self, policy_version: int) -> RolloutBatch:
         """Return a flat RolloutBatch view for logging/upload boundaries."""
         length = self._length()
+        _require_finite_stored_window(self, length)
         return RolloutBatch(
             obs_global=self.obs_global[:length].copy(),
             obs_player=self.obs_player[:length].copy(),
@@ -318,6 +324,18 @@ class RecurrentRolloutBuffer:
                 _select_rnn_state(self.rnn_states[input_start], env_idx, self.num_envs)
             )
 
+        stacked_rnn_state = _stack_rnn_states(rnn_states)
+        _require_finite_sequence_arrays(
+            obs=obs,
+            old_log_probs=old_log_probs,
+            old_values=old_values,
+            advantages=advantages,
+            returns=returns,
+            rewards=rewards,
+            prev_rewards=prev_rewards,
+            rnn_state=stacked_rnn_state,
+        )
+
         return RecurrentSequenceBatch(
             obs=obs,
             actions=actions,
@@ -331,7 +349,7 @@ class RecurrentRolloutBuffer:
             action_masks=action_masks,
             prev_actions=prev_actions,
             prev_rewards=prev_rewards,
-            rnn_state=_stack_rnn_states(rnn_states),
+            rnn_state=stacked_rnn_state,
             loss_mask=loss_mask,
             episode_ids=episode_ids,
             task_ids=task_ids,
@@ -394,3 +412,61 @@ def _time_rnn_states(states: list[Any]) -> np.ndarray | None:
             "use RecurrentPPO sequence batches for LSTM states"
         )
     return np.stack([np.asarray(state) for state in states], axis=0)
+
+
+def _require_finite_stored_transition(buffer: RecurrentRolloutBuffer, idx: int) -> None:
+    for field in _FINITE_STORED_FIELDS:
+        _require_finite(field, getattr(buffer, field)[idx])
+
+
+def _require_finite_stored_window(buffer: RecurrentRolloutBuffer, length: int) -> None:
+    for field in (*_FINITE_STORED_FIELDS, "advantages", "returns"):
+        _require_finite(field, getattr(buffer, field)[:length])
+    for idx, state in enumerate(buffer.rnn_states[:length]):
+        _require_finite_rnn_state(f"rnn_states[{idx}]", state)
+
+
+def _require_finite_sequence_arrays(
+    *,
+    obs: dict[str, np.ndarray],
+    old_log_probs: np.ndarray,
+    old_values: np.ndarray,
+    advantages: np.ndarray,
+    returns: np.ndarray,
+    rewards: np.ndarray,
+    prev_rewards: np.ndarray,
+    rnn_state: Any,
+) -> None:
+    for name in ("global", "player", "entities"):
+        _require_finite(f"obs.{name}", obs[name])
+    for name, array in (
+        ("old_log_probs", old_log_probs),
+        ("old_values", old_values),
+        ("advantages", advantages),
+        ("returns", returns),
+        ("rewards", rewards),
+        ("prev_rewards", prev_rewards),
+    ):
+        _require_finite(name, array)
+    _require_finite_rnn_state("rnn_state", rnn_state)
+
+
+def _require_finite_rnn_state(field: str, state: Any) -> None:
+    if state is None:
+        return
+    if isinstance(state, tuple):
+        for idx, part in enumerate(state):
+            _require_finite_rnn_state(f"{field}[{idx}]", part)
+        return
+    _require_finite(field, state)
+
+
+_FINITE_STORED_FIELDS: tuple[str, ...] = (
+    "obs_global",
+    "obs_player",
+    "obs_entities",
+    "log_probs",
+    "values",
+    "rewards",
+    "prev_rewards",
+)

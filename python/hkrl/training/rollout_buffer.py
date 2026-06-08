@@ -120,6 +120,7 @@ class RolloutBuffer:
             transition.get("task_id", np.zeros((self.num_envs,), dtype=np.int64)),
             self.num_envs,
         ).astype(np.int64)
+        _require_finite_stored_transition(self, idx)
 
         self.pos += 1
         self._full = self.pos >= self.capacity
@@ -138,9 +139,12 @@ class RolloutBuffer:
             gamma=gamma,
             gae_lambda=gae_lambda,
         )
+        _require_finite("advantages", self.advantages[:length])
+        _require_finite("returns", self.returns[:length])
 
     def to_batch(self, policy_version: int) -> RolloutBatch:
         length = self._length()
+        _require_finite_stored_window(self, length)
         return RolloutBatch(
             obs_global=self.obs_global[:length].copy(),
             obs_player=self.obs_player[:length].copy(),
@@ -204,3 +208,29 @@ def _flat_env_array(value: Any, num_envs: int) -> np.ndarray:
     if array.shape != (num_envs,):
         raise ValueError(f"value must have shape ({num_envs},), got {array.shape}")
     return array
+
+
+def _require_finite(field: str, array: Any) -> None:
+    if not np.isfinite(np.asarray(array)).all():
+        raise ValueError(f"{field} contains non-finite values")
+
+
+def _require_finite_stored_transition(buffer: RolloutBuffer, idx: int) -> None:
+    for field in _FINITE_STORED_FIELDS:
+        _require_finite(field, getattr(buffer, field)[idx])
+
+
+def _require_finite_stored_window(buffer: RolloutBuffer, length: int) -> None:
+    for field in (*_FINITE_STORED_FIELDS, "advantages", "returns"):
+        _require_finite(field, getattr(buffer, field)[:length])
+
+
+_FINITE_STORED_FIELDS: tuple[str, ...] = (
+    "obs_global",
+    "obs_player",
+    "obs_entities",
+    "log_probs",
+    "values",
+    "rewards",
+    "prev_rewards",
+)
