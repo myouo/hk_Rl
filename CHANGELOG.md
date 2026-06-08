@@ -97,6 +97,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod observation snapshots now carry structured EntityObservation records,
   stable entity id registry plumbing, snapshot-to-FlatBuffers encoding, and
   StepController observation collection for the Phase 4 entity-list path.
+- Mod SnapshotRecorder now appends enabled snapshot JSONL lines to disk for
+  replay/regression capture plumbing.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
