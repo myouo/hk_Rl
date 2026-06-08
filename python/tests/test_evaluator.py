@@ -39,7 +39,11 @@ def test_evaluator_runs_fixed_seed_episodes_and_aggregates_metrics() -> None:
     assert metrics["episode_length"] == 2.0
     assert metrics["damage_dealt"] == 3.0
     assert metrics["damage_taken"] == 1.0
+    assert metrics["heal_count"] == 1.0
+    assert metrics["heal_amount"] == 1.0
     assert metrics["invalid_action_ratio"] == 0.25
+    assert metrics["death_rate"] == 0.5
+    assert metrics["death_reason"] == 1.0
     assert metrics["time_to_kill"] == 2.0
     assert made_envs[0].closed
 
@@ -81,6 +85,7 @@ class FakeEvalEnv:
         events = []
         if self.step_count == 1:
             events.append(protocol.RewardEvent(protocol.RewardEventKind.DAMAGE_DEALT, amount=1.0))
+            events.append(protocol.RewardEvent(protocol.RewardEventKind.HEAL, amount=1.0))
         if self.step_count >= 2:
             if self.seed % 2 == 0:
                 events.extend(

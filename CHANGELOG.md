@@ -112,6 +112,8 @@ the project version tracks the **schema_version** + roadmap phase.
   and attacks the nearest boss/entity from structured observations.
 - Evaluator now runs fixed-seed task episodes through an injected eval env factory,
   aggregates shaping-free metrics, and reports win-rate regression deltas.
+- Evaluator now aggregates heal count/amount, death rate, and death reason from
+  reward events alongside win/damage/invalid-action metrics.
 - TaskSampler now provides seeded weighted task sampling with mastered-task replay
   and win-rate based reweighting for anti-forgetting curricula.
 - Curriculum now exposes active task stages and advances when all active tasks
