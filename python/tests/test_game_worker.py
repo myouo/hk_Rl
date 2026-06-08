@@ -30,6 +30,45 @@ def test_action_tensor_to_env_action_without_macro() -> None:
     assert "macro" not in env_action
 
 
+def test_action_tensor_to_env_action_rejects_non_finite_values() -> None:
+    action = np.zeros((12,), dtype=np.float32)
+    action[0] = np.nan
+
+    with pytest.raises(ValueError, match="non-finite"):
+        action_tensor_to_env_action(action, enable_macro=False)
+
+
+def test_action_tensor_to_env_action_rejects_out_of_range_components() -> None:
+    action = np.zeros((12,), dtype=np.int64)
+    action[0] = 3
+
+    with pytest.raises(ValueError, match="movement_x"):
+        action_tensor_to_env_action(action, enable_macro=False)
+
+
+def test_action_tensor_to_env_action_rejects_macro_out_of_range() -> None:
+    action = np.zeros((13,), dtype=np.int64)
+    action[-1] = 3
+
+    with pytest.raises(ValueError, match="macro"):
+        action_tensor_to_env_action(action, enable_macro=True, n_macros=2)
+
+
+def test_game_worker_rejects_non_finite_policy_outputs_before_env_step() -> None:
+    env = FakeEnv()
+    model = NonFiniteActModel()
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+    )
+
+    with pytest.raises(ValueError, match="worker log_prob"):
+        worker.collect_rollout()
+
+    assert env.actions == []
+
+
 def test_game_worker_collect_rollout_returns_batch() -> None:
     env = FakeEnv()
     model = MlpActorCritic(
@@ -463,6 +502,43 @@ class EnvWrapper:
         self, action: dict[str, Any]
     ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         return self.env.step(action)
+
+
+class NonFiniteActModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(()))
+
+    def initial_state(
+        self,
+        batch_size: int,
+        device: torch.device | None = None,
+    ) -> None:
+        return None
+
+    def forward(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[None, torch.Tensor, None]:
+        del rnn_state, action_mask
+        batch_size = obs["global"].shape[0]
+        return None, self.weight.expand(batch_size), None
+
+    def act(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, None]:
+        del rnn_state, action_mask, deterministic
+        batch_size = obs["global"].shape[0]
+        action = torch.zeros((batch_size, 12), dtype=torch.long)
+        log_prob = self.weight * torch.full((batch_size,), float("nan"))
+        value = self.weight.expand(batch_size)
+        return action, log_prob, value, None
 
 
 class AdvancingClock:

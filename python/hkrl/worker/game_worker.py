@@ -17,7 +17,8 @@ import torch
 
 from hkrl.models.base import ActorCritic
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
-from hkrl.spaces import N_BUTTONS, action_mask_layout
+from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X, action_mask_layout
+from hkrl.training.numerics import require_finite_tensor
 from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
@@ -162,8 +163,14 @@ class GameWorker:
                 rnn_state=rnn_state,
                 action_mask=action_mask_tensor,
             )
+            require_finite_tensor("worker log_prob", log_prob)
+            require_finite_tensor("worker value", value)
             action_array = action.detach().cpu().numpy()
-            env_action = action_tensor_to_env_action(action[0], enable_macro=self.enable_macro)
+            env_action = action_tensor_to_env_action(
+                action[0],
+                enable_macro=self.enable_macro,
+                n_macros=self.n_macros,
+            )
             next_obs, reward, terminated, truncated, next_info = self.env.step(env_action)
 
             self.buffer.add(
@@ -349,6 +356,7 @@ class GameWorker:
                     device=self.device,
                 ),
             )
+        require_finite_tensor("bootstrap value", value)
         return value.detach().cpu().numpy().reshape(1).astype(np.float32)
 
     def _clear_memory_context(self) -> None:
@@ -362,22 +370,40 @@ class GameWorker:
 
 
 def action_tensor_to_env_action(
-    action: torch.Tensor | np.ndarray, *, enable_macro: bool
+    action: torch.Tensor | np.ndarray, *, enable_macro: bool, n_macros: int = 0
 ) -> dict[str, Any]:
-    values = np.asarray(action.detach().cpu() if isinstance(action, torch.Tensor) else action)
-    values = values.reshape(-1).astype(np.int64, copy=False)
+    if n_macros < 0:
+        raise ValueError("n_macros must be non-negative")
+
+    raw_values = np.asarray(action.detach().cpu() if isinstance(action, torch.Tensor) else action)
+    flat_values = raw_values.reshape(-1)
     expected_dim = ACTION_TENSOR_DIM_NO_MACRO + (1 if enable_macro else 0)
-    if values.shape != (expected_dim,):
-        raise ValueError(f"action tensor shape must be ({expected_dim},), got {values.shape}")
+    if flat_values.shape != (expected_dim,):
+        raise ValueError(f"action tensor shape must be ({expected_dim},), got {flat_values.shape}")
+    try:
+        finite = np.isfinite(flat_values)
+    except TypeError as exc:
+        raise ValueError("action tensor must contain numeric values") from exc
+    if not finite.all():
+        raise ValueError("action tensor contains non-finite values")
+    if not np.equal(flat_values, np.trunc(flat_values)).all():
+        raise ValueError("action tensor values must be integer-coded")
+
+    values = flat_values.astype(np.int64, copy=False)
 
     offset = 0
     movement_x = int(values[offset])
+    _require_discrete_range("movement_x", movement_x, N_MOVEMENT_X)
     offset += 1
     aim_y = int(values[offset])
+    _require_discrete_range("aim_y", aim_y, N_AIM_Y)
     offset += 1
     buttons = values[offset : offset + N_BUTTONS].astype(np.int8, copy=True)
+    if not np.logical_or(buttons == 0, buttons == 1).all():
+        raise ValueError("button action values must be binary")
     offset += N_BUTTONS
     duration = int(values[offset])
+    _require_discrete_range("duration", duration, N_DURATION)
     offset += 1
 
     env_action: dict[str, Any] = {
@@ -387,8 +413,15 @@ def action_tensor_to_env_action(
         "duration": duration,
     }
     if enable_macro:
-        env_action["macro"] = int(values[offset])
+        macro = int(values[offset])
+        _require_discrete_range("macro", macro, n_macros + 1)
+        env_action["macro"] = macro
     return env_action
+
+
+def _require_discrete_range(name: str, value: int, size: int) -> None:
+    if value < 0 or value >= size:
+        raise ValueError(f"{name} must be in [0, {size}), got {value}")
 
 
 def _obs_to_tensor(
