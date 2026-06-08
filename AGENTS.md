@@ -79,7 +79,7 @@ Source of truth for phases: PRD §10. Status tracker below — **update the mark
 when a phase lands.**
 
 ```text
-Phase 0  Modding env + Hello-World mod, read player pos/scene      ◀── CURRENT
+Phase 0  Modding env + Hello-World mod, read player pos/scene
 Phase 1  HKRLMod v0: TCP + step/reset protocol + player+boss obs
 Phase 2  Python Gymnasium env + random/scripted policy + logging
 Phase 3  Single-boss PPO (MLP) baseline + per-boss eval
@@ -87,7 +87,7 @@ Phase 4  Entity-ized observation (entities/projectiles/hazards, stable ids)
 Phase 5  Attention + recurrent policy (entity encoder + GRU/LSTM)
 Phase 6  Local inference + remote training (worker/learner/checkpoints)
 Phase 7  Multi-boss curriculum + anti-forgetting (per-boss eval, replay)
-Phase 8  Multi-instance scale-out + monitoring + crash recovery
+Phase 8  Multi-instance scale-out + monitoring + crash recovery     ◀── CURRENT
 ```
 
 **Implementation priority (PRD §14):**
