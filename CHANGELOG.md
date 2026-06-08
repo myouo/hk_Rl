@@ -58,6 +58,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod StepController now drains inbound requests, dispatches reset/step/task/ping
   commands, advances lifecycle, applies running actions, drains reward events,
   computes action masks, and enqueues StepResponse frames.
+- HKRLEnvMod now starts the TCP server, wires StepController into the persistent
+  FixedUpdate driver, and disposes transport resources on driver destruction.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
