@@ -140,6 +140,33 @@ def test_run_coordinator_applies_eval_metrics_to_sampler(tmp_path: Path) -> None
     assert summary["sampler_weights"]["hornet_protector_attuned"] == pytest.approx(0.8)
 
 
+def test_run_coordinator_accepts_per_boss_win_rate_metrics(tmp_path: Path) -> None:
+    module = _load_script("run_coordinator.py")
+    root = Path(__file__).parents[2]
+    eval_metrics = tmp_path / "eval.json"
+    eval_metrics.write_text(
+        '{"metrics":{"gruz_mother":{"per_boss_win_rate":0.25}}}\n',
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        tasks=[str(root / "configs/tasks/gruz_mother.yaml")],
+        bind="127.0.0.1:0",
+        num_workers=1,
+        worker_ids=None,
+        heartbeat_timeout_s=None,
+        heartbeat_jsonl=None,
+        eval_metrics=str(eval_metrics),
+        seed=0,
+        dry_run=True,
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["eval_winrates"] == {"gruz_mother": 0.25}
+    assert summary["sampler_weights"]["gruz_mother"] == pytest.approx(0.75)
+
+
 def test_run_coordinator_rejects_duplicate_worker_ids() -> None:
     module = _load_script("run_coordinator.py")
     root = Path(__file__).parents[2]

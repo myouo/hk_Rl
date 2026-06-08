@@ -167,6 +167,8 @@ per-worker records.
 (`{"metrics": {"task_id": {"win_rate": ...}}}` or the raw metrics object),
 updates `TaskSampler` weights toward weaker tasks, and exposes the resulting
 weights/mastered-task set in the JSON summary.
+It also accepts `per_boss_win_rate` when a metrics pipeline keeps only the
+canonical per-boss evaluator key.
 
 ## 9. PyTorch + CUDA note
 

@@ -141,9 +141,10 @@ def _load_eval_winrates(path: str | None) -> dict[str, float]:
     for task_id, values in metrics.items():
         if not isinstance(values, Mapping):
             continue
-        if "win_rate" not in values:
+        winrate = values.get("win_rate", values.get("per_boss_win_rate"))
+        if winrate is None:
             continue
-        winrates[str(task_id)] = float(values["win_rate"])
+        winrates[str(task_id)] = float(winrate)
     return winrates
 
 
