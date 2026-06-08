@@ -42,6 +42,8 @@ def test_evaluator_runs_fixed_seed_episodes_and_aggregates_metrics() -> None:
     assert metrics["episode_length"] == 2.0
     assert metrics["damage_dealt"] == 3.0
     assert metrics["damage_taken"] == 1.0
+    assert metrics["per_boss_win_rate"] == 0.5
+    assert metrics["per_boss_damage_ratio"] == 1.0 / 3.0
     assert metrics["heal_count"] == 1.0
     assert metrics["heal_amount"] == 1.0
     assert metrics["invalid_action_ratio"] == 0.25

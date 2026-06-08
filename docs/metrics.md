@@ -31,6 +31,9 @@ Decisions are driven by **shaping-free** metrics, in priority order:
 The evaluator ([`../python/hkrl/eval/evaluator.py`](../python/hkrl/eval/evaluator.py))
 computes these on fixed seeds/tasks, isolated from training, to catch the
 "reward up, win rate down" failure (PRD §9.4).
+Because evaluator output is keyed by task/boss, each task record includes
+`per_boss_win_rate` as an alias of `win_rate` and `per_boss_damage_ratio` as
+`damage_taken / damage_dealt` with a zero value when no damage was dealt.
 `scripts/run_eval.py --replay-jsonl FILE` can additionally emit per-step replay
 records with task/seed/episode/step, action, reward, terminal flags, and
 event-derived metrics. Replay JSONL is debugging evidence; capability decisions

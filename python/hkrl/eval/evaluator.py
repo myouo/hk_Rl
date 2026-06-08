@@ -312,18 +312,23 @@ def _event_aux_int(event: Any) -> int:
 def _aggregate(episodes: Sequence[_EpisodeResult]) -> dict[str, float]:
     wins = [episode for episode in episodes if episode.won]
     deaths = [episode for episode in episodes if episode.death_reason]
+    win_rate = _mean(float(episode.won) for episode in episodes)
+    damage_taken = _mean(episode.damage_taken for episode in episodes)
+    damage_dealt = _mean(episode.damage_dealt for episode in episodes)
     return {
-        "win_rate": _mean(float(episode.won) for episode in episodes),
+        "win_rate": win_rate,
         "episode_reward": _mean(episode.reward for episode in episodes),
         "episode_length": _mean(float(episode.length) for episode in episodes),
-        "damage_taken": _mean(episode.damage_taken for episode in episodes),
-        "damage_dealt": _mean(episode.damage_dealt for episode in episodes),
+        "damage_taken": damage_taken,
+        "damage_dealt": damage_dealt,
         "heal_count": _mean(float(episode.heal_count) for episode in episodes),
         "heal_amount": _mean(episode.heal_amount for episode in episodes),
         "invalid_action_ratio": _mean(episode.invalid_action_ratio for episode in episodes),
         "death_rate": _mean(float(episode.death_reason != 0) for episode in episodes),
         "death_reason": _mean(float(episode.death_reason) for episode in deaths),
         "time_to_kill": _mean(episode.time_to_kill for episode in wins),
+        "per_boss_win_rate": win_rate,
+        "per_boss_damage_ratio": _safe_ratio(damage_taken, damage_dealt),
         "termination_rate": _mean(float(episode.terminated) for episode in episodes),
         "truncation_rate": _mean(float(episode.truncated) for episode in episodes),
     }
@@ -334,6 +339,12 @@ def _mean(values: Any) -> float:
     if not items:
         return 0.0
     return float(sum(items) / len(items))
+
+
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    if denominator <= 0.0:
+        return 0.0
+    return float(numerator / denominator)
 
 
 def _jsonable(value: Any) -> Any:

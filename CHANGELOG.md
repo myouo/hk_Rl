@@ -106,6 +106,8 @@ the project version tracks the **schema_version** + roadmap phase.
   instead of silently dropping them on the APPO upload path.
 - Canonical metric definitions now include per-boss evaluator metrics, and
   EpisodeStats records heal amount alongside heal count.
+- Evaluator task metrics now emit `per_boss_win_rate` and
+  `per_boss_damage_ratio` directly for dashboard consumers.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
