@@ -7,24 +7,115 @@ worker crash must not stall training — PRD Phase 8 milestone).
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
 from hkrl.coordinator.task_sampler import TaskSampler
+
+
+@dataclass
+class WorkerRecord:
+    worker_id: str
+    info: dict[str, object]
+    last_heartbeat: float
+    alive: bool = True
+    assigned_task: str | None = None
+    lost_at: float | None = None
+    metrics: dict[str, float] = field(default_factory=dict)
 
 
 class Coordinator:
     """Top-level orchestrator for distributed sampling/training."""
 
-    def __init__(self, task_sampler: TaskSampler, bind: str = "0.0.0.0:5610") -> None:
+    def __init__(
+        self,
+        task_sampler: TaskSampler,
+        bind: str = "0.0.0.0:5610",
+        heartbeat_timeout_s: float = 30.0,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        if heartbeat_timeout_s <= 0:
+            raise ValueError("heartbeat_timeout_s must be positive")
+
         self.task_sampler = task_sampler
         self.bind = bind
-        self._workers: dict[str, object] = {}
-        # TODO(phase-8): registry, heartbeat tracking, crash recovery.
+        self.heartbeat_timeout_s = heartbeat_timeout_s
+        self._clock = clock or time.monotonic
+        self._workers: dict[str, WorkerRecord] = {}
 
     def register_worker(self, worker_id: str, info: dict[str, object]) -> None:
-        raise NotImplementedError  # TODO(phase-8)
+        if not worker_id:
+            raise ValueError("worker_id must not be empty")
+
+        now = self._clock()
+        existing = self._workers.get(worker_id)
+        if existing is None:
+            self._workers[worker_id] = WorkerRecord(
+                worker_id=worker_id,
+                info=dict(info),
+                last_heartbeat=now,
+            )
+            return
+
+        existing.info = dict(info)
+        existing.last_heartbeat = now
+        existing.alive = True
+        existing.lost_at = None
 
     def assign_task(self, worker_id: str) -> str:
         """Return a task_id for the worker (curriculum/balanced sampling)."""
-        raise NotImplementedError  # TODO(phase-8)
+        worker = self._require_worker(worker_id)
+        if not worker.alive:
+            raise RuntimeError(f"worker {worker_id!r} is not alive")
+        task_id = self.task_sampler.sample()
+        worker.assigned_task = task_id
+        return task_id
 
     def on_worker_lost(self, worker_id: str) -> None:
-        raise NotImplementedError  # TODO(phase-8)
+        worker = self._require_worker(worker_id)
+        if not worker.alive:
+            return
+        worker.alive = False
+        worker.lost_at = self._clock()
+
+    def heartbeat(
+        self,
+        worker_id: str,
+        *,
+        info: dict[str, object] | None = None,
+        metrics: dict[str, float] | None = None,
+    ) -> None:
+        worker = self._require_worker(worker_id)
+        if info is not None:
+            worker.info.update(info)
+        if metrics is not None:
+            worker.metrics.update(metrics)
+        worker.last_heartbeat = self._clock()
+        worker.alive = True
+        worker.lost_at = None
+
+    def expire_workers(self) -> list[str]:
+        now = self._clock()
+        expired: list[str] = []
+        for worker_id, worker in self._workers.items():
+            if worker.alive and now - worker.last_heartbeat > self.heartbeat_timeout_s:
+                worker.alive = False
+                worker.lost_at = now
+                expired.append(worker_id)
+        return expired
+
+    def active_workers(self) -> list[str]:
+        return sorted(worker_id for worker_id, worker in self._workers.items() if worker.alive)
+
+    def lost_workers(self) -> list[str]:
+        return sorted(worker_id for worker_id, worker in self._workers.items() if not worker.alive)
+
+    def worker_record(self, worker_id: str) -> WorkerRecord:
+        return self._require_worker(worker_id)
+
+    def _require_worker(self, worker_id: str) -> WorkerRecord:
+        try:
+            return self._workers[worker_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown worker {worker_id!r}") from exc
