@@ -6,7 +6,7 @@ import random
 
 import numpy as np
 import pytest
-from hkrl.utils.metrics import CORE_METRICS, RunningMeter
+from hkrl.utils.metrics import CORE_METRICS, EpisodeStats, RunningMeter
 from hkrl.utils.seeding import seed_everything
 
 
@@ -46,5 +46,24 @@ def test_running_meter_rejects_non_positive_window() -> None:
 
 
 def test_core_metrics_include_evaluator_outcomes() -> None:
-    for key in ("heal_amount", "death_rate", "death_reason", "time_to_kill"):
+    for key in (
+        "heal_amount",
+        "death_rate",
+        "death_reason",
+        "time_to_kill",
+        "per_boss_win_rate",
+        "per_boss_damage_ratio",
+    ):
         assert key in CORE_METRICS
+
+
+def test_episode_stats_tracks_heal_amount() -> None:
+    stats = EpisodeStats(
+        episode_id=3,
+        task_id="boss",
+        heal_count=2,
+        heal_amount=4.0,
+    )
+
+    assert stats.heal_count == 2
+    assert stats.heal_amount == 4.0

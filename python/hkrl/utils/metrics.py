@@ -31,6 +31,8 @@ CORE_METRICS: tuple[str, ...] = (
     "reset_success_rate",
     "reset_duration",
     "worker_crash_count",
+    "per_boss_win_rate",
+    "per_boss_damage_ratio",
 )
 
 
@@ -46,6 +48,7 @@ class EpisodeStats:
     damage_dealt: float = 0.0
     damage_taken: float = 0.0
     heal_count: int = 0
+    heal_amount: float = 0.0
     invalid_actions: int = 0
     death_reason: int = 0
     extra: dict[str, float] = field(default_factory=dict)

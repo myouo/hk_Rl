@@ -104,6 +104,8 @@ the project version tracks the **schema_version** + roadmap phase.
   episode boundaries so hidden state does not leak across resets.
 - Recurrent flat RolloutBatch export now rejects LSTM tuple states explicitly
   instead of silently dropping them on the APPO upload path.
+- Canonical metric definitions now include per-boss evaluator metrics, and
+  EpisodeStats records heal amount alongside heal count.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
