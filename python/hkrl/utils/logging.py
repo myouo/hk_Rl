@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 from pathlib import Path
-from typing import IO, Any, Protocol
+from typing import IO, Any, Protocol, TextIO
 
 
 class MetricSink(Protocol):
@@ -122,8 +123,49 @@ class CsvSink:
         self._writer.writerow(row)
 
 
+class StdoutSink:
+    """Write scalar and episode records as JSON lines to a text stream."""
+
+    def __init__(self, stream: TextIO | None = None) -> None:
+        self._stream = stream or sys.stdout
+        self._closed = False
+
+    def log_scalar(self, key: str, value: float, step: int) -> None:
+        self._write(
+            {
+                "type": "scalar",
+                "key": key,
+                "value": float(value),
+                "step": int(step),
+            }
+        )
+
+    def log_episode(self, record: dict[str, Any]) -> None:
+        payload = dict(record)
+        payload.setdefault("type", "episode")
+        self._write(payload)
+
+    def flush(self) -> None:
+        if not self._closed:
+            self._stream.flush()
+
+    def close(self) -> None:
+        self._closed = True
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        if self._closed:
+            raise RuntimeError("StdoutSink is closed")
+        self._stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+
+
 def make_sink(kind: str = "jsonl", **kwargs: Any) -> MetricSink:
-    """Factory for a metric sink. Supports ``jsonl`` and ``csv``."""
+    """Factory for a metric sink. Supports ``stdout``, ``jsonl``, and ``csv``."""
+    if kind == "stdout":
+        stream = kwargs.pop("stream", None)
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs))
+            raise TypeError(f"unknown StdoutSink kwargs: {unknown}")
+        return StdoutSink(stream=stream)
     if kind == "jsonl":
         path = kwargs.pop("path", None)
         if kwargs:

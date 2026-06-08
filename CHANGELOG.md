@@ -63,6 +63,7 @@ the project version tracks the **schema_version** + roadmap phase.
 - JSONL metric sink for scalar and per-episode training/evaluation records.
 - CSV metric sink with a stable scalar/episode envelope and optional custom
   fieldnames for fixed wide exports.
+- Stdout metric sink for JSON-line scalar and episode records.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
 - `hkrl`/`scripts/train.py` now expose `--metrics-kind {jsonl,csv}` so smoke and

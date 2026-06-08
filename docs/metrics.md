@@ -46,4 +46,5 @@ optional via the `logging` extra). Every episode emits a complete JSONL/CSV
 record (PRD §2.1, Phase 2 milestone): reward, damage dealt/taken, win/loss,
 length, SPS, reset status. The default CSV sink uses stable
 `type,step,key,value,record` columns; episode payloads are stored as compact JSON
-in `record`, while custom `fieldnames` can produce a fixed wide export.
+in `record`, while custom `fieldnames` can produce a fixed wide export. The
+stdout sink emits the same scalar/episode payloads as JSON lines.
