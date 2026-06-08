@@ -48,8 +48,7 @@ class EpisodeStats:
 
 
 class RunningMeter:
-    """Windowed mean/EMA for streaming scalars.
-    """
+    """Windowed mean/EMA for streaming scalars."""
 
     def __init__(self, window: int = 100) -> None:
         if window <= 0:

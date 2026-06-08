@@ -9,7 +9,7 @@ PY_SCHEMA := python/hkrl/schema
 CS_SCHEMA := mod/HKRLEnvMod/Schema
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install lint typecheck test fmt clean smoke
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install lint format-check typecheck test fmt clean smoke
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -30,6 +30,9 @@ install: ## Editable install with dev extras
 
 lint: ## ruff lint
 	cd $(PKG_DIR) && ruff check .
+
+format-check: ## ruff format check
+	cd $(PKG_DIR) && ruff format --check .
 
 fmt: ## ruff format
 	cd $(PKG_DIR) && ruff format .

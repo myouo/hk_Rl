@@ -1,5 +1,7 @@
 # HK-RL — Hollow Knight Reinforcement Learning
 
+[![CI](https://github.com/myouo/hk_Rl/actions/workflows/ci.yml/badge.svg)](https://github.com/myouo/hk_Rl/actions/workflows/ci.yml)
+
 > 从 Hollow Knight Mod 获取结构化游戏状态，构建可扩展、高性能的强化学习环境，
 > 训练小骑士在 Godhome / Hall of Gods 中击败 Boss。
 
@@ -20,8 +22,8 @@ Hollow Knight + HKRLEnvMod (C#)        Game PC                  Remote GPU
   ├─ Observation 采集                   ┌──────────────┐         ┌──────────────┐
   ├─ Action 应用 (FixedUpdate)   <───>  │ GameWorker   │ ──────> │ Learner      │
   ├─ Reward events 上报                 │ 本地推理      │ rollout │ PPO/APPO     │
-  └─ Clean Episode Lifecycle            │ Gym Env      │ <────── │ checkpoint   │
-       │ FlatBuffers over TCP/SHM       └──────────────┘ weights └──────────────┘
+  └─ Clean Episode Lifecycle           │ Gym Env      │ <────── │ checkpoint   │
+       │ FlatBuffers over TCP/SHM      └──────────────┘ weights └──────────────┘
        └────────────────────────────────────┘
 ```
 
@@ -57,19 +59,32 @@ scripts/   codegen / train / worker / learner / eval 入口
 ## 快速开始（占位骨架阶段）
 
 ```bash
-# 1. 安装 Python 依赖（开发态）
-pip install -e "python[dev]"
+# 1. 创建并启用 Conda 开发环境
+conda env create -f environment.yml
+conda activate hkrl
 
 # 2. 生成 schema 绑定（需 flatc）
 make gen-schema
 
 # 3. 静态检查与测试
+make format-check
 make lint
+make typecheck
 make test
 
 # 4. 本地 smoke（待 Phase 2 实现）
 python scripts/train.py --config configs/train/ppo_mlp.yaml
 ```
+
+## CI
+
+GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
+[`environment.yml`](./environment.yml) 创建 `hkrl` Conda 环境，并执行：
+`make format-check`、`make lint`、`make typecheck`、`make test`。
+
+云端 CI 当前只覆盖 Python 包。C# mod 构建需要本机 Hollow Knight Managed
+程序集与 HK Modding API 路径，按 [`docs/mod_dev.md`](./docs/mod_dev.md) 在
+配置游戏安装的机器上验证。
 
 > ⚠️ 当前为**接口级占位骨架**：目录、签名、文档与协议已就位，具体实现按 [Roadmap](./AGENTS.md#roadmap) Phase 0→8 推进。
 > Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。
