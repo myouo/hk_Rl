@@ -82,6 +82,9 @@ the project version tracks the **schema_version** + roadmap phase.
   burn-in/padding loss masks, and PPO training metrics.
 - APPO now accepts bounded-staleness RolloutBatches, rejects stale/future policy
   versions, and runs queued PPO-style updates for remote learner intake.
+- APPO now consumes recurrent rollout `rnn_states` from uploaded flat batches so
+  GRU policies train from the same hidden-state context used during worker
+  collection.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

@@ -1,8 +1,8 @@
-"""Asynchronous PPO / IMPALA-style learner (PRD Phase 6/8, §9.5).
+"""Asynchronous PPO-style learner (PRD Phase 6/8, §9.5).
 
 For async multi-worker sampling where rollouts may be off-policy. Filters/
-down-weights batches by ``policy_version`` and applies importance correction
-(V-trace) to tolerate bounded staleness (docs/distributed_training.md §4).
+drops batches by ``policy_version`` and applies clipped PPO importance ratios to
+tolerate bounded staleness (docs/distributed_training.md §4).
 """
 
 from __future__ import annotations
@@ -113,10 +113,12 @@ class APPO:
         action_masks = (
             None if batch.action_masks is None else batch.action_masks.index_select(0, indices)
         )
+        rnn_state = None if batch.rnn_state is None else batch.rnn_state.index_select(1, indices)
 
         log_probs, entropy, values = self.model.evaluate_actions(
             obs,
             actions,
+            rnn_state=rnn_state,
             action_mask=action_masks,
         )
         ratio = torch.exp(log_probs - old_log_probs)
@@ -161,6 +163,7 @@ class APPO:
             _, _, values = self.model.evaluate_actions(
                 batch.obs,
                 batch.actions,
+                rnn_state=batch.rnn_state,
                 action_mask=batch.action_masks,
             )
             target_var = torch.var(batch.returns, unbiased=False)
@@ -180,6 +183,7 @@ class _TensorBatch:
     returns: Tensor
     advantages: Tensor
     action_masks: Tensor | None
+    rnn_state: Tensor | None
 
 
 def _tensor_batch(batches: list[RolloutBatch], device: torch.device) -> _TensorBatch:
@@ -204,6 +208,7 @@ def _tensor_batch(batches: list[RolloutBatch], device: torch.device) -> _TensorB
         returns=_flat_vector(_concat(batches, "returns"), device),
         advantages=_flat_vector(_concat(batches, "advantages"), device),
         action_masks=action_masks,
+        rnn_state=_flatten_rnn_states(batches, device),
     )
 
 
@@ -220,6 +225,22 @@ def _flatten_time_env(array: object, device: torch.device, *, dtype: torch.dtype
 
 def _flat_vector(array: object, device: torch.device) -> Tensor:
     return torch.as_tensor(array, dtype=torch.float32, device=device).reshape(-1)
+
+
+def _flatten_rnn_states(batches: list[RolloutBatch], device: torch.device) -> Tensor | None:
+    states = [batch.rnn_states for batch in batches]
+    if all(state is None for state in states):
+        return None
+    if any(state is None for state in states):
+        raise ValueError("cannot mix RolloutBatches with and without rnn_states")
+
+    array = np.concatenate([np.asarray(state) for state in states], axis=0)
+    if array.ndim != 4:
+        raise ValueError("rnn_states must have shape (time, layers, envs, hidden)")
+
+    time, layers, envs, hidden = array.shape
+    flat = np.transpose(array, (1, 0, 2, 3)).reshape(layers, time * envs, hidden)
+    return torch.as_tensor(flat, dtype=torch.float32, device=device)
 
 
 def _normalize_advantages(advantages: Tensor) -> Tensor:

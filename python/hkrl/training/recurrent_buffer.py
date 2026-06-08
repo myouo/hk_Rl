@@ -178,7 +178,7 @@ class RecurrentRolloutBuffer:
             truncateds=self.truncateds[:length].copy(),
             action_masks=self.action_masks[:length].copy(),
             prev_actions=self.prev_actions[:length].copy(),
-            rnn_states=None,
+            rnn_states=_time_rnn_states(self.rnn_states[:length]),
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
             policy_version=policy_version,
@@ -368,3 +368,13 @@ def _stack_rnn_states(states: list[Any]) -> Any:
             _stack_rnn_states([state[idx] for state in states]) for idx in range(len(first))
         )
     return np.concatenate([np.asarray(state) for state in states], axis=1)
+
+
+def _time_rnn_states(states: list[Any]) -> np.ndarray | None:
+    if not states or all(state is None for state in states):
+        return None
+    if any(state is None for state in states):
+        raise ValueError("cannot mix missing and present rnn_state values")
+    if isinstance(states[0], tuple):
+        return None
+    return np.stack([np.asarray(state) for state in states], axis=0)

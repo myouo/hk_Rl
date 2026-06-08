@@ -38,6 +38,11 @@ episode_ids, task_ids, policy_version
 Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences for
 recurrent training preserve `rnn_states` at sequence boundaries and mask padded
 timesteps.
+When a recurrent worker uploads a flat `RolloutBatch`, `rnn_states` is stored as
+`(time, layers, envs, hidden)` and APPO flattens it to per-sample
+`(layers, batch, hidden)` inputs for one-step actor-critic evaluation. Full
+sequence loss with burn-in/truncated-BPTT remains the responsibility of local
+`RecurrentPPO`.
 `task_ids` are the numeric task `wire_id` values from task YAML, not the
 human-readable task names used in evaluator output.
 
@@ -64,8 +69,10 @@ PPO is sensitive to stale data. Mitigations:
 
 - Every batch carries `policy_version`.
 - **Synchronous PPO:** collect at a fixed version, update together.
-- **Async (APPO/IMPALA):** allow bounded staleness; down-weight or drop batches
-  older than a threshold (V-trace / importance correction).
+- **Async APPO:** allow bounded staleness, drop batches older than the configured
+  threshold, and update with clipped PPO importance ratios over accepted
+  samples.
+- **IMPALA/V-trace:** reserved for a future learner implementation.
 
 ## 5. Components
 

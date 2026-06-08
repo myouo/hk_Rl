@@ -93,7 +93,9 @@ def test_recurrent_buffer_exports_flat_rollout_batch() -> None:
     assert batch.obs_global.shape == (2, 1, 1)
     assert batch.actions.shape == (2, 1)
     assert batch.rewards.shape == (2, 1)
-    assert batch.rnn_states is None
+    assert batch.rnn_states is not None
+    assert batch.rnn_states.shape == (2, 1, 1, 2)
+    np.testing.assert_array_equal(batch.rnn_states, np.zeros((2, 1, 1, 2), dtype=np.float32))
     assert batch.policy_version == 9
 
 
