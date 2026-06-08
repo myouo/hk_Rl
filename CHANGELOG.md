@@ -114,6 +114,8 @@ the project version tracks the **schema_version** + roadmap phase.
   aggregates shaping-free metrics, and reports win-rate regression deltas.
 - Evaluator now aggregates heal count/amount, death rate, and death reason from
   reward events alongside win/damage/invalid-action metrics.
+- Canonical metric keys now include heal amount, death rate/reason, and
+  time-to-kill for evaluator/dashboard consumers.
 - TaskSampler now provides seeded weighted task sampling with mastered-task replay
   and win-rate based reweighting for anti-forgetting curricula.
 - Curriculum now exposes active task stages and advances when all active tasks

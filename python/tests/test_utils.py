@@ -6,7 +6,7 @@ import random
 
 import numpy as np
 import pytest
-from hkrl.utils.metrics import RunningMeter
+from hkrl.utils.metrics import CORE_METRICS, RunningMeter
 from hkrl.utils.seeding import seed_everything
 
 
@@ -43,3 +43,8 @@ def test_running_meter_tracks_windowed_mean_and_ema() -> None:
 def test_running_meter_rejects_non_positive_window() -> None:
     with pytest.raises(ValueError):
         RunningMeter(window=0)
+
+
+def test_core_metrics_include_evaluator_outcomes() -> None:
+    for key in ("heal_amount", "death_rate", "death_reason", "time_to_kill"):
+        assert key in CORE_METRICS

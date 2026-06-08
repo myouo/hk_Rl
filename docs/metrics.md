@@ -7,7 +7,8 @@
 ```text
 episode_reward        win_rate              episode_length
 damage_dealt          damage_taken          heal_count
-death_reason          invalid_action_ratio  action_entropy
+heal_amount           death_rate            death_reason
+time_to_kill          invalid_action_ratio  action_entropy
 policy_kl             value_loss            policy_loss
 explained_variance    SPS                   reset_success_rate
 reset_duration        worker_crash_count
