@@ -78,6 +78,8 @@ the project version tracks the **schema_version** + roadmap phase.
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - CheckpointRegistry now persists versioned torch checkpoints with sha256 hashes
   and reloadable JSONL metadata for worker verification.
+- CheckpointClient now pulls local/file registry checkpoints with sha256
+  verification before loading weights for hot-swaps.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
