@@ -43,6 +43,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "dry_run": True,
         "enable_macro_actions": True,
         "learner": "127.0.0.1:5600",
+        "learner_upload_enabled": True,
         "latest_checkpoint": 1,
         "max_consecutive_failures": 5,
         "model": "entity_attention_gru",
@@ -126,6 +127,40 @@ def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:
     loaded = load_rollout_batch(path)
     assert loaded.policy_version == 4
     np.testing.assert_array_equal(loaded.rewards, np.array([[1.0]], dtype=np.float32))
+
+
+def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None:
+    module = _load_script("run_worker.py")
+    submitted_versions: list[int] = []
+    clients: list[tuple[str, str | None]] = []
+
+    class FakeBatchClient:
+        def __init__(self, endpoint: str, *, auth_token: str | None = None) -> None:
+            clients.append((endpoint, auth_token))
+
+        def submit(self, batch: RolloutBatch) -> bool:
+            submitted_versions.append(batch.policy_version)
+            return True
+
+    monkeypatch.setattr(module, "BatchIntakeClient", FakeBatchClient)
+    written: list[str] = []
+    uploaded: list[bool] = []
+    uploader = module._make_batch_uploader(
+        None,
+        "game-pc-1",
+        written,
+        learner_endpoint="127.0.0.1:5600",
+        auth_token="secret",
+        uploaded=uploaded,
+    )
+    assert uploader is not None
+
+    uploader(_sample_batch(policy_version=7))
+
+    assert clients == [("127.0.0.1:5600", "secret")]
+    assert written == []
+    assert submitted_versions == [7]
+    assert uploaded == [True]
 
 
 def _load_script(name: str) -> ModuleType:

@@ -55,6 +55,11 @@ For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
 loads all `*.npz` batches through `LearnerServer.submit()` before serving one
 update cycle.
+For TCP smoke runs, `scripts/run_learner.py --intake-count N` accepts `N`
+length-prefixed NPZ rollout uploads on `learner.bind` (or `--bind`) before the
+same update cycle, and `scripts/run_worker.py --learner HOST:PORT` sends each
+completed rollout to that intake endpoint. The TCP batch channel is asynchronous
+and carries only completed rollouts, never action-loop inference.
 `scripts/run_learner.py --tasks ...` can infer the learner model's
 `max_entities`, observation tier, macro enablement, and macro count from task
 YAML, and rejects task groups whose model/action layout would not fit a single
@@ -108,6 +113,9 @@ allows private, loopback, or wildcard binds for firewall-scoped LAN deployments.
 Distinct from the env transport. TCP/gRPC/ZeroMQ across machines; Ray actors are
 a future option for the coordinator/worker fabric. Security per PRD §9.10: LAN/
 localhost only, token auth, hash-verified checkpoints, command whitelist.
+The current TCP batch intake uses a length-prefixed JSON header with the
+configured auth token followed by the compressed NPZ `RolloutBatch` payload, and
+returns an ACK that distinguishes accepted vs stale/rejected batches.
 Checkpoint registries and local file checkpoint clients reject index entries
 whose checkpoint path escapes the registry root, so a compromised or malformed
 index cannot redirect workers to arbitrary local files. Evaluator registry loads

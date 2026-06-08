@@ -7,7 +7,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hkrl.training.batch_io import load_rollout_batch, save_rollout_batch
+from hkrl.training.batch_io import (
+    deserialize_rollout_batch,
+    load_rollout_batch,
+    save_rollout_batch,
+    serialize_rollout_batch,
+)
 from hkrl.training.gae import compute_gae
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 
@@ -192,6 +197,20 @@ def test_rollout_batch_npz_roundtrip_with_rnn_state(tmp_path: Path) -> None:
     loaded = load_rollout_batch(path)
 
     assert loaded.policy_version == 10
+    assert loaded.rnn_states is not None
+    np.testing.assert_array_equal(loaded.rnn_states, batch.rnn_states)
+    _assert_batch_arrays_equal(loaded, batch)
+
+
+def test_rollout_batch_memory_roundtrip_with_rnn_state() -> None:
+    batch = _sample_batch(
+        policy_version=11,
+        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 6),
+    )
+
+    loaded = deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+    assert loaded.policy_version == 11
     assert loaded.rnn_states is not None
     np.testing.assert_array_equal(loaded.rnn_states, batch.rnn_states)
     _assert_batch_arrays_equal(loaded, batch)

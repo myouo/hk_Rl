@@ -131,6 +131,22 @@ python scripts/run_learner.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
   --checkpoint-dir checkpoints
+
+# 远程 batch intake smoke：learner 接收 1 个 TCP rollout batch 后更新一次
+export HKRL_AUTH_TOKEN=dev-secret
+python scripts/run_learner.py \
+  --config configs/train/remote_learner.yaml \
+  --tasks configs/tasks/gruz_mother.yaml \
+  --bind 127.0.0.1:5600 \
+  --intake-count 1 \
+  --checkpoint-dir checkpoints
+
+# worker 在本地推理/采样，rollout 满后上传到 learner；也可同时写 --batch-dir 作为本地 spool
+python scripts/run_worker.py \
+  --config configs/train/remote_learner.yaml \
+  --task configs/tasks/gruz_mother.yaml \
+  --learner 127.0.0.1:5600 \
+  --steps 2048
 ```
 
 `--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与

@@ -7,6 +7,7 @@ pickle-free boundary that preserves dtypes and shapes.
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,34 @@ def save_rollout_batch(path: str | Path, batch: RolloutBatch) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp")
+
+    with open(tmp, "wb") as fh:
+        np.savez_compressed(fh, **_batch_payload(batch))
+    tmp.replace(target)
+    return target
+
+
+def load_rollout_batch(path: str | Path) -> RolloutBatch:
+    """Load a RolloutBatch saved by :func:`save_rollout_batch`."""
+    source = Path(path)
+    with np.load(source, allow_pickle=False) as data:
+        return _batch_from_npz(data)
+
+
+def serialize_rollout_batch(batch: RolloutBatch) -> bytes:
+    """Serialize a RolloutBatch to compressed NPZ bytes for network transfer."""
+    buffer = BytesIO()
+    np.savez_compressed(buffer, **_batch_payload(batch))
+    return buffer.getvalue()
+
+
+def deserialize_rollout_batch(payload: bytes) -> RolloutBatch:
+    """Load a RolloutBatch from :func:`serialize_rollout_batch` bytes."""
+    with np.load(BytesIO(payload), allow_pickle=False) as data:
+        return _batch_from_npz(data)
+
+
+def _batch_payload(batch: RolloutBatch) -> dict[str, Any]:
     payload: dict[str, Any] = {field: np.asarray(getattr(batch, field)) for field in _ARRAY_FIELDS}
     payload["batch_format_version"] = np.array([BATCH_FORMAT_VERSION], dtype=np.int32)
     payload["policy_version"] = np.array([batch.policy_version], dtype=np.int64)
@@ -50,29 +79,19 @@ def save_rollout_batch(path: str | Path, batch: RolloutBatch) -> Path:
         if batch.rnn_states is not None
         else np.empty((0,), dtype=np.float32)
     )
-
-    with open(tmp, "wb") as fh:
-        np.savez_compressed(fh, **payload)
-    tmp.replace(target)
-    return target
+    return payload
 
 
-def load_rollout_batch(path: str | Path) -> RolloutBatch:
-    """Load a RolloutBatch saved by :func:`save_rollout_batch`."""
-    source = Path(path)
-    with np.load(source, allow_pickle=False) as data:
-        version = _scalar_int(data, "batch_format_version")
-        if version != BATCH_FORMAT_VERSION:
-            raise ValueError(
-                f"unsupported RolloutBatch format version {version}; "
-                f"expected {BATCH_FORMAT_VERSION}"
-            )
-
-        arrays = {field: _array(data, field) for field in _ARRAY_FIELDS}
-        rnn_states = (
-            _array(data, "rnn_states") if _scalar_bool(data, "rnn_states_present") else None
+def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
+    version = _scalar_int(data, "batch_format_version")
+    if version != BATCH_FORMAT_VERSION:
+        raise ValueError(
+            f"unsupported RolloutBatch format version {version}; expected {BATCH_FORMAT_VERSION}"
         )
-        policy_version = _scalar_int(data, "policy_version")
+
+    arrays = {field: _array(data, field) for field in _ARRAY_FIELDS}
+    rnn_states = _array(data, "rnn_states") if _scalar_bool(data, "rnn_states_present") else None
+    policy_version = _scalar_int(data, "policy_version")
 
     return RolloutBatch(
         obs_global=arrays["obs_global"],

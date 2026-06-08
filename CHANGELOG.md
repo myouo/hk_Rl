@@ -85,6 +85,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - APPO now consumes recurrent rollout `rnn_states` from uploaded flat batches so
   GRU policies train from the same hidden-state context used during worker
   collection.
+- RolloutBatch now supports in-memory NPZ serialization and an authenticated TCP
+  batch intake path from `run_worker --learner` to `run_learner --intake-count`.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

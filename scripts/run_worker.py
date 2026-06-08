@@ -22,10 +22,16 @@ from typing import Any
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
+from hkrl.learner.batch_intake import BatchIntakeClient
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
 from hkrl.transport.factory import make_transport
-from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
+from hkrl.utils.config import (
+    TaskConfig,
+    load_task_config,
+    load_train_config,
+    resolve_auth_token,
+)
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
 from hkrl.worker.game_worker import GameWorker
@@ -39,10 +45,16 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
     p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
-    p.add_argument("--worker-id", default="worker-0", help="stable worker id for batch names")
-    p.add_argument("--steps", type=int, default=None, help="optional finite rollout sample count")
+    p.add_argument(
+        "--worker-id", default="worker-0", help="stable worker id for batch names"
+    )
+    p.add_argument(
+        "--steps", type=int, default=None, help="optional finite rollout sample count"
+    )
     p.add_argument("--max-consecutive-failures", type=int, default=3)
-    p.add_argument("--dry-run", action="store_true", help="validate wiring without env connection")
+    p.add_argument(
+        "--dry-run", action="store_true", help="validate wiring without env connection"
+    )
     return p
 
 
@@ -90,6 +102,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "batch_dir": args.batch_dir,
             "enable_macro_actions": task.action.enable_macro_actions,
             "learner": args.learner,
+            "learner_upload_enabled": args.learner is not None,
             "latest_checkpoint": latest_checkpoint,
             "max_consecutive_failures": args.max_consecutive_failures,
             "model": cfg.model.name,
@@ -106,13 +119,21 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     spooled_batches: list[str] = []
+    uploaded_batches: list[bool] = []
     worker = GameWorker(
         env=env,
         model=model,
         config=cfg,
         checkpoint_client=checkpoint_client,
         learner_endpoint=args.learner,
-        batch_uploader=_make_batch_uploader(args.batch_dir, args.worker_id, spooled_batches),
+        batch_uploader=_make_batch_uploader(
+            args.batch_dir,
+            args.worker_id,
+            spooled_batches,
+            learner_endpoint=args.learner,
+            auth_token=resolve_auth_token(cfg) if args.learner is not None else None,
+            uploaded=uploaded_batches,
+        ),
         task_provider=_make_task_provider(tasks),
         max_consecutive_failures=args.max_consecutive_failures,
     )
@@ -127,6 +148,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "enable_macro_actions": task.action.enable_macro_actions,
             "last_error": worker.last_error,
             "learner": args.learner,
+            "learner_upload_enabled": args.learner is not None,
             "model": cfg.model.name,
             "n_macro_actions": task.action.n_macro_actions,
             "policy_version": worker.policy_version,
@@ -134,6 +156,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "spooled_batches": spooled_batches,
             "task_id": task.task_id,
             "task_ids": [item.task_id for item in tasks],
+            "uploaded_batches": len(uploaded_batches),
             "worker_crash_count": worker.worker_crash_count,
             "worker_id": args.worker_id,
         }
@@ -192,7 +215,9 @@ def _validate_task_layouts(tasks: list[TaskConfig]) -> None:
             raise ValueError("all worker tasks must share action.n_macro_actions")
 
 
-def _make_task_provider(tasks: list[TaskConfig]) -> Callable[[], TaskConfig | None] | None:
+def _make_task_provider(
+    tasks: list[TaskConfig],
+) -> Callable[[], TaskConfig | None] | None:
     if len(tasks) <= 1:
         return None
 
@@ -210,20 +235,37 @@ def _make_batch_uploader(
     batch_dir: str | None,
     worker_id: str,
     written: list[str],
+    *,
+    learner_endpoint: str | None = None,
+    auth_token: str | None = None,
+    uploaded: list[bool] | None = None,
 ) -> Callable[[RolloutBatch], None] | None:
-    if batch_dir is None:
+    if batch_dir is None and learner_endpoint is None:
         return None
 
-    directory = Path(batch_dir)
+    directory = None if batch_dir is None else Path(batch_dir)
+    client = (
+        None
+        if learner_endpoint is None
+        else BatchIntakeClient(learner_endpoint, auth_token=auth_token)
+    )
     safe_worker = _safe_filename_component(worker_id)
     sequence = 0
 
     def upload(batch: RolloutBatch) -> None:
         nonlocal sequence
         sequence += 1
-        path = directory / f"{safe_worker}_{sequence:08d}_v{batch.policy_version:06d}.npz"
-        save_rollout_batch(path, batch)
-        written.append(str(path))
+        if directory is not None:
+            path = (
+                directory
+                / f"{safe_worker}_{sequence:08d}_v{batch.policy_version:06d}.npz"
+            )
+            save_rollout_batch(path, batch)
+            written.append(str(path))
+        if client is not None:
+            accepted = client.submit(batch)
+            if uploaded is not None:
+                uploaded.append(accepted)
 
     return upload
 

@@ -6,7 +6,8 @@ Usage:
 
 Builds the learner core and checkpoint registry. For filesystem smoke tests,
 ``--batch-dir`` ingests NPZ RolloutBatch files through ``LearnerServer.submit``;
-network intake can use the same server method behind an authenticated endpoint.
+``--intake-count`` accepts that many authenticated TCP RolloutBatch uploads
+through the same server method before running one update cycle.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hkrl.learner.batch_intake import BatchIntakeServer
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.learner.learner_server import LearnerServer
 
@@ -28,6 +30,7 @@ from hkrl.utils.config import (
     TaskConfig,
     load_task_config,
     load_train_config,
+    resolve_auth_token,
     validate_bind_address,
 )
 from hkrl.utils.registry import get
@@ -37,10 +40,21 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
     p.add_argument("--task", help="task YAML used to infer learner model layout")
-    p.add_argument("--tasks", nargs="+", help="task YAMLs used to infer learner model layout")
+    p.add_argument(
+        "--tasks", nargs="+", help="task YAMLs used to infer learner model layout"
+    )
     p.add_argument("--bind", default=None, help="override config.learner.bind")
     p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
-    p.add_argument("--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir")
+    p.add_argument(
+        "--intake-count",
+        type=int,
+        default=0,
+        help="number of TCP RolloutBatch uploads to accept before updating",
+    )
+    p.add_argument("--intake-timeout-s", type=float, default=10.0)
+    p.add_argument(
+        "--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir"
+    )
     p.add_argument("--max-staleness", type=int, default=None)
     p.add_argument("--publish-every-updates", type=int, default=None)
     p.add_argument("--max-entities", type=int, default=None)
@@ -66,7 +80,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
     bind = validate_bind_address(args.bind or cfg.learner.bind, cfg.security.bind_scope)
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
-    max_staleness = cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    max_staleness = (
+        cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    )
     publish_every_updates = (
         cfg.learner.publish_every_updates
         if args.publish_every_updates is None
@@ -100,6 +116,13 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         publish_every_updates=publish_every_updates,
     )
     submitted_batches = _submit_batch_dir(server, args.batch_dir)
+    network_batches, network_accepted = _serve_network_intake(
+        server,
+        bind,
+        cfg,
+        intake_count=int(getattr(args, "intake_count", 0) or 0),
+        timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
+    )
     server.serve()
     latest = registry.latest()
     return {
@@ -114,6 +137,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "max_staleness": max_staleness,
         "model": cfg.model.name,
         "n_macro_actions": layout["n_macro_actions"],
+        "network_accepted_batches": network_accepted,
+        "network_submitted_batches": network_batches,
         "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
@@ -170,6 +195,30 @@ def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
     return submitted
 
 
+def _serve_network_intake(
+    server: LearnerServer,
+    bind: str,
+    cfg: Any,
+    *,
+    intake_count: int,
+    timeout_s: float,
+) -> tuple[int, int]:
+    if intake_count < 0:
+        raise ValueError("intake_count must be non-negative")
+    if intake_count == 0:
+        return 0, 0
+
+    auth_token = resolve_auth_token(cfg)
+    accepted = 0
+    with BatchIntakeServer(
+        server, bind, auth_token=auth_token, timeout_s=timeout_s
+    ) as intake:
+        for _ in range(intake_count):
+            result = intake.serve_once()
+            accepted += int(result.accepted)
+    return intake_count, accepted
+
+
 def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     task_paths = getattr(args, "tasks", None)
     task_path = getattr(args, "task", None)
@@ -180,7 +229,9 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     return tasks
 
 
-def _resolve_layout(args: argparse.Namespace, tasks: list[TaskConfig]) -> dict[str, Any]:
+def _resolve_layout(
+    args: argparse.Namespace, tasks: list[TaskConfig]
+) -> dict[str, Any]:
     task = tasks[0] if tasks else None
     max_entities = args.max_entities
     if max_entities is None:
