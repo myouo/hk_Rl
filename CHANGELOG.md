@@ -70,6 +70,7 @@ the project version tracks the **schema_version** + roadmap phase.
   typed event recorders for damage, death, heal/soul, and scene-change events.
 - Mod observation path now returns a minimal global/player snapshot and empty
   entity/mask lists without throwing, ready for later boss/entity enrichment.
+- Mod debug overlay now renders a minimal toggleable HKRL status/SPS panel.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
