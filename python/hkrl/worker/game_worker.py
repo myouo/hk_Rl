@@ -170,6 +170,7 @@ class GameWorker:
                 action[0],
                 enable_macro=self.enable_macro,
                 n_macros=self.n_macros,
+                action_mask=action_mask,
             )
             next_obs, reward, terminated, truncated, next_info = self.env.step(env_action)
 
@@ -370,7 +371,11 @@ class GameWorker:
 
 
 def action_tensor_to_env_action(
-    action: torch.Tensor | np.ndarray, *, enable_macro: bool, n_macros: int = 0
+    action: torch.Tensor | np.ndarray,
+    *,
+    enable_macro: bool,
+    n_macros: int = 0,
+    action_mask: np.ndarray | None = None,
 ) -> dict[str, Any]:
     if n_macros < 0:
         raise ValueError("n_macros must be non-negative")
@@ -416,12 +421,56 @@ def action_tensor_to_env_action(
         macro = int(values[offset])
         _require_discrete_range("macro", macro, n_macros + 1)
         env_action["macro"] = macro
+    if action_mask is not None:
+        _require_action_mask_allows(values, action_mask, enable_macro, n_macros)
     return env_action
 
 
 def _require_discrete_range(name: str, value: int, size: int) -> None:
     if value < 0 or value >= size:
         raise ValueError(f"{name} must be in [0, {size}), got {value}")
+
+
+def _require_action_mask_allows(
+    values: np.ndarray,
+    action_mask: np.ndarray,
+    enable_macro: bool,
+    n_macros: int,
+) -> None:
+    mask = np.asarray(action_mask, dtype=bool).reshape(-1)
+    expected_dim = N_MOVEMENT_X + N_AIM_Y + N_BUTTONS + N_DURATION
+    if enable_macro:
+        expected_dim += n_macros + 1
+    if mask.shape != (expected_dim,):
+        raise ValueError(f"action_mask shape must be ({expected_dim},), got {mask.shape}")
+
+    offset = 0
+    movement_x = int(values[offset])
+    if not mask[offset + movement_x]:
+        raise ValueError(f"action_mask disallows movement_x={movement_x}")
+    offset += N_MOVEMENT_X
+
+    aim_y = int(values[1])
+    if not mask[offset + aim_y]:
+        raise ValueError(f"action_mask disallows aim_y={aim_y}")
+    offset += N_AIM_Y
+
+    button_values = values[2 : 2 + N_BUTTONS]
+    button_mask = mask[offset : offset + N_BUTTONS]
+    blocked_buttons = np.nonzero((button_values == 1) & ~button_mask)[0]
+    if blocked_buttons.size:
+        raise ValueError(f"action_mask disallows button index {int(blocked_buttons[0])}")
+    offset += N_BUTTONS
+
+    duration = int(values[2 + N_BUTTONS])
+    if not mask[offset + duration]:
+        raise ValueError(f"action_mask disallows duration={duration}")
+    offset += N_DURATION
+
+    if enable_macro:
+        macro = int(values[3 + N_BUTTONS])
+        if not mask[offset + macro]:
+            raise ValueError(f"action_mask disallows macro={macro}")
 
 
 def _obs_to_tensor(

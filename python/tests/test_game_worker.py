@@ -54,6 +54,39 @@ def test_action_tensor_to_env_action_rejects_macro_out_of_range() -> None:
         action_tensor_to_env_action(action, enable_macro=True, n_macros=2)
 
 
+def test_action_tensor_to_env_action_rejects_masked_components() -> None:
+    action = np.zeros((12,), dtype=np.int64)
+    action[0] = 2
+    mask = np.ones((19,), dtype=bool)
+    mask[2] = False
+
+    with pytest.raises(ValueError, match="movement_x=2"):
+        action_tensor_to_env_action(action, enable_macro=False, action_mask=mask)
+
+    action = np.zeros((12,), dtype=np.int64)
+    action[2 + 3] = 1
+    mask = np.ones((19,), dtype=bool)
+    mask[6 + 3] = False
+
+    with pytest.raises(ValueError, match="button index 3"):
+        action_tensor_to_env_action(action, enable_macro=False, action_mask=mask)
+
+
+def test_game_worker_rejects_masked_policy_action_before_env_step() -> None:
+    env = MaskedActionEnv()
+    model = MaskedActionModel()
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+    )
+
+    with pytest.raises(ValueError, match="movement_x=2"):
+        worker.collect_rollout()
+
+    assert env.actions == []
+
+
 def test_game_worker_rejects_non_finite_policy_outputs_before_env_step() -> None:
     env = FakeEnv()
     model = NonFiniteActModel()
@@ -480,6 +513,17 @@ class SwitchableEnv(FakeEnv):
         }
 
 
+class MaskedActionEnv(FakeEnv):
+    @staticmethod
+    def _info(episode_id: int) -> dict[str, Any]:
+        mask = np.ones((19,), dtype=bool)
+        mask[2] = False
+        return {
+            "episode_id": episode_id,
+            "action_mask": mask,
+        }
+
+
 class FakeTransport:
     def __init__(self) -> None:
         self.reconnect_calls = 0
@@ -539,6 +583,22 @@ class NonFiniteActModel(torch.nn.Module):
         log_prob = self.weight * torch.full((batch_size,), float("nan"))
         value = self.weight.expand(batch_size)
         return action, log_prob, value, None
+
+
+class MaskedActionModel(NonFiniteActModel):
+    def act(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, None]:
+        del rnn_state, action_mask, deterministic
+        batch_size = obs["global"].shape[0]
+        action = torch.zeros((batch_size, 12), dtype=torch.long)
+        action[:, 0] = 2
+        value = self.weight.expand(batch_size)
+        return action, value, value, None
 
 
 class AdvancingClock:

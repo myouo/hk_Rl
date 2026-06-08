@@ -187,6 +187,8 @@ the project version tracks the **schema_version** + roadmap phase.
   validation before `load_state_dict`.
 - GameWorker now rejects non-finite policy outputs and malformed packed actions
   before stepping the local environment.
+- GameWorker now rejects policy actions that select components disabled by the
+  current action mask before stepping the local environment.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,
