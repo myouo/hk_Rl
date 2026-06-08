@@ -128,6 +128,8 @@ the project version tracks the **schema_version** + roadmap phase.
   checkpoint policies and emits JSON metrics/regression output.
 - `scripts/run_eval.py` can now load MLP policies from a CheckpointRegistry
   directory by selecting the latest indexed checkpoint.
+- `scripts/run_eval.py` can now write evaluator metrics/regression JSON to an
+  output path while still printing the summary to stdout.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - Local MLP+PPO checkpoints are now published through `CheckpointRegistry` with

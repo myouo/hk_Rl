@@ -47,12 +47,15 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--max-steps", type=int, default=4096)
     p.add_argument("--no-normalize", action="store_true")
     p.add_argument("--baseline", help="optional baseline metrics JSON for regression diff")
+    p.add_argument("--output", help="optional path to write metrics JSON")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_argparser().parse_args(argv)
     output = run_from_args(args)
+    if args.output:
+        _write_output(output, Path(args.output))
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
@@ -127,6 +130,11 @@ def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> TcpTra
         port=args.port,
         auth_token=resolve_auth_token(train_cfg),
     )
+
+
+def _write_output(output: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:

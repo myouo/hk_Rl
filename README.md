@@ -79,7 +79,8 @@ python scripts/run_eval.py \
   --policy scripted \
   --tasks configs/tasks/gruz_mother.yaml \
   --episodes 5 \
-  --seeds 0 1 2
+  --seeds 0 1 2 \
+  --output runs/eval.json
 
 # 评估本地训练产物时可直接指定 registry 目录，自动加载 latest checkpoint
 python scripts/run_eval.py \

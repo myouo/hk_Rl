@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -78,6 +79,17 @@ def test_run_eval_transport_uses_configured_auth_token(
     assert transport.host == "127.0.0.2"
     assert transport.port == 6000
     assert transport.auth_token == "secret"
+
+
+def test_run_eval_writes_output_json(tmp_path: Path) -> None:
+    module = _load_script("run_eval.py")
+    output = {"metrics": {"task": {"win_rate": 1.0}}}
+    path = tmp_path / "nested" / "eval.json"
+
+    module._write_output(output, path)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == output
+    assert path.read_text(encoding="utf-8").endswith("\n")
 
 
 def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
