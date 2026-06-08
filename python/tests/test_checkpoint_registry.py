@@ -48,6 +48,16 @@ def test_checkpoint_registry_get_rejects_unknown_version(tmp_path: Path) -> None
         registry.get(99)
 
 
+def test_checkpoint_registry_publish_rejects_invalid_metadata(tmp_path: Path) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+
+    with pytest.raises(ValueError, match="policy_version"):
+        registry.publish({"model_state_dict": {}}, policy_version=-1, step=0)
+    with pytest.raises(ValueError, match="created_step"):
+        registry.publish({"model_state_dict": {}}, policy_version=0, step=-1)
+    assert not (tmp_path / "index.jsonl").exists()
+
+
 def test_checkpoint_registry_rejects_invalid_index(tmp_path: Path) -> None:
     (tmp_path / "index.jsonl").write_text("{not-json}\n", encoding="utf-8")
 

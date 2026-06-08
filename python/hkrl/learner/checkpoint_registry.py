@@ -42,6 +42,7 @@ class CheckpointRegistry:
         records the learner policy version carried by rollout batches.
         """
         version = self._next_version()
+        _validate_checkpoint_numbers(version, policy_version, step)
         filename = f"checkpoint_v{version:06d}.pt"
         path = self._root_path / filename
         torch.save(state, path)
