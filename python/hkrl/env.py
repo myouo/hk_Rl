@@ -8,15 +8,27 @@ observation, reward, termination flags, and info (including the action mask).
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
 
-from hkrl.protocol import LifecycleState, StatusCode
+from hkrl import protocol
 from hkrl.reward import DefaultReward
-from hkrl.spaces import make_action_space, make_observation_space
+from hkrl.spaces import (
+    ENTITY_FEATURE_DIMS,
+    GLOBAL_FEATURE_DIM,
+    PLAYER_FEATURE_DIMS,
+    make_action_space,
+    make_observation_space,
+)
 from hkrl.transport.base import Transport
 from hkrl.utils.config import TaskConfig
+
+
+class EnvProtocolError(RuntimeError):
+    """Raised when the mod returns an invalid lifecycle/protocol response."""
 
 
 class HKRLEnv(gym.Env):
@@ -49,6 +61,9 @@ class HKRLEnv(gym.Env):
         )
         self._tick_id = 0
         self._episode_id = 0
+        self._running = False
+        self._env_id = 0
+        self._step_timeout_s = 5.0
 
     # -- Gym API --------------------------------------------------------------
     def reset(
@@ -59,10 +74,40 @@ class HKRLEnv(gym.Env):
         Returns ``(obs, info)``. On a reset failure (non-OK StatusCode) raises /
         surfaces the code rather than returning a contaminated observation
         (docs/episode_lifecycle.md §4). Increments reset metrics.
-
-        TODO(phase-2): implement RESET handshake via self.transport + protocol.
         """
-        raise NotImplementedError
+        super().reset(seed=seed)
+        options = options or {}
+        timeout_s = float(options.get("reset_timeout_s", options.get("timeout_s", 30.0)))
+        recv_timeout_s = float(options.get("recv_timeout_s", self._step_timeout_s))
+
+        if not self.transport.is_connected():
+            self.transport.connect(timeout_s=timeout_s)
+
+        self._running = False
+        response = self._exchange(
+            protocol.Command.RESET,
+            action=None,
+            action_repeat=1,
+            timeout_s=recv_timeout_s,
+        )
+        self._raise_for_error(response, context="reset")
+
+        if response.lifecycle_state != protocol.LifecycleState.RUNNING:
+            response = self._await_running_response(
+                timeout_s=timeout_s,
+                recv_timeout_s=recv_timeout_s,
+            )
+            self._raise_for_error(response, context="reset")
+
+        if response.lifecycle_state != protocol.LifecycleState.RUNNING:
+            raise EnvProtocolError(f"reset did not reach RUNNING: {response.lifecycle_state.name}")
+        if response.observation is None:
+            raise EnvProtocolError("reset reached RUNNING without an observation")
+
+        self._running = True
+        obs = self._to_gym_observation(response.observation)
+        self._episode_id = self._episode_id_from(obs)
+        return obs, self._info_from_response(response)
 
     def step(self, action: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
         """Send a STEP (with action_repeat), decode the response, compute reward.
@@ -70,24 +115,170 @@ class HKRLEnv(gym.Env):
         Returns ``(obs, reward, terminated, truncated, info)`` per Gymnasium.
         ``info`` includes ``action_mask``, ``reward_events``, ``lifecycle_state``,
         ``episode_id``, ``sps`` hints.
-
-        TODO(phase-2): encode action -> StepRequest, send, decode StepResponse,
-        reward_fn(events), map terminated/truncated.
         """
-        raise NotImplementedError
+        if not self._running:
+            raise EnvProtocolError("reset must complete before step()")
+
+        response = self._exchange(
+            protocol.Command.STEP,
+            action=action,
+            action_repeat=self.task.action.action_repeat,
+            timeout_s=self._step_timeout_s,
+        )
+        self._raise_for_error(response, context="step")
+
+        if response.observation is None:
+            raise EnvProtocolError("step response did not include an observation")
+
+        obs = self._to_gym_observation(response.observation)
+        self._episode_id = self._episode_id_from(obs)
+        reward = self.reward_fn(response.reward_events, dt=float(self.task.action.action_repeat))
+        terminated = bool(response.terminated or self._is_terminal(response.lifecycle_state))
+        truncated = bool(response.truncated)
+        self._running = not (terminated or truncated)
+        return obs, reward, terminated, truncated, self._info_from_response(response)
 
     def close(self) -> None:
         """Close the transport. Idempotent."""
         self.transport.close()
 
     # -- helpers --------------------------------------------------------------
-    def _await_running(self, timeout_s: float) -> StatusCode:
-        """Poll the mod with no-op STEPs until RUNNING or error/timeout.
+    def _await_running(self, timeout_s: float) -> protocol.StatusCode:
+        """Poll the mod with no-op STEPs until RUNNING or error/timeout."""
+        response = self._await_running_response(
+            timeout_s=timeout_s,
+            recv_timeout_s=self._step_timeout_s,
+        )
+        return response.error_code
 
-        TODO(phase-2): loop sending Command.STEP noops, inspect lifecycle_state.
-        """
-        raise NotImplementedError
+    def _await_running_response(
+        self,
+        *,
+        timeout_s: float,
+        recv_timeout_s: float,
+    ) -> protocol.DecodedStepResponse:
+        deadline = time.monotonic() + timeout_s
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"reset did not reach RUNNING within {timeout_s:.1f}s")
+
+            response = self._exchange(
+                protocol.Command.STEP,
+                action=None,
+                action_repeat=1,
+                timeout_s=min(recv_timeout_s, remaining),
+            )
+            if response.error_code != protocol.StatusCode.OK:
+                return response
+            if response.lifecycle_state == protocol.LifecycleState.RUNNING:
+                return response
+            if self._is_terminal(response.lifecycle_state):
+                return response
 
     @staticmethod
-    def _is_terminal(lifecycle: LifecycleState) -> bool:
-        return lifecycle in (LifecycleState.TERMINATING, LifecycleState.REPORT_DONE)
+    def _is_terminal(lifecycle: protocol.LifecycleState) -> bool:
+        return lifecycle in (
+            protocol.LifecycleState.TERMINATING,
+            protocol.LifecycleState.REPORT_DONE,
+        )
+
+    def _exchange(
+        self,
+        command: protocol.Command,
+        *,
+        action: Any,
+        action_repeat: int,
+        timeout_s: float,
+    ) -> protocol.DecodedStepResponse:
+        tick_id = self._next_tick_id()
+        request = protocol.encode_step_request(
+            command=command,
+            action=action,
+            env_id=self._env_id,
+            tick_id=tick_id,
+            action_repeat=action_repeat,
+        )
+        self.transport.send(request)
+        response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))
+        if response.tick_id != tick_id:
+            raise EnvProtocolError(f"tick_id mismatch: sent={tick_id}, received={response.tick_id}")
+        return response
+
+    def _next_tick_id(self) -> int:
+        tick_id = self._tick_id
+        self._tick_id += 1
+        return tick_id
+
+    @staticmethod
+    def _raise_for_error(response: protocol.DecodedStepResponse, *, context: str) -> None:
+        if response.error_code != protocol.StatusCode.OK:
+            raise EnvProtocolError(f"{context} failed with {response.error_code.name}")
+
+    def _to_gym_observation(
+        self, observation: protocol.DecodedObservation
+    ) -> dict[str, np.ndarray]:
+        tier = self.task.observation.tier
+        max_entities = self.task.observation.max_entities
+        player_dim = PLAYER_FEATURE_DIMS[tier]
+        entity_dim = ENTITY_FEATURE_DIMS[tier]
+
+        global_state = np.zeros((GLOBAL_FEATURE_DIM,), dtype=np.float32)
+        global_count = min(GLOBAL_FEATURE_DIM, len(observation.global_state))
+        global_state[:global_count] = observation.global_state[:global_count]
+
+        player_state = np.zeros((player_dim,), dtype=np.float32)
+        player_count = min(player_dim, len(observation.player_state))
+        player_state[:player_count] = observation.player_state[:player_count]
+
+        raw_entities = np.asarray(observation.entities, dtype=np.float32)
+        if raw_entities.size == 0:
+            raw_entities = raw_entities.reshape((0, 0))
+        elif raw_entities.ndim != 2:
+            raise EnvProtocolError(f"entities must be rank-2, got shape {raw_entities.shape}")
+
+        raw_mask = np.asarray(observation.entity_mask, dtype=bool).reshape(-1)
+        if len(raw_mask) != raw_entities.shape[0]:
+            raise EnvProtocolError(
+                f"entity_mask length {len(raw_mask)} != entities length {raw_entities.shape[0]}"
+            )
+
+        entities = np.zeros((max_entities, entity_dim), dtype=np.float32)
+        entity_count = min(max_entities, raw_entities.shape[0])
+        feature_count = min(entity_dim, raw_entities.shape[1]) if entity_count > 0 else 0
+        if entity_count > 0 and feature_count > 0:
+            entities[:entity_count, :feature_count] = raw_entities[:entity_count, :feature_count]
+
+        entity_mask = np.zeros((max_entities,), dtype=np.int8)
+        entity_mask[:entity_count] = raw_mask[:entity_count].astype(np.int8, copy=False)
+
+        return {
+            "global": global_state,
+            "player": player_state,
+            "entities": entities,
+            "entity_mask": entity_mask,
+        }
+
+    def _info_from_response(self, response: protocol.DecodedStepResponse) -> dict[str, Any]:
+        info: dict[str, Any] = {
+            "schema_version": response.schema_version,
+            "env_id": response.env_id,
+            "tick_id": response.tick_id,
+            "server_tick": response.server_tick,
+            "action_mask": response.action_mask,
+            "reward_events": response.reward_events,
+            "lifecycle_state": response.lifecycle_state,
+            "error_code": response.error_code,
+            "episode_id": self._episode_id,
+        }
+        if response.info is not None:
+            info["raw_info"] = response.info
+        return info
+
+    @staticmethod
+    def _episode_id_from(obs: dict[str, np.ndarray]) -> int:
+        global_state = obs["global"]
+        if len(global_state) <= 8:
+            return 0
+        return int(global_state[8])

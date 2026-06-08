@@ -6,7 +6,20 @@ Behavioral env tests need a live HKRLEnvMod connection and are marked
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
+import flatbuffers
+import numpy as np
 import pytest
+from hkrl import protocol
+from hkrl.schema.HKRL import EntityState as FbEntityState
+from hkrl.schema.HKRL import GlobalState as FbGlobalState
+from hkrl.schema.HKRL import Observation as FbObservation
+from hkrl.schema.HKRL import PlayerState as FbPlayerState
+from hkrl.schema.HKRL import RewardEvent as FbRewardEvent
+from hkrl.schema.HKRL import StepRequest as FbStepRequest
+from hkrl.schema.HKRL import StepResponse as FbStepResponse
 from hkrl.utils.config import load_task_config
 
 
@@ -31,6 +44,42 @@ class DummyTransport:
 
     def close(self) -> None:
         self.closed = True
+
+
+class ScriptedTransport:
+    def __init__(self, handlers: list[Callable[[Any], bytes]]) -> None:
+        self.handlers = handlers
+        self.requests: list[Any] = []
+        self.frames: list[bytes] = []
+        self.connected = False
+        self.closed = False
+
+    def connect(self, timeout_s: float = 10.0) -> None:
+        del timeout_s
+        self.connected = True
+        self.closed = False
+
+    def send(self, frame: bytes) -> None:
+        assert FbStepRequest.StepRequest.StepRequestBufferHasIdentifier(frame, 0)
+        self.frames.append(frame)
+        self.requests.append(FbStepRequest.StepRequest.GetRootAs(frame, 0))
+
+    def recv(self, timeout_s: float | None = None) -> bytes:
+        del timeout_s
+        if not self.handlers:
+            raise AssertionError("unexpected recv without scripted response")
+        return self.handlers.pop(0)(self.requests[-1])
+
+    def is_connected(self) -> bool:
+        return self.connected and not self.closed
+
+    def reconnect(self, timeout_s: float = 10.0) -> None:
+        self.close()
+        self.connect(timeout_s=timeout_s)
+
+    def close(self) -> None:
+        self.closed = True
+        self.connected = False
 
 
 def test_env_module_imports() -> None:
@@ -68,6 +117,238 @@ def test_registry_has_builtin_components() -> None:
     assert "ppo" in registry.available("algo")
 
 
+def test_env_reset_polls_until_running_and_returns_space_observation() -> None:
+    from hkrl.env import HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.COUNTDOWN),
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    obs, info = env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    assert [protocol.Command(req.Command()) for req in transport.requests] == [
+        protocol.Command.RESET,
+        protocol.Command.STEP,
+    ]
+    assert all(req.ActionRepeat() == 1 for req in transport.requests)
+    assert env.observation_space.contains(obs)
+    assert obs["entities"].shape == env.observation_space["entities"].shape
+    assert int(np.sum(obs["entity_mask"])) == 1
+    assert info["lifecycle_state"] is protocol.LifecycleState.RUNNING
+    assert info["episode_id"] == 123
+
+
+def test_env_step_sends_action_repeat_and_composes_reward() -> None:
+    from hkrl.env import HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                reward_kind=protocol.RewardEventKind.DAMAGE_DEALT,
+                reward_amount=3.0,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    obs, reward, terminated, truncated, info = env.step(
+        {
+            "movement_x": 2,
+            "aim_y": 1,
+            "buttons": {"attack": True},
+            "duration": 0,
+            "macro": 0,
+        }
+    )
+
+    step_request = transport.requests[-1]
+    assert protocol.Command(step_request.Command()) is protocol.Command.STEP
+    assert step_request.ActionRepeat() == task.action.action_repeat
+    assert step_request.Action().Buttons() == 1 << 3
+    assert env.observation_space.contains(obs)
+    assert reward == pytest.approx(3.0 + task.reward.time_penalty * task.action.action_repeat)
+    assert terminated is False
+    assert truncated is False
+    assert info["reward_events"][0].kind is protocol.RewardEventKind.DAMAGE_DEALT
+
+
+def test_env_step_requires_completed_reset() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    env = HKRLEnv(transport=DummyTransport(), task=task)
+
+    with pytest.raises(EnvProtocolError, match="reset must complete"):
+        env.step(env.action_space.sample())
+
+
+def test_env_reset_surfaces_status_code() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.WAIT_BOSS_READY,
+                error_code=protocol.StatusCode.BOSS_NOT_FOUND,
+                include_observation=False,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="BOSS_NOT_FOUND"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
+def test_env_rejects_mismatched_entity_mask() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                include_entity_mask=False,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="entity_mask length"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
 @pytest.mark.integration
 def test_random_policy_episode() -> None:
     pytest.skip("requires live Hollow Knight + HKRLEnvMod (phase 1+)")
+
+
+def _build_response(
+    request: Any,
+    *,
+    lifecycle: protocol.LifecycleState,
+    error_code: protocol.StatusCode = protocol.StatusCode.OK,
+    include_observation: bool = True,
+    include_entity_mask: bool = True,
+    reward_kind: protocol.RewardEventKind | None = None,
+    reward_amount: float = 0.0,
+) -> bytes:
+    builder = flatbuffers.Builder(512)
+    action_mask = _build_bool_vector(
+        builder, FbStepResponse.StepResponseStartActionMaskVector, [True]
+    )
+    observation = _build_observation(builder, include_entity_mask=include_entity_mask)
+    reward_events = 0
+    if reward_kind is not None:
+        reward_event = _build_reward_event(builder, reward_kind, reward_amount)
+        reward_events = _build_offset_vector(
+            builder, FbStepResponse.StepResponseStartRewardEventsVector, [reward_event]
+        )
+
+    FbStepResponse.StepResponseStart(builder)
+    FbStepResponse.StepResponseAddSchemaVersion(builder, protocol.SCHEMA_VERSION)
+    FbStepResponse.StepResponseAddEnvId(builder, request.EnvId())
+    FbStepResponse.StepResponseAddTickId(builder, request.TickId())
+    FbStepResponse.StepResponseAddServerTick(builder, request.TickId() + 100)
+    if include_observation:
+        FbStepResponse.StepResponseAddObservation(builder, observation)
+    if reward_events:
+        FbStepResponse.StepResponseAddRewardEvents(builder, reward_events)
+    FbStepResponse.StepResponseAddActionMask(builder, action_mask)
+    FbStepResponse.StepResponseAddLifecycleState(builder, lifecycle)
+    FbStepResponse.StepResponseAddErrorCode(builder, error_code)
+    root = FbStepResponse.StepResponseEnd(builder)
+    builder.Finish(root, file_identifier=protocol.FILE_IDENTIFIER)
+    return bytes(builder.Output())
+
+
+def _build_observation(builder: flatbuffers.Builder, *, include_entity_mask: bool) -> int:
+    global_state = _build_global_state(builder)
+    player_state = _build_player_state(builder)
+    entity_state = _build_entity_state(builder)
+    entities = _build_offset_vector(
+        builder, FbObservation.ObservationStartEntitiesVector, [entity_state]
+    )
+    entity_mask = _build_bool_vector(
+        builder, FbObservation.ObservationStartEntityMaskVector, [True]
+    )
+
+    FbObservation.ObservationStart(builder)
+    FbObservation.ObservationAddGlobal(builder, global_state)
+    FbObservation.ObservationAddPlayer(builder, player_state)
+    FbObservation.ObservationAddEntities(builder, entities)
+    if include_entity_mask:
+        FbObservation.ObservationAddEntityMask(builder, entity_mask)
+    return FbObservation.ObservationEnd(builder)
+
+
+def _build_global_state(builder: flatbuffers.Builder) -> int:
+    FbGlobalState.GlobalStateStart(builder)
+    FbGlobalState.GlobalStateAddEpisodeId(builder, 123)
+    return FbGlobalState.GlobalStateEnd(builder)
+
+
+def _build_player_state(builder: flatbuffers.Builder) -> int:
+    FbPlayerState.PlayerStateStart(builder)
+    FbPlayerState.PlayerStateAddHp(builder, 8)
+    FbPlayerState.PlayerStateAddMaxHp(builder, 9)
+    FbPlayerState.PlayerStateAddSoul(builder, 33)
+    FbPlayerState.PlayerStateAddMaxSoul(builder, 99)
+    FbPlayerState.PlayerStateAddCanAttack(builder, True)
+    return FbPlayerState.PlayerStateEnd(builder)
+
+
+def _build_entity_state(builder: flatbuffers.Builder) -> int:
+    FbEntityState.EntityStateStart(builder)
+    FbEntityState.EntityStateAddEntityId(builder, 1)
+    FbEntityState.EntityStateAddEntityType(builder, protocol.EntityType.BOSS)
+    FbEntityState.EntityStateAddHp(builder, 20)
+    FbEntityState.EntityStateAddMaxHp(builder, 30)
+    return FbEntityState.EntityStateEnd(builder)
+
+
+def _build_reward_event(
+    builder: flatbuffers.Builder,
+    kind: protocol.RewardEventKind,
+    amount: float,
+) -> int:
+    FbRewardEvent.RewardEventStart(builder)
+    FbRewardEvent.RewardEventAddKind(builder, kind)
+    FbRewardEvent.RewardEventAddEntityId(builder, 1)
+    FbRewardEvent.RewardEventAddAmount(builder, amount)
+    return FbRewardEvent.RewardEventEnd(builder)
+
+
+def _build_offset_vector(
+    builder: flatbuffers.Builder,
+    start_vector: Callable[[flatbuffers.Builder, int], int],
+    offsets: list[int],
+) -> int:
+    start_vector(builder, len(offsets))
+    for offset in reversed(offsets):
+        builder.PrependUOffsetTRelative(offset)
+    return builder.EndVector()
+
+
+def _build_bool_vector(
+    builder: flatbuffers.Builder,
+    start_vector: Callable[[flatbuffers.Builder, int], int],
+    values: list[bool],
+) -> int:
+    start_vector(builder, len(values))
+    for value in reversed(values):
+        builder.PrependBool(value)
+    return builder.EndVector()

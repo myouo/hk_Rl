@@ -34,6 +34,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mask-aware random policy for local smoke tests and scripted baseline plumbing.
 - HKRLEnv construction now wires task-driven Gymnasium spaces and idempotent
   transport close behavior.
+- HKRLEnv reset/step now drive the Transport protocol, poll the clean lifecycle
+  until `RUNNING`, compose reward events, enforce tick echoes, and adapt decoded
+  observations to Gymnasium spaces.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
