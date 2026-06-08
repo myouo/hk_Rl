@@ -110,6 +110,8 @@ the project version tracks the **schema_version** + roadmap phase.
   `per_boss_damage_ratio` directly for dashboard consumers.
 - `run_coordinator.py --eval-metrics` now accepts `per_boss_win_rate` as a
   sampler-weight fallback when `win_rate` is absent.
+- Evaluator regression reports now accept `per_boss_win_rate` as a fallback for
+  catastrophic-forgetting win-rate deltas.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

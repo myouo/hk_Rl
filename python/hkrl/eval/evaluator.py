@@ -214,8 +214,8 @@ class Evaluator:
         """Per-task win-rate delta vs a baseline (catastrophic-forgetting check)."""
         task_ids = sorted(set(baseline) | set(current))
         return {
-            task_id: current.get(task_id, {}).get("win_rate", 0.0)
-            - baseline.get(task_id, {}).get("win_rate", 0.0)
+            task_id: _win_rate_metric(current.get(task_id, {}))
+            - _win_rate_metric(baseline.get(task_id, {}))
             for task_id in task_ids
         }
 
@@ -345,6 +345,10 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
     if denominator <= 0.0:
         return 0.0
     return float(numerator / denominator)
+
+
+def _win_rate_metric(metrics: dict[str, float]) -> float:
+    return float(metrics.get("win_rate", metrics.get("per_boss_win_rate", 0.0)))
 
 
 def _jsonable(value: Any) -> Any:

@@ -69,6 +69,22 @@ def test_evaluator_regression_report_returns_win_rate_delta() -> None:
     assert report == {"a": -0.25, "b": -0.25, "c": 1.0}
 
 
+def test_evaluator_regression_report_accepts_per_boss_win_rate() -> None:
+    evaluator = Evaluator(
+        model=object(),
+        tasks=[TaskConfig(task_id="a", scene="A")],
+        seeds=[0],
+        env_factory=lambda task: None,
+    )
+
+    report = evaluator.regression_report(
+        baseline={"a": {"per_boss_win_rate": 0.75}},
+        current={"a": {"per_boss_win_rate": 0.50}},
+    )
+
+    assert report == {"a": -0.25}
+
+
 def test_evaluator_emits_step_replay_records() -> None:
     task = TaskConfig(task_id="fake_boss", wire_id=9, scene="FakeScene")
     action_space = spaces.make_action_space(enable_macro=False)
