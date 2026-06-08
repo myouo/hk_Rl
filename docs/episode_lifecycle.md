@@ -29,8 +29,9 @@ IDLE
 
 - Reset must NOT mix in reward events from the previous episode
   (`CLEAR_EVENTS` before anything else collects).
-- `STEP` is only valid once `lifecycle_state == RUNNING`; the worker polls during
-  reset (see [`protocol.md`](./protocol.md) §4).
+- `STEP` with real input is only valid once `lifecycle_state == RUNNING`; during
+  reset, only the canonical no-op poll `STEP` is accepted (see
+  [`protocol.md`](./protocol.md) §4).
 - Every episode has a unique `episode_id`.
 - Death, win, and scene change all route to `TERMINATING`.
 - After `done`, no new reward events are collected.

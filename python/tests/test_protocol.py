@@ -35,7 +35,16 @@ from hkrl.spaces import BUTTON_BITS
 
 def test_schema_version_is_positive() -> None:
     assert isinstance(protocol.SCHEMA_VERSION, int)
-    assert protocol.SCHEMA_VERSION >= 1
+    assert protocol.SCHEMA_VERSION == 2
+
+
+def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
+    root = Path(__file__).parents[2]
+    csharp_protocol = (root / "mod/HKRLEnvMod/Transport/Protocol.cs").read_text(encoding="utf-8")
+    schema = (root / "schema/hkrl.fbs").read_text(encoding="utf-8")
+
+    assert f"SchemaVersion = {protocol.SCHEMA_VERSION}" in csharp_protocol
+    assert "NotRunning = 7" in schema
 
 
 def test_file_identifier_is_four_bytes() -> None:
@@ -48,6 +57,7 @@ def test_enum_mirrors_have_expected_members() -> None:
     assert protocol.Command.STEP == 0
     assert protocol.LifecycleState.RUNNING.name == "RUNNING"
     assert protocol.StatusCode.OK == 0
+    assert protocol.StatusCode.NOT_RUNNING == 7
     assert protocol.EntityType.BOSS == 1
 
 
@@ -90,6 +100,24 @@ def test_encode_step_request_builds_schema_payload() -> None:
     assert action.Buttons() == (1 << BUTTON_BITS["attack"]) | (1 << BUTTON_BITS["dash"])
     assert action.DurationIdx() == 3
     assert action.MacroId() == 1
+
+
+def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
+    frame = protocol.encode_step_request(
+        command=protocol.Command.STEP,
+        action=None,
+        action_repeat=1,
+    )
+
+    request = FbStepRequest.StepRequest.GetRootAs(frame, 0)
+    action = request.Action()
+    assert action is not None
+    assert action.MovementX() == 1
+    assert action.AimY() == 1
+    assert action.Buttons() == 0
+    assert action.DurationIdx() == 0
+    assert action.MacroId() == -1
+    assert request.ActionRepeat() == 1
 
 
 def test_decode_step_response_decodes_observation_events_and_mask() -> None:
@@ -198,6 +226,16 @@ def test_mod_step_controller_new_requests_preempt_repeated_steps() -> None:
     reset_idx = controller.index("case HKRL.Command.Reset:")
     step_idx = controller.index("case HKRL.Command.Step:")
     assert "CancelRepeatedStep();" in controller[reset_idx:step_idx]
+
+
+def test_mod_step_controller_rejects_non_poll_step_before_running() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "HKRL.StatusCode.NotRunning" in controller
+    assert "IsNoopPollStep(request)" in controller
+    assert "DecodedAction.Noop" in controller
+    assert controller.index("HKRL.StatusCode.NotRunning") < controller.index("_actions.Apply")
 
 
 def test_mod_step_controller_reports_wire_invalid_actions() -> None:

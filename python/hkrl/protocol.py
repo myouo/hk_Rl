@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 # Mirrors the schema_version carried in every StepRequest/StepResponse and the
 # C# Protocol.SCHEMA_VERSION. See schema/README.md evolution rules.
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
 
 # FlatBuffers file_identifier (must equal the one in hkrl.fbs).
 FILE_IDENTIFIER: bytes = b"HKRL"
@@ -71,6 +71,7 @@ class StatusCode(enum.IntEnum):
     PLAYER_NOT_READY = 4
     INTERNAL_ERROR = 5
     SCHEMA_MISMATCH = 6
+    NOT_RUNNING = 7
 
 
 class EntityType(enum.IntEnum):

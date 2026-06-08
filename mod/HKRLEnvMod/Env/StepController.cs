@@ -233,11 +233,15 @@ namespace HKRLEnvMod.Env
                         _lifecycle.RequestReset();
                         break;
                     case HKRL.Command.Step:
-                        if (_lifecycle.IsRunning)
+                        if (!_lifecycle.IsRunning)
                         {
-                            ReportInvalidAction(request.Action);
-                            _actions.Apply(request.Action);
+                            return IsNoopPollStep(request)
+                                ? HKRL.StatusCode.Ok
+                                : HKRL.StatusCode.NotRunning;
                         }
+
+                        ReportInvalidAction(request.Action);
+                        _actions.Apply(request.Action);
                         break;
                     case HKRL.Command.Pause:
                         _simControl.Pause();
@@ -267,6 +271,17 @@ namespace HKRLEnvMod.Env
         {
             _repeatRequest = null;
             _repeatTicksRemaining = 0;
+        }
+
+        private static bool IsNoopPollStep(DecodedStepRequest request)
+        {
+            var action = request.Action;
+            return request.ActionRepeat == 1
+                && action.MovementX == DecodedAction.Noop.MovementX
+                && action.AimY == DecodedAction.Noop.AimY
+                && action.Buttons == DecodedAction.Noop.Buttons
+                && action.DurationIdx == DecodedAction.Noop.DurationIdx
+                && action.MacroId == DecodedAction.Noop.MacroId;
         }
 
         private HKRL.StatusCode ApplyRepeatedStep(DecodedStepRequest request)

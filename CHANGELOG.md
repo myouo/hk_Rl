@@ -126,6 +126,8 @@ the project version tracks the **schema_version** + roadmap phase.
   returns early if a terminal reward event occurs during the repeat window.
 - Mod RESET/SET_TASK handling now preempts pending repeated STEP actions so held
   inputs cannot bleed into the next episode.
+- Schema version 2 adds `StatusCode.NotRunning`, and the mod now rejects
+  non-poll STEP requests before the lifecycle reaches `RUNNING`.
 - HKRLEnv now computes step reward `dt` from `server_tick` deltas so early
   terminal responses do not overcharge time penalties.
 - HKRLEnv now rejects action masks whose length does not match the current task's

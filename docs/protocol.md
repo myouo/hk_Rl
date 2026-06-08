@@ -34,7 +34,7 @@ in the schema. Highlights:
 
 | Command | Meaning |
 |---|---|
-| `STEP` | apply `action` (`action_repeat` times), return next obs + reward events |
+| `STEP` | apply `action` (`action_repeat` times) only while `RUNNING`, return next obs + reward events |
 | `RESET` | begin clean episode lifecycle; response stream reports `lifecycle_state` until `RUNNING` |
 | `PAUSE` / `RESUME` | freeze / unfreeze the sim |
 | `SET_TASK` | switch boss/arena (`task_id`); triggers a reset |
@@ -50,7 +50,10 @@ For `STEP`, the mod delays the `StepResponse` until all repeated FixedUpdate
 ticks have been applied, or until a terminal reward event ends the episode early.
 The Python env computes reward time deltas from consecutive `server_tick`
 values, so early terminal responses do not overcharge the configured repeat
-count.
+count. Before `RUNNING`, the mod accepts only the canonical no-op `STEP` used as
+a reset poll (`movement=neutral`, `aim=neutral`, no buttons, `duration=0`,
+`macro_id=-1`, `action_repeat=1`); any other `STEP` returns
+`StatusCode.NotRunning`.
 
 ## 4. Reset handshake (ack)
 
@@ -73,6 +76,9 @@ worker: STEP(noop) ────────────▶ mod  (poll) ──▶
 worker: STEP(noop) ────────────▶ mod  (poll) ──▶ lifecycle_state = Countdown
 worker: STEP(noop) ────────────▶ mod  (poll) ──▶ lifecycle_state = Running  ✅ env ready
 ```
+
+The poll `STEP` above is the only pre-`RUNNING` step allowed. It advances the
+lifecycle but does not apply input.
 
 ## 5. Liveness & recovery
 

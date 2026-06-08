@@ -99,6 +99,7 @@ enum StatusCode : ubyte {
   PlayerNotReady = 4,
   InternalError = 5,
   SchemaMismatch = 6,
+  NotRunning = 7,
 }
 
 // ----------------------------------------------------------------------------
