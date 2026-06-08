@@ -289,6 +289,8 @@ class HKRLEnv(gym.Env):
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))
+        if self._is_unbound_error_response(response):
+            return response
         if response.env_id != self._env_id:
             raise EnvProtocolError(
                 f"env_id mismatch: sent={self._env_id}, received={response.env_id}"
@@ -382,6 +384,14 @@ class HKRLEnv(gym.Env):
     def _raise_for_error(response: protocol.DecodedStepResponse, *, context: str) -> None:
         if response.error_code != protocol.StatusCode.OK:
             raise EnvProtocolError(f"{context} failed with {response.error_code.name}")
+
+    @staticmethod
+    def _is_unbound_error_response(response: protocol.DecodedStepResponse) -> bool:
+        return (
+            response.error_code != protocol.StatusCode.OK
+            and response.env_id == 0
+            and response.tick_id == 0
+        )
 
     def _to_gym_observation(
         self, observation: protocol.DecodedObservation

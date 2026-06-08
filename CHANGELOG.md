@@ -160,6 +160,8 @@ the project version tracks the **schema_version** + roadmap phase.
   unexpected failures and clears pending repeated actions.
 - HKRLEnv now rejects StepResponses whose `env_id` does not match the local
   request identity, catching stale/cross-env frames before lifecycle handling.
+- HKRLEnv now surfaces unbound mod decode-error responses by `StatusCode` before
+  tick-echo validation can mask the underlying protocol failure.
 - Evaluator model policy runs now pass `prev_action` and `prev_reward` context
   across episode steps, matching the recurrent training/worker input path.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed

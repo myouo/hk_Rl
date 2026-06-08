@@ -373,6 +373,30 @@ def test_env_rejects_mismatched_response_tick_id() -> None:
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
+def test_env_surfaces_unbound_error_response_before_tick_mismatch() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                error_code=protocol.StatusCode.INTERNAL_ERROR,
+                include_observation=False,
+                response_env_id=0,
+                response_tick_id=0,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    with pytest.raises(EnvProtocolError, match="step failed with INTERNAL_ERROR"):
+        env.step(env.action_space.sample())
+
+
 def test_env_rejects_mismatched_entity_mask() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 
