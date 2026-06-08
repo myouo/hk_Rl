@@ -85,6 +85,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - APPO now consumes recurrent rollout `rnn_states` from uploaded flat batches so
   GRU policies train from the same hidden-state context used during worker
   collection.
+- APPO intake now rejects empty RolloutBatches before queuing so learner
+  accepted/rejected counts match usable training data.
 - RolloutBatch now supports in-memory NPZ serialization and an authenticated TCP
   batch intake path from `run_worker --learner` to `run_learner --intake-count`.
 - Checkpoint registries now publish relative checkpoint paths, and worker

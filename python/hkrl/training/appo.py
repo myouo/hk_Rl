@@ -47,6 +47,8 @@ class APPO:
 
         ``current_version`` is the learner's policy version at intake time.
         """
+        if batch.rewards.size == 0:
+            return False
         if batch.policy_version > current_version:
             return False
         if current_version - batch.policy_version > self.max_staleness:

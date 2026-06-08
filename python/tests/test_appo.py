@@ -18,11 +18,19 @@ def test_appo_ingest_filters_stale_and_future_batches() -> None:
     model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
     appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
 
-    assert appo.ingest(_empty_batch(policy_version=3), current_version=3)
-    assert appo.ingest(_empty_batch(policy_version=1), current_version=3)
-    assert not appo.ingest(_empty_batch(policy_version=0), current_version=3)
-    assert not appo.ingest(_empty_batch(policy_version=4), current_version=3)
+    assert appo.ingest(_rnn_batch(policy_version=3), current_version=3)
+    assert appo.ingest(_rnn_batch(policy_version=1), current_version=3)
+    assert not appo.ingest(_rnn_batch(policy_version=0), current_version=3)
+    assert not appo.ingest(_rnn_batch(policy_version=4), current_version=3)
     assert appo.queued_batches == 2
+
+
+def test_appo_ingest_rejects_empty_batches() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+
+    assert not appo.ingest(_empty_batch(policy_version=3), current_version=3)
+    assert appo.queued_batches == 0
 
 
 def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> None:
