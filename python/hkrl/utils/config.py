@@ -79,6 +79,9 @@ class TransportConfig(StrictConfigModel):
     name: Literal["tcp", "shm"] = "tcp"
     host: str = "127.0.0.1"
     port: int = 5555
+    shm_name: str = "hkrl_env"
+    req_slots: int = Field(default=8, ge=1)
+    resp_slots: int = Field(default=8, ge=1)
 
 
 class LearnerRuntimeConfig(StrictConfigModel):

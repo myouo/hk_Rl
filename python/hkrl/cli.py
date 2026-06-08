@@ -13,7 +13,8 @@ from hkrl.eval.scripted_policies import RandomPolicy
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.training.ppo import PPO
-from hkrl.utils.config import load_task_config, load_train_config, resolve_auth_token
+from hkrl.transport.factory import make_transport
+from hkrl.utils.config import load_task_config, load_train_config
 from hkrl.utils.logging import MetricSink, make_sink
 from hkrl.worker.game_worker import GameWorker
 
@@ -71,20 +72,10 @@ def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"training CLI currently supports ppo, got {cfg.algorithm!r}")
     if cfg.model.name != "mlp":
         raise ValueError(f"training CLI currently supports mlp model, got {cfg.model.name!r}")
-    if cfg.transport.name != "tcp":
-        raise ValueError(
-            f"training CLI currently supports tcp transport, got {cfg.transport.name!r}"
-        )
-
     from hkrl.env import HKRLEnv
-    from hkrl.transport.tcp import TcpTransport
     from hkrl.wrappers import NormalizeObservation
 
-    transport = TcpTransport(
-        host=cfg.transport.host,
-        port=cfg.transport.port,
-        auth_token=resolve_auth_token(cfg),
-    )
+    transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     observation_space: Any = env.observation_space
     model = MlpActorCritic(
@@ -121,17 +112,9 @@ def run_smoke_from_args(args: argparse.Namespace) -> dict[str, Any]:
     task = load_task_config(args.task)
 
     from hkrl.env import HKRLEnv
-    from hkrl.transport.tcp import TcpTransport
     from hkrl.wrappers import NormalizeObservation
 
-    if cfg.transport.name != "tcp":
-        raise ValueError(f"smoke currently supports tcp transport, got {cfg.transport.name!r}")
-
-    transport = TcpTransport(
-        host=cfg.transport.host,
-        port=cfg.transport.port,
-        auth_token=resolve_auth_token(cfg),
-    )
+    transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     policy = RandomPolicy(env.action_space, seed=cfg.seed)
     sink = make_sink(args.metrics_kind, path=Path(args.metrics))

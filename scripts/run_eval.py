@@ -28,8 +28,9 @@ from hkrl.eval.evaluator import Evaluator
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
-from hkrl.transport.tcp import TcpTransport
-from hkrl.utils.config import TaskConfig, TrainConfig, load_task_config, load_train_config, resolve_auth_token
+from hkrl.transport.base import Transport
+from hkrl.transport.factory import make_transport
+from hkrl.utils.config import TaskConfig, TrainConfig, load_task_config, load_train_config
 from hkrl.wrappers import NormalizeObservation
 
 
@@ -123,12 +124,8 @@ def _build_policy(
     return model
 
 
-def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> TcpTransport:
-    return TcpTransport(
-        host=args.host,
-        port=args.port,
-        auth_token=resolve_auth_token(train_cfg),
-    )
+def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> Transport:
+    return make_transport(train_cfg, host=args.host, port=args.port)
 
 
 def _write_output(output: dict[str, Any], path: Path) -> None:

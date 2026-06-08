@@ -24,7 +24,8 @@ from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
-from hkrl.utils.config import TaskConfig, load_task_config, load_train_config, resolve_auth_token
+from hkrl.transport.factory import make_transport
+from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
 from hkrl.worker.game_worker import GameWorker
@@ -99,18 +100,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "worker_id": args.worker_id,
         }
 
-    if cfg.transport.name != "tcp":
-        raise ValueError(f"worker currently supports tcp transport, got {cfg.transport.name!r}")
-
     from hkrl.env import HKRLEnv
-    from hkrl.transport.tcp import TcpTransport
     from hkrl.wrappers import NormalizeObservation
 
-    transport = TcpTransport(
-        host=cfg.transport.host,
-        port=cfg.transport.port,
-        auth_token=resolve_auth_token(cfg),
-    )
+    transport = make_transport(cfg)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     spooled_batches: list[str] = []
     worker = GameWorker(

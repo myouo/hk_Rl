@@ -59,6 +59,9 @@ def test_load_train_config_composes_repo_defaults() -> None:
     assert config.algorithm == "ppo"
     assert config.gamma == 0.995
     assert config.transport.port == 5555
+    assert config.transport.shm_name == "hkrl_env"
+    assert config.transport.req_slots == 8
+    assert config.transport.resp_slots == 8
     assert config.model.name == "mlp"
 
 

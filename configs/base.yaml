@@ -21,6 +21,9 @@ transport:
   name: tcp        # tcp | shm
   host: 127.0.0.1
   port: 5555
+  shm_name: hkrl_env
+  req_slots: 8
+  resp_slots: 8
 
 model:
   name: entity_attention_gru

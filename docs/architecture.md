@@ -40,6 +40,8 @@ These hold across the whole codebase. Violating one is a design regression.
 3. **Transport is pluggable.** Everything talks through the `Transport`
    interface; TCP (MVP, cross-machine-capable) and shared-memory ring buffer
    (lowest-latency local) are interchangeable without touching env/model code.
+   Python entry points construct transports through `hkrl.transport.factory`
+   from YAML config rather than instantiating TCP directly.
 4. **Config-driven + component registry.** Models, transports, reward functions,
    tasks register by name (`hkrl.utils.registry`) and are selected from YAML
    (`hkrl.utils.config`). Adding a boss or a model variant requires no core edits.
