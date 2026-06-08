@@ -72,8 +72,7 @@ namespace HKRLEnvMod.Env
             }
             catch (System.Exception exception)
             {
-                _repeatRequest = null;
-                _repeatTicksRemaining = 0;
+                CancelRepeatedStep();
                 global::HKRLEnvMod.Debug.Logger.Error("StepController FixedTick failed", exception);
             }
         }
@@ -82,30 +81,12 @@ namespace HKRLEnvMod.Env
         {
             _serverTick++;
 
-            var request = _repeatRequest;
+            var request = DrainLatestRequest();
             var commandError = HKRL.StatusCode.Ok;
             HKRL.LifecycleState state;
             if (request != null)
             {
-                commandError = ApplyRepeatedStep(request);
-                state = AdvanceLifecycle();
-                if (ShouldContinueRepeat(commandError, state))
-                {
-                    return;
-                }
-
-                _repeatRequest = null;
-                _repeatTicksRemaining = 0;
-                EnqueueStepResponse(request, commandError, state);
-            }
-            else
-            {
-                request = DrainLatestRequest();
-                if (request == null)
-                {
-                    return;
-                }
-
+                CancelRepeatedStep();
                 commandError = Dispatch(request);
                 state = AdvanceLifecycle();
                 if (ShouldDelayStepResponse(request, commandError, state))
@@ -115,6 +96,24 @@ namespace HKRLEnvMod.Env
                     return;
                 }
 
+                EnqueueStepResponse(request, commandError, state);
+            }
+            else
+            {
+                request = _repeatRequest;
+                if (request == null)
+                {
+                    return;
+                }
+
+                commandError = ApplyRepeatedStep(request);
+                state = AdvanceLifecycle();
+                if (ShouldContinueRepeat(commandError, state))
+                {
+                    return;
+                }
+
+                CancelRepeatedStep();
                 EnqueueStepResponse(request, commandError, state);
             }
         }
@@ -227,6 +226,7 @@ namespace HKRLEnvMod.Env
                 {
                     case HKRL.Command.Reset:
                     case HKRL.Command.SetTask:
+                        CancelRepeatedStep();
                         _actions.Clear();
                         _rewards.Clear();
                         _resetManager.BeginReset(request.TaskId);
@@ -261,6 +261,12 @@ namespace HKRLEnvMod.Env
                     exception);
                 return HKRL.StatusCode.InternalError;
             }
+        }
+
+        private void CancelRepeatedStep()
+        {
+            _repeatRequest = null;
+            _repeatTicksRemaining = 0;
         }
 
         private HKRL.StatusCode ApplyRepeatedStep(DecodedStepRequest request)

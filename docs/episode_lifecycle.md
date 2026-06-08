@@ -34,6 +34,8 @@ IDLE
 - Every episode has a unique `episode_id`.
 - Death, win, and scene change all route to `TERMINATING`.
 - After `done`, no new reward events are collected.
+- `RESET` / `SET_TASK` cancels any pending repeated `STEP`; old held/repeated
+  actions must not carry into the next episode.
 - A reset **failure** returns a non-`Ok` `StatusCode` (e.g. `ResetTimeout`,
   `BossNotFound`) — never silently continue training on a bad episode.
 

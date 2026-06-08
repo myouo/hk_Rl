@@ -186,6 +186,20 @@ def test_mod_step_controller_honors_action_repeat_contract() -> None:
     assert "BufferedTerminalEvent" in controller
 
 
+def test_mod_step_controller_new_requests_preempt_repeated_steps() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    drain_idx = controller.index("var request = DrainLatestRequest();")
+    repeat_idx = controller.index("request = _repeatRequest;")
+    assert drain_idx < repeat_idx
+    assert "CancelRepeatedStep();" in controller
+
+    reset_idx = controller.index("case HKRL.Command.Reset:")
+    step_idx = controller.index("case HKRL.Command.Step:")
+    assert "CancelRepeatedStep();" in controller[reset_idx:step_idx]
+
+
 def test_mod_step_controller_reports_wire_invalid_actions() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
