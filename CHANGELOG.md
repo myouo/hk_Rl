@@ -137,6 +137,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_worker.py` now builds config/task-driven worker wiring with a
   dry-run mode, optional checkpoint registry probing, NPZ batch spooling, and
   configurable recovery limits.
+- `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
+  provider for multi-task rollout smoke/curriculum runs.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

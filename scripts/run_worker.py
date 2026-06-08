@@ -24,7 +24,7 @@ from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
-from hkrl.utils.config import load_task_config, load_train_config, resolve_auth_token
+from hkrl.utils.config import TaskConfig, load_task_config, load_train_config, resolve_auth_token
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
 from hkrl.worker.game_worker import GameWorker
@@ -34,6 +34,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL GameWorker")
     p.add_argument("--config", required=True)
     p.add_argument("--task", required=True)
+    p.add_argument("--tasks", nargs="+", help="optional task list cycled per rollout")
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
     p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
@@ -53,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
-    task = load_task_config(args.task)
+    tasks = _load_tasks(args)
+    task = tasks[0]
     observation_space = make_observation_space(
         max_entities=task.observation.max_entities,
         tier=task.observation.tier,
@@ -90,6 +92,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "model": cfg.model.name,
             "registry": args.registry,
             "task_id": task.task_id,
+            "task_ids": [item.task_id for item in tasks],
             "worker_id": args.worker_id,
         }
 
@@ -114,6 +117,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         checkpoint_client=checkpoint_client,
         learner_endpoint=args.learner,
         batch_uploader=_make_batch_uploader(args.batch_dir, args.worker_id, spooled_batches),
+        task_provider=_make_task_provider(tasks),
         max_consecutive_failures=args.max_consecutive_failures,
     )
     try:
@@ -131,6 +135,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "rollout_steps": 0 if last_batch is None else int(last_batch.rewards.size),
             "spooled_batches": spooled_batches,
             "task_id": task.task_id,
+            "task_ids": [item.task_id for item in tasks],
             "worker_crash_count": worker.worker_crash_count,
             "worker_id": args.worker_id,
         }
@@ -162,6 +167,28 @@ def _build_model(
         enable_macro=enable_macro,
         max_entities=max_entities,
     )
+
+
+def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
+    paths = args.tasks if args.tasks else [args.task]
+    tasks = [load_task_config(path) for path in paths]
+    if not tasks:
+        raise ValueError("at least one task is required")
+    return tasks
+
+
+def _make_task_provider(tasks: list[TaskConfig]) -> Callable[[], TaskConfig | None] | None:
+    if len(tasks) <= 1:
+        return None
+
+    index = -1
+
+    def provide() -> TaskConfig:
+        nonlocal index
+        index = (index + 1) % len(tasks)
+        return tasks[index]
+
+    return provide
 
 
 def _make_batch_uploader(

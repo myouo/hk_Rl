@@ -22,6 +22,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
     args = argparse.Namespace(
         config=str(root / "configs/train/remote_learner.yaml"),
         task=str(root / "configs/tasks/gruz_mother.yaml"),
+        tasks=None,
         learner="127.0.0.1:5600",
         registry=str(tmp_path / "checkpoints"),
         batch_dir=str(tmp_path / "batches"),
@@ -46,8 +47,23 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "model": "entity_attention_gru",
         "registry": str(tmp_path / "checkpoints"),
         "task_id": "gruz_mother",
+        "task_ids": ["gruz_mother"],
         "worker_id": "game-pc-1",
     }
+
+
+def test_run_worker_task_provider_cycles_tasks() -> None:
+    module = _load_script("run_worker.py")
+    tasks = [
+        module.TaskConfig(task_id="a", wire_id=1, scene="A"),
+        module.TaskConfig(task_id="b", wire_id=2, scene="B"),
+    ]
+    provider = module._make_task_provider(tasks)
+    assert provider is not None
+
+    assert provider().task_id == "a"
+    assert provider().task_id == "b"
+    assert provider().task_id == "a"
 
 
 def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:

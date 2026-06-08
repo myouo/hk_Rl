@@ -104,6 +104,9 @@ For curricula, `GameWorker` can accept a `task_provider` callback. Before each
 rollout it asks for the assigned `TaskConfig`; if the task wire id changed, it
 calls the env's `set_task()` through any Gym wrapper chain and starts the rollout
 from the returned clean-reset observation.
+`scripts/run_worker.py --tasks task_a.yaml task_b.yaml ...` installs a simple
+round-robin provider for smoke/curriculum testing before a remote coordinator is
+connected.
 
 ## 8. Monitoring snapshot
 
