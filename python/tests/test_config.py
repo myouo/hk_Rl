@@ -77,6 +77,29 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     assert config.security.auth_token_env == "HKRL_AUTH_TOKEN"
 
 
+def test_load_train_config_rejects_unknown_fields(tmp_path: Path) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(
+        config,
+        {
+            "algorithm": "ppo",
+            "model": {"name": "mlp", "unknown_model_key": 1},
+            "unexpected_top_level": True,
+        },
+    )
+
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        load_train_config(config)
+
+
+def test_load_train_config_rejects_unknown_enum_values(tmp_path: Path) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(config, {"algorithm": "dqn", "transport": {"name": "udp"}})
+
+    with pytest.raises(ValueError, match="Input should be"):
+        load_train_config(config)
+
+
 def test_resolve_auth_token_uses_configured_environment() -> None:
     config = load_train_config(Path("../configs/train/remote_learner.yaml"))
 

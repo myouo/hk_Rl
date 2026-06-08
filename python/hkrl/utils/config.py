@@ -10,13 +10,19 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class RewardWeights(BaseModel):
+class StrictConfigModel(BaseModel):
+    """Config base that rejects unknown keys instead of silently ignoring typos."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RewardWeights(StrictConfigModel):
     """Reward term weights (docs/reward_design.md §3)."""
 
     boss_damage: float = 1.0
@@ -29,19 +35,19 @@ class RewardWeights(BaseModel):
     invalid_action: float = -0.01
 
 
-class ObservationConfig(BaseModel):
+class ObservationConfig(StrictConfigModel):
     max_entities: int = 64
     include_fsm_state: bool = True
     include_hitbox: bool = True
-    tier: str = "privileged"  # privileged | reduced | human_visible
+    tier: Literal["privileged", "reduced", "human_visible"] = "privileged"
 
 
-class ActionConfig(BaseModel):
+class ActionConfig(StrictConfigModel):
     action_repeat: int = 2
     enable_macro_actions: bool = True
 
 
-class TaskConfig(BaseModel):
+class TaskConfig(StrictConfigModel):
     """One boss/arena task (configs/tasks/*.yaml). Mirrors PRD §12.1."""
 
     task_id: str
@@ -54,24 +60,24 @@ class TaskConfig(BaseModel):
     action: ActionConfig = Field(default_factory=ActionConfig)
 
 
-class ModelConfig(BaseModel):
+class ModelConfig(StrictConfigModel):
     """Selects + configures an ActorCritic (registry name + kwargs). PRD §12.2."""
 
     name: str = "entity_attention_gru"
     entity_hidden: int = 128
     attention_layers: int = 2
     attention_heads: int = 4
-    rnn_type: str = "gru"  # gru | lstm | none
+    rnn_type: Literal["gru", "lstm", "none"] = "gru"
     rnn_hidden: int = 256
 
 
-class TransportConfig(BaseModel):
-    name: str = "tcp"  # tcp | shm
+class TransportConfig(StrictConfigModel):
+    name: Literal["tcp", "shm"] = "tcp"
     host: str = "127.0.0.1"
     port: int = 5555
 
 
-class LearnerRuntimeConfig(BaseModel):
+class LearnerRuntimeConfig(StrictConfigModel):
     """Remote learner runtime settings (docs/distributed_training.md §5)."""
 
     bind: str = "0.0.0.0:5600"
@@ -80,7 +86,7 @@ class LearnerRuntimeConfig(BaseModel):
     publish_every_updates: int = 1
 
 
-class CoordinatorRuntimeConfig(BaseModel):
+class CoordinatorRuntimeConfig(StrictConfigModel):
     """Coordinator runtime settings for worker fleets."""
 
     bind: str = "0.0.0.0:5610"
@@ -88,18 +94,18 @@ class CoordinatorRuntimeConfig(BaseModel):
     heartbeat_timeout_s: float = 30.0
 
 
-class SecurityConfig(BaseModel):
+class SecurityConfig(StrictConfigModel):
     """Runtime security toggles (PRD §9.10)."""
 
-    bind_scope: str = "lan"  # lan | localhost
+    bind_scope: Literal["lan", "localhost"] = "lan"
     require_token: bool = False
     auth_token_env: str = "HKRL_AUTH_TOKEN"
 
 
-class TrainConfig(BaseModel):
+class TrainConfig(StrictConfigModel):
     """Training hyperparameters (configs/train/*.yaml). Mirrors PRD §12.2."""
 
-    algorithm: str = "recurrent_ppo"  # ppo | recurrent_ppo | appo
+    algorithm: Literal["ppo", "recurrent_ppo", "appo"] = "recurrent_ppo"
     gamma: float = 0.995
     gae_lambda: float = 0.95
     clip_range: float = 0.2

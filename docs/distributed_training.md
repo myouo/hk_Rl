@@ -75,6 +75,8 @@ Runtime settings under `learner:`, `coordinator:`, and `security:` in
 `configs/train/remote_learner.yaml` are typed in `hkrl.utils.config.TrainConfig`.
 CLI flags on `scripts/run_learner.py` override those YAML values only when
 explicitly provided.
+Unknown config keys are rejected instead of ignored, so typos in distributed
+settings fail during startup.
 
 When `security.require_token` is true, Python TCP clients read the token from
 `security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the initial
