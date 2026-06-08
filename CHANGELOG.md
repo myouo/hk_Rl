@@ -18,6 +18,10 @@ the project version tracks the **schema_version** + roadmap phase.
   Observation / Action / Rewards / Debug.
 - Phase 0 mod bootstrap: Modding API-backed logger, persistent FixedUpdate
   driver, and periodic scene/player-position snapshot logging.
+- Conda development environment (`environment.yml`) for Python runtime, dev,
+  logging, and distributed extras.
+- Python training foundations: config `defaults` composition, default reward
+  composition, deterministic seeding, running metrics, and GAE.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
