@@ -51,6 +51,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Synchronous PPO now runs clipped policy/value updates over flat rollout
   batches, reports core training metrics, and exports advantages/returns in
   RolloutBatch.
+- GameWorker can now collect local single-env rollouts with model inference,
+  action-mask handling, tensor-to-env action conversion, and GAE bootstrap.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
