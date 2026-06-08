@@ -1,0 +1,242 @@
+// =============================================================================
+// HKRL wire schema — SINGLE SOURCE OF TRUTH
+// =============================================================================
+// This .fbs is the ONLY definition of observation / action / protocol. Both the
+// C# mod (mod/HKRLEnvMod/Schema) and the Python package (python/hkrl/schema) are
+// generated from it via `make gen-schema` (flatc --csharp / --python).
+//
+// RULES (see docs/protocol.md, AGENTS.md):
+//   * NEVER hand-edit generated bindings. Change THIS file, then regenerate.
+//   * Append-only evolution: add new fields at the END of a table with explicit
+//     defaults. Never reorder, never reuse a removed field id. FlatBuffers makes
+//     added optional fields backward/forward compatible.
+//   * Bump `SCHEMA_VERSION` (below + StepRequest/StepResponse) on every change
+//     and document it in CHANGELOG.md.
+//
+// Field semantics (units, ranges, normalization) are specified in
+// docs/observation_schema.md and docs/action_space.md — keep them in sync.
+// =============================================================================
+
+namespace HKRL;
+
+// Bump on every schema change. Mirrors SCHEMA_VERSION constant in
+// python/hkrl/protocol.py and mod/HKRLEnvMod/Transport/Protocol.cs.
+// schema_version is also carried per-message for runtime negotiation.
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+/// Entity type tag. Drives type-embedding in the model (docs/model_architecture.md).
+enum EntityType : ubyte {
+  Player = 0,
+  Boss = 1,
+  Enemy = 2,
+  Projectile = 3,
+  Hazard = 4,
+  Platform = 5,
+  Pickup = 6,
+  Effect = 7,
+  Unknown = 255,
+}
+
+/// Team / faction for an entity.
+enum Team : ubyte {
+  Neutral = 0,
+  Enemy = 1,
+  PlayerCreated = 2,   // player-spawned projectiles, summons
+}
+
+/// Commands the learner/worker can send to the env server (docs/protocol.md §command).
+enum Command : ubyte {
+  Step = 0,
+  Reset = 1,
+  Pause = 2,
+  Resume = 3,
+  SetTask = 4,
+  SetTimescale = 5,
+  Ping = 6,
+}
+
+/// Clean episode lifecycle state machine (PRD §5.7, docs/episode_lifecycle.md).
+enum LifecycleState : ubyte {
+  Idle = 0,
+  ResetRequested = 1,
+  FreezeInput = 2,
+  ClearEvents = 3,
+  LoadScene = 4,
+  WaitSceneReady = 5,
+  WaitPlayerReady = 6,
+  WaitBossReady = 7,
+  RestorePlayerState = 8,
+  ClearProjectiles = 9,
+  Countdown = 10,
+  Running = 11,
+  Terminating = 12,
+  ReportDone = 13,
+  Cleanup = 14,
+}
+
+/// Discriminator for the RewardEvent union payloads (PRD §5.6).
+enum RewardEventKind : ubyte {
+  DamageDealt = 0,
+  DamageTaken = 1,
+  Heal = 2,
+  SoulGained = 3,
+  BossKilled = 4,
+  PlayerDeath = 5,
+  SceneChanged = 6,
+  InvalidAction = 7,
+  Stagger = 8,
+}
+
+/// Why a reset / step failed — returned in StepResponse.error_code.
+enum StatusCode : ubyte {
+  Ok = 0,
+  ResetTimeout = 1,
+  SceneLoadFailed = 2,
+  BossNotFound = 3,
+  PlayerNotReady = 4,
+  InternalError = 5,
+  SchemaMismatch = 6,
+}
+
+// ----------------------------------------------------------------------------
+// Observation (PRD §5.5)
+// ----------------------------------------------------------------------------
+
+/// Episode/scene scoped context. One per StepResponse.
+table GlobalState {
+  scene_hash:int;
+  arena_id:int;
+  task_id:int;
+  difficulty:ubyte;
+  time_in_episode:float;     // seconds since RUNNING began
+  time_scale:float;
+  fixed_delta_time:float;
+  stage_index:int;           // which fight in a linear boss sequence
+  episode_id:ulong;
+}
+
+/// Hero / player state. Explicit cooldown & lock timers make the env Markovian
+/// (docs/troubleshooting.md §9.1).
+table PlayerState {
+  pos_x:float; pos_y:float;
+  vel_x:float; vel_y:float;
+  hp:int; max_hp:int;
+  soul:int; max_soul:int;
+  facing:byte;               // -1 left, +1 right
+  on_ground:bool;
+  wall_sliding:bool;
+  jumping:bool;
+  falling:bool;
+  dashing:bool;
+  shadow_dashing:bool;
+  invulnerable:bool;
+  invuln_timer:float;
+  attack_lock_timer:float;
+  cast_lock_timer:float;
+  focus_state:ubyte;
+  dash_cooldown:float;
+  double_jump_available:bool;
+  can_attack:bool;
+  can_cast:bool;
+  can_focus:bool;
+}
+
+/// One variable-count entity (boss / enemy / projectile / hazard / ...).
+/// rel_* are player-centric normalized coords (filled mod-side or Python-side;
+/// see docs/observation_schema.md).
+table EntityState {
+  entity_id:int;             // stable across frames (EntityRegistry)
+  entity_type:EntityType;
+  team:Team;
+  prefab_hash:int;
+  fsm_name_hash:int;
+  fsm_state_hash:int;
+  pos_x:float; pos_y:float;
+  rel_x:float; rel_y:float;
+  vel_x:float; vel_y:float;
+  hp:int; max_hp:int;
+  hurtbox_center_x:float; hurtbox_center_y:float;
+  hurtbox_size_x:float; hurtbox_size_y:float;
+  hitbox_active:bool;
+  damage:int;
+  ttl:float;                 // projectile time-to-live
+  phase:int;
+  threat_score:float;        // for top-k priority filtering
+  flags:uint;                // bitfield, see docs/observation_schema.md
+}
+
+/// Full observation snapshot for one tick.
+table Observation {
+  global:GlobalState;
+  player:PlayerState;
+  entities:[EntityState];
+  entity_mask:[bool];        // parallel to entities[]; true = valid slot
+}
+
+// ----------------------------------------------------------------------------
+// Reward events (PRD §5.6) — mod reports events, Python computes scalar reward
+// (decoupled, see docs/reward_design.md to avoid reward hacking).
+// ----------------------------------------------------------------------------
+
+table RewardEvent {
+  kind:RewardEventKind;
+  // Generic payload slots, interpreted per `kind` (documented in reward_design.md):
+  entity_id:int;             // target/source/boss entity
+  amount:float;              // damage / heal / soul amount
+  aux_int:int;              // damage_type / action_id / from_scene
+  aux_int2:int;             // to_scene / reason code
+}
+
+// ----------------------------------------------------------------------------
+// Action (PRD §6) — hybrid: discrete movement/aim + button bitmask + duration.
+// ----------------------------------------------------------------------------
+
+table Action {
+  movement_x:ubyte;          // Discrete(3): 0=left 1=neutral 2=right
+  aim_y:ubyte;               // Discrete(3): 0=down 1=neutral 2=up
+  buttons:uint;              // bitmask: jump_tap/jump_hold/dash/attack/cast/
+                             //          focus_hold/dream_nail/nail_art_hold/release
+  duration_idx:ubyte;        // index into {1,2,4,8} ticks
+  macro_id:short;            // -1 = none, else macro action id (PRD §6.4)
+}
+
+// ----------------------------------------------------------------------------
+// Protocol messages (PRD §5.4)
+// ----------------------------------------------------------------------------
+
+table StepRequest {
+  schema_version:int;
+  env_id:int;
+  tick_id:ulong;
+  command:Command;
+  action:Action;
+  action_repeat:ubyte = 1;
+  policy_version:long;
+  client_time:double;        // wall clock for latency tracking
+  // For SET_TASK / SET_TIMESCALE commands:
+  task_id:int;
+  time_scale:float;
+}
+
+table StepResponse {
+  schema_version:int;
+  env_id:int;
+  tick_id:ulong;             // echoes request tick_id
+  server_tick:ulong;         // mod-side fixed-update counter
+  observation:Observation;
+  reward_events:[RewardEvent];
+  action_mask:[bool];        // flattened mask, layout in docs/action_space.md
+  terminated:bool;
+  truncated:bool;
+  lifecycle_state:LifecycleState;
+  error_code:StatusCode = Ok;
+  info:string;               // optional JSON for debug (NOT on hot path)
+}
+
+// Root type is StepResponse for size-prefixed reads; requests are also
+// length-prefixed on the wire (see docs/protocol.md framing).
+root_type StepResponse;
+file_identifier "HKRL";

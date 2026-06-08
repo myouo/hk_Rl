@@ -1,0 +1,10 @@
+# Single-boss MLP PPO baseline (PRD Phase 3). Non-recurrent floor.
+defaults:
+  - ../base.yaml
+
+algorithm: ppo
+sequence_length: 1     # non-recurrent
+model:
+  name: mlp
+  rnn_type: none
+  rnn_hidden: 0

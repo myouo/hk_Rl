@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    HKRLEnvMod — Hollow Knight environment-server mod (HK Modding API).
+    See docs/mod_dev.md and docs/adr/0003-mod-framework-hk-modding-api.md.
+
+    Assembly references below point at a LOCAL Hollow Knight install + Modding
+    API. These paths are machine-specific: set HollowKnightManaged in a local
+    Directory.Build.props / .csproj.user (NOT committed). Compilation is deferred
+    until Phase 0 configures a game install; this project is interface-level
+    placeholder until then.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>HKRLEnvMod</AssemblyName>
+    <RootNamespace>HKRLEnvMod</RootNamespace>
+    <Nullable>enable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Override locally, e.g. in .csproj.user:
+         <HollowKnightManaged>C:\Steam\...\Hollow Knight_Data\Managed</HollowKnightManaged> -->
+    <HollowKnightManaged Condition="'$(HollowKnightManaged)' == ''">$(MSBuildProjectDirectory)\..\..\.refs\Managed</HollowKnightManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Hollow Knight + Unity + Modding API assemblies (resolved from the local install). -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(HollowKnightManaged)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(HollowKnightManaged)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(HollowKnightManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MMHOOK_Assembly-CSharp">
+      <HintPath>$(HollowKnightManaged)\MMHOOK_Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PlayMaker">
+      <HintPath>$(HollowKnightManaged)\PlayMaker.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- FlatBuffers C# runtime + (generated) bindings. Generated code under
+         Schema/ is gitignored; run `make gen-schema-cs`. -->
+    <PackageReference Include="Google.FlatBuffers" Version="24.3.25" />
+  </ItemGroup>
+
+</Project>

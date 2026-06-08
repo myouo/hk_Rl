@@ -1,0 +1,14 @@
+# Entity-attention + GRU recurrent PPO (PRD Phase 5). The high-ceiling model.
+defaults:
+  - ../base.yaml
+
+algorithm: recurrent_ppo
+sequence_length: 32
+burn_in: 8
+model:
+  name: entity_attention_gru
+  entity_hidden: 128
+  attention_layers: 2
+  attention_heads: 4
+  rnn_type: gru
+  rnn_hidden: 256

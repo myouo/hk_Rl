@@ -1,0 +1,47 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.so
+
+# ---- Generated schema bindings (regenerate via `make gen-schema`) ----
+schema/gen/
+python/hkrl/schema/hkrl/
+mod/HKRLEnvMod/Schema/HKRL/
+
+# ---- ML artifacts ----
+checkpoints/
+runs/
+wandb/
+*.pt
+*.pth
+*.onnx
+logs/
+*.jsonl
+*.csv
+replays/
+
+# ---- C# / .NET ----
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# ---- IDE / OS ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

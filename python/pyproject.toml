@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hkrl"
+version = "0.1.0"
+description = "Hollow Knight reinforcement learning: env, models, training, distributed workers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "hk-rl" }]
+
+# Runtime deps kept minimal at the interface-skeleton stage; pin precisely as
+# implementations land (see docs/architecture.md). torch is intentionally NOT
+# pinned to a CUDA build here — install the appropriate wheel per machine.
+dependencies = [
+    "numpy>=1.24",
+    "gymnasium>=0.29",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "flatbuffers>=24.3.25",
+    "torch>=2.2",          # see docs/distributed_training.md for CUDA build notes
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+# Heavy / optional capabilities, installed on demand.
+logging = ["tensorboard>=2.16", "wandb>=0.16"]
+distributed = ["pyzmq>=25.1"]
+
+[project.scripts]
+hkrl-train = "hkrl.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hkrl*"]
+
+# ----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["python"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# Skeleton files intentionally contain unused args / NotImplementedError bodies.
+ignore = ["B027", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]  # re-exports
+
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true   # generated flatbuffers / optional deps
+# Generated schema bindings are excluded from strict typing.
+exclude = "hkrl/schema/hkrl/"
+
+# ----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "integration: requires a live Hollow Knight + HKRLEnvMod connection",
+    "slow: long-running training / rollout tests",
+]

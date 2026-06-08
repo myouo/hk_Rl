@@ -1,0 +1,24 @@
+# Remote learner config (PRD Phase 6, docs/distributed_training.md). Local
+# inference on workers; APPO on the GPU learner with policy_version staleness
+# handling.
+defaults:
+  - ./ppo_attention_gru.yaml
+
+algorithm: appo
+
+# Learner / distributed settings (consumed by hkrl.learner / hkrl.coordinator;
+# schema extends TrainConfig in phase 6).
+learner:
+  bind: 0.0.0.0:5600
+  max_staleness: 4              # drop rollouts older than this many versions
+  checkpoint_dir: checkpoints/
+  publish_every_updates: 10
+
+coordinator:
+  bind: 0.0.0.0:5610
+  num_workers: 4
+
+# Security (PRD §9.10): LAN/localhost only; token auth; hash-verified checkpoints.
+security:
+  bind_scope: lan              # lan | localhost
+  require_token: true
