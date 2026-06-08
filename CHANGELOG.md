@@ -76,6 +76,8 @@ the project version tracks the **schema_version** + roadmap phase.
   checkpoint policies and emits JSON metrics/regression output.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
+- CheckpointRegistry now persists versioned torch checkpoints with sha256 hashes
+  and reloadable JSONL metadata for worker verification.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
