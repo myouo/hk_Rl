@@ -8,6 +8,7 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pytest
 from hkrl.spaces import action_mask_layout, make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
@@ -25,6 +26,8 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
         max_entities=4,
         disable_macro_actions=False,
         n_macro_actions=11,
+        task=None,
+        tasks=None,
         tier="privileged",
     )
 
@@ -37,6 +40,7 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["checkpoint_dir"] == str(tmp_path.resolve())
     assert summary["enable_macro_actions"] is True
     assert summary["latest_checkpoint"] is None
+    assert summary["max_entities"] == 4
     assert summary["max_staleness"] == 2
     assert summary["model"] == "entity_attention_gru"
     assert summary["n_macro_actions"] == 11
@@ -45,6 +49,8 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
     assert summary["submitted_batches"] == 0
+    assert summary["task_ids"] == []
+    assert summary["tier"] == "privileged"
 
 
 def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
@@ -77,6 +83,8 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
         max_entities=4,
         disable_macro_actions=False,
         n_macro_actions=11,
+        task=None,
+        tasks=None,
         tier="privileged",
     )
 
@@ -122,6 +130,8 @@ def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
         max_entities=4,
         disable_macro_actions=False,
         n_macro_actions=11,
+        task=None,
+        tasks=None,
         tier="privileged",
     )
 
@@ -131,6 +141,47 @@ def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
     assert summary["checkpoint_dir"] == str(checkpoint_dir.resolve())
     assert summary["max_staleness"] == 6
     assert summary["publish_every_updates"] == 3
+
+
+def test_run_learner_infers_layout_from_task_configs(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    root = Path(__file__).parents[2]
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        bind="127.0.0.1:0",
+        batch_dir=None,
+        checkpoint_dir=str(tmp_path),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=None,
+        disable_macro_actions=False,
+        n_macro_actions=None,
+        task=None,
+        tasks=[
+            str(root / "configs/tasks/gruz_mother.yaml"),
+            str(root / "configs/tasks/hornet_protector.yaml"),
+        ],
+        tier=None,
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["enable_macro_actions"] is True
+    assert summary["max_entities"] == 64
+    assert summary["n_macro_actions"] == 11
+    assert summary["task_ids"] == ["gruz_mother", "hornet_protector_attuned"]
+    assert summary["tier"] == "privileged"
+
+
+def test_run_learner_rejects_incompatible_task_layouts() -> None:
+    module = _load_script("run_learner.py")
+    tasks = [
+        module.TaskConfig(task_id="a", wire_id=1, scene="A", action={"n_macro_actions": 11}),
+        module.TaskConfig(task_id="b", wire_id=2, scene="B", action={"n_macro_actions": 4}),
+    ]
+
+    with pytest.raises(ValueError, match="n_macro_actions"):
+        module._validate_task_layouts(tasks)
 
 
 def _load_script(name: str) -> ModuleType:

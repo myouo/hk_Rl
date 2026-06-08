@@ -136,6 +136,8 @@ the project version tracks the **schema_version** + roadmap phase.
   silent YAML misconfiguration.
 - `scripts/run_learner.py` can now ingest NPZ RolloutBatch directories and run
   the submitted batches through learner update/checkpoint publication.
+- `scripts/run_learner.py` can now infer learner model/action layout from task
+  YAMLs and rejects multi-task sets with incompatible observation/action widths.
 - `scripts/run_worker.py` now builds config/task-driven worker wiring with a
   dry-run mode, optional checkpoint registry probing, NPZ batch spooling, and
   configurable recovery limits.

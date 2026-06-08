@@ -101,6 +101,11 @@ python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
   --dry-run
+
+python scripts/run_learner.py \
+  --config configs/train/remote_learner.yaml \
+  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+  --checkpoint-dir checkpoints
 ```
 
 `--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与

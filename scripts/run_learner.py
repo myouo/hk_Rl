@@ -24,24 +24,26 @@ from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import DEFAULT_N_MACROS, make_observation_space
 from hkrl.training.batch_io import load_rollout_batch
-from hkrl.utils.config import load_train_config
+from hkrl.utils.config import TaskConfig, load_task_config, load_train_config
 from hkrl.utils.registry import get
 
 
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
+    p.add_argument("--task", help="task YAML used to infer learner model layout")
+    p.add_argument("--tasks", nargs="+", help="task YAMLs used to infer learner model layout")
     p.add_argument("--bind", default=None, help="override config.learner.bind")
     p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
     p.add_argument("--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir")
     p.add_argument("--max-staleness", type=int, default=None)
     p.add_argument("--publish-every-updates", type=int, default=None)
-    p.add_argument("--max-entities", type=int, default=64)
+    p.add_argument("--max-entities", type=int, default=None)
     p.add_argument("--disable-macro-actions", action="store_true")
-    p.add_argument("--n-macro-actions", type=int, default=DEFAULT_N_MACROS)
+    p.add_argument("--n-macro-actions", type=int, default=None)
     p.add_argument(
         "--tier",
-        default="privileged",
+        default=None,
         choices=("privileged", "reduced", "human_visible"),
         help="observation tier used to size the learner model",
     )
@@ -65,7 +67,12 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         if args.publish_every_updates is None
         else args.publish_every_updates
     )
-    observation_space = make_observation_space(max_entities=args.max_entities, tier=args.tier)
+    tasks = _load_tasks(args)
+    layout = _resolve_layout(args, tasks)
+    observation_space = make_observation_space(
+        max_entities=layout["max_entities"],
+        tier=layout["tier"],
+    )
     model = _build_model(
         cfg,
         {
@@ -74,9 +81,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "entities": observation_space["entities"].shape,
             "entity_mask": observation_space["entity_mask"].shape,
         },
-        max_entities=args.max_entities,
-        enable_macro=not args.disable_macro_actions,
-        n_macros=args.n_macro_actions,
+        max_entities=layout["max_entities"],
+        enable_macro=layout["enable_macro_actions"],
+        n_macros=layout["n_macro_actions"],
     )
     registry = CheckpointRegistry(str(Path(checkpoint_dir)))
     server = LearnerServer(
@@ -96,16 +103,19 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "batch_dir": args.batch_dir,
         "bind": bind,
         "checkpoint_dir": registry.root,
-        "enable_macro_actions": not args.disable_macro_actions,
+        "enable_macro_actions": layout["enable_macro_actions"],
         "latest_checkpoint": None if latest is None else latest.version,
+        "max_entities": layout["max_entities"],
         "max_staleness": max_staleness,
         "model": cfg.model.name,
-        "n_macro_actions": args.n_macro_actions,
+        "n_macro_actions": layout["n_macro_actions"],
         "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
         "rejected_batches": server.rejected_batches,
         "submitted_batches": submitted_batches,
+        "task_ids": [task.task_id for task in tasks],
+        "tier": layout["tier"],
     }
 
 
@@ -153,6 +163,55 @@ def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
         server.submit(load_rollout_batch(path))
         submitted += 1
     return submitted
+
+
+def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
+    task_paths = getattr(args, "tasks", None)
+    task_path = getattr(args, "task", None)
+    paths = task_paths if task_paths else ([task_path] if task_path else [])
+    tasks = [load_task_config(path) for path in paths]
+    if tasks:
+        _validate_task_layouts(tasks)
+    return tasks
+
+
+def _resolve_layout(args: argparse.Namespace, tasks: list[TaskConfig]) -> dict[str, Any]:
+    task = tasks[0] if tasks else None
+    max_entities = args.max_entities
+    if max_entities is None:
+        max_entities = task.observation.max_entities if task is not None else 64
+
+    tier = args.tier
+    if tier is None:
+        tier = task.observation.tier if task is not None else "privileged"
+
+    enable_macro = task.action.enable_macro_actions if task is not None else True
+    if args.disable_macro_actions:
+        enable_macro = False
+
+    n_macros = args.n_macro_actions
+    if n_macros is None:
+        n_macros = task.action.n_macro_actions if task is not None else DEFAULT_N_MACROS
+
+    return {
+        "enable_macro_actions": enable_macro,
+        "max_entities": max_entities,
+        "n_macro_actions": n_macros,
+        "tier": tier,
+    }
+
+
+def _validate_task_layouts(tasks: list[TaskConfig]) -> None:
+    base = tasks[0]
+    for task in tasks[1:]:
+        if task.observation.max_entities != base.observation.max_entities:
+            raise ValueError("all learner tasks must share observation.max_entities")
+        if task.observation.tier != base.observation.tier:
+            raise ValueError("all learner tasks must share observation.tier")
+        if task.action.enable_macro_actions != base.action.enable_macro_actions:
+            raise ValueError("all learner tasks must share action.enable_macro_actions")
+        if task.action.n_macro_actions != base.action.n_macro_actions:
+            raise ValueError("all learner tasks must share action.n_macro_actions")
 
 
 if __name__ == "__main__":

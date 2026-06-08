@@ -50,6 +50,10 @@ For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
 loads all `*.npz` batches through `LearnerServer.submit()` before serving one
 update cycle.
+`scripts/run_learner.py --tasks ...` can infer the learner model's
+`max_entities`, observation tier, macro enablement, and macro count from task
+YAML, and rejects task groups whose model/action layout would not fit a single
+policy.
 `scripts/run_coordinator.py --dry-run` validates the coordinator side of the same
 run: it loads task YAMLs, creates expected worker assignments, ingests optional
 heartbeat JSONL, and prints a JSON monitoring snapshot.
