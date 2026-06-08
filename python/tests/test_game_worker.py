@@ -60,6 +60,31 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}
 
 
+def test_game_worker_resets_when_rollout_ends_on_terminal_step() -> None:
+    env = TerminalAtRolloutEndEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+    )
+
+    worker.collect_rollout()
+    worker.collect_rollout()
+
+    assert env.reset_count == 2
+    assert env.step_after_terminal_without_reset is False
+
+
 def test_game_worker_collect_rollout_uses_recurrent_buffer() -> None:
     env = FakeEnv()
     model = EntityAttentionRecurrentAC(
@@ -355,6 +380,30 @@ class FailOnceEnv(FakeEnv):
             self.failed = True
             raise TimeoutError("simulated transport timeout")
         return super().step(action)
+
+
+class TerminalAtRolloutEndEnv(FakeEnv):
+    def __init__(self) -> None:
+        super().__init__()
+        self.terminal_pending = False
+        self.step_after_terminal_without_reset = False
+
+    def reset(self) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        self.terminal_pending = False
+        return super().reset()
+
+    def step(
+        self, action: dict[str, Any]
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        if self.terminal_pending:
+            self.step_after_terminal_without_reset = True
+            raise RuntimeError("step called after terminal without reset")
+        self.actions.append(action)
+        self.step_count += 1
+        terminated = self.step_count % 2 == 0
+        if terminated:
+            self.terminal_pending = True
+        return self._obs(), 1.0, terminated, False, self._info(episode_id=self.reset_count)
 
 
 class AlwaysFailEnv(FakeEnv):

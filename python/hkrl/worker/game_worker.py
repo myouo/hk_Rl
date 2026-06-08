@@ -166,7 +166,10 @@ class GameWorker:
             self._rnn_state = next_rnn_state
             if terminated or truncated:
                 self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
-                if not self.buffer.is_full():
+                if self.buffer.is_full():
+                    self._obs = None
+                    self._info = {}
+                else:
                     self._reset()
 
         last_value = self._bootstrap_value()

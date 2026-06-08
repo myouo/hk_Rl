@@ -108,6 +108,8 @@ the project version tracks the **schema_version** + roadmap phase.
   env `set_task()` before rollouts for curriculum/coordinator assignments.
 - GameWorker recovery now finds reconnect hooks through Gym wrapper chains, so
   normalized/wrapped HKRLEnv instances still reconnect their underlying transport.
+- GameWorker now forces a clean reset before the next rollout when an episode
+  terminates exactly on the final collected step.
 - FrameStack wrapper now stacks dict observation feature axes and updates the
   Gym observation space for short-history MLP baselines.
 - ScriptedAggroPolicy now provides a mask-aware heuristic baseline that approaches
