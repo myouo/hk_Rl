@@ -60,3 +60,17 @@ def test_load_train_config_composes_repo_defaults() -> None:
     assert config.gamma == 0.995
     assert config.transport.port == 5555
     assert config.model.name == "mlp"
+
+
+def test_load_train_config_preserves_distributed_runtime_settings() -> None:
+    config = load_train_config(Path("../configs/train/remote_learner.yaml"))
+
+    assert config.algorithm == "appo"
+    assert config.learner.bind == "0.0.0.0:5600"
+    assert config.learner.max_staleness == 4
+    assert config.learner.checkpoint_dir == "checkpoints/"
+    assert config.learner.publish_every_updates == 10
+    assert config.coordinator.bind == "0.0.0.0:5610"
+    assert config.coordinator.num_workers == 4
+    assert config.security.bind_scope == "lan"
+    assert config.security.require_token is True

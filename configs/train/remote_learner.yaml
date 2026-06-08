@@ -6,8 +6,7 @@ defaults:
 
 algorithm: appo
 
-# Learner / distributed settings (consumed by hkrl.learner / hkrl.coordinator;
-# schema extends TrainConfig in phase 6).
+# Learner / distributed settings consumed by hkrl.learner / hkrl.coordinator.
 learner:
   bind: 0.0.0.0:5600
   max_staleness: 4              # drop rollouts older than this many versions

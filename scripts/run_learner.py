@@ -31,11 +31,11 @@ from hkrl.utils.registry import get
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
-    p.add_argument("--bind", default="0.0.0.0:5600")
+    p.add_argument("--bind", default=None, help="override config.learner.bind")
     p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
-    p.add_argument("--checkpoint-dir", default="checkpoints")
-    p.add_argument("--max-staleness", type=int, default=4)
-    p.add_argument("--publish-every-updates", type=int, default=1)
+    p.add_argument("--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir")
+    p.add_argument("--max-staleness", type=int, default=None)
+    p.add_argument("--publish-every-updates", type=int, default=None)
     p.add_argument("--max-entities", type=int, default=64)
     p.add_argument(
         "--tier",
@@ -55,6 +55,14 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_train_config(args.config)
+    bind = args.bind or cfg.learner.bind
+    checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
+    max_staleness = cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    publish_every_updates = (
+        cfg.learner.publish_every_updates
+        if args.publish_every_updates is None
+        else args.publish_every_updates
+    )
     observation_space = make_observation_space(max_entities=args.max_entities, tier=args.tier)
     model = _build_model(
         cfg,
@@ -66,14 +74,14 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         },
         max_entities=args.max_entities,
     )
-    registry = CheckpointRegistry(str(Path(args.checkpoint_dir)))
+    registry = CheckpointRegistry(str(Path(checkpoint_dir)))
     server = LearnerServer(
         model=model,
         config=cfg,
         registry=registry,
-        bind=args.bind,
-        max_staleness=args.max_staleness,
-        publish_every_updates=args.publish_every_updates,
+        bind=bind,
+        max_staleness=max_staleness,
+        publish_every_updates=publish_every_updates,
     )
     submitted_batches = _submit_batch_dir(server, args.batch_dir)
     server.serve()
@@ -82,10 +90,12 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "accepted_batches": server.accepted_batches,
         "algorithm": cfg.algorithm,
         "batch_dir": args.batch_dir,
-        "bind": args.bind,
+        "bind": bind,
         "checkpoint_dir": registry.root,
         "latest_checkpoint": None if latest is None else latest.version,
+        "max_staleness": max_staleness,
         "model": cfg.model.name,
+        "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
         "rejected_batches": server.rejected_batches,

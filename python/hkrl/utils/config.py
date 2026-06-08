@@ -70,6 +70,30 @@ class TransportConfig(BaseModel):
     port: int = 5555
 
 
+class LearnerRuntimeConfig(BaseModel):
+    """Remote learner runtime settings (docs/distributed_training.md §5)."""
+
+    bind: str = "0.0.0.0:5600"
+    max_staleness: int = 4
+    checkpoint_dir: str = "checkpoints"
+    publish_every_updates: int = 1
+
+
+class CoordinatorRuntimeConfig(BaseModel):
+    """Coordinator runtime settings for worker fleets."""
+
+    bind: str = "0.0.0.0:5610"
+    num_workers: int = 1
+    heartbeat_timeout_s: float = 30.0
+
+
+class SecurityConfig(BaseModel):
+    """Runtime security toggles (PRD §9.10)."""
+
+    bind_scope: str = "lan"  # lan | localhost
+    require_token: bool = False
+
+
 class TrainConfig(BaseModel):
     """Training hyperparameters (configs/train/*.yaml). Mirrors PRD §12.2."""
 
@@ -88,6 +112,9 @@ class TrainConfig(BaseModel):
     max_grad_norm: float = 0.5
     model: ModelConfig = Field(default_factory=ModelConfig)
     transport: TransportConfig = Field(default_factory=TransportConfig)
+    learner: LearnerRuntimeConfig = Field(default_factory=LearnerRuntimeConfig)
+    coordinator: CoordinatorRuntimeConfig = Field(default_factory=CoordinatorRuntimeConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     seed: int = 0
 
 

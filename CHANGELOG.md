@@ -114,6 +114,9 @@ the project version tracks the **schema_version** + roadmap phase.
   policy-version accounting, and checkpoint publishing through the registry.
 - `scripts/run_learner.py` now builds a config-driven learner model/server and
   emits a JSON startup summary for Phase 6 smoke checks.
+- `TrainConfig` now preserves typed `learner`, `coordinator`, and `security`
+  runtime settings, and `scripts/run_learner.py` consumes YAML learner defaults
+  unless CLI flags explicitly override them.
 - `scripts/run_learner.py` can now ingest NPZ RolloutBatch directories and run
   the submitted batches through learner update/checkpoint publication.
 - `scripts/run_worker.py` now builds config/task-driven worker wiring with a

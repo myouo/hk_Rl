@@ -71,6 +71,11 @@ PPO is sensitive to stale data. Mitigations:
 - **`coordinator/task_sampler.py`** + **`curriculum.py`** — balanced/curriculum
   task sampling (PRD §7, §9.7).
 
+Runtime settings under `learner:`, `coordinator:`, and `security:` in
+`configs/train/remote_learner.yaml` are typed in `hkrl.utils.config.TrainConfig`.
+CLI flags on `scripts/run_learner.py` override those YAML values only when
+explicitly provided.
+
 ## 6. Transport for batches/weights
 
 Distinct from the env transport. TCP/gRPC/ZeroMQ across machines; Ray actors are

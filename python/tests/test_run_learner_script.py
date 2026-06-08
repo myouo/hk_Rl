@@ -34,7 +34,9 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["bind"] == "127.0.0.1:0"
     assert summary["checkpoint_dir"] == str(tmp_path.resolve())
     assert summary["latest_checkpoint"] is None
+    assert summary["max_staleness"] == 2
     assert summary["model"] == "entity_attention_gru"
+    assert summary["publish_every_updates"] == 1
     assert summary["policy_version"] == 0
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
@@ -81,6 +83,46 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
     assert summary["submitted_batches"] == 1
+
+
+def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "remote.yaml"
+    checkpoint_dir = tmp_path / "configured-checkpoints"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "minibatch_size: 2",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+                "learner:",
+                "  bind: 127.0.0.1:9999",
+                "  max_staleness: 6",
+                f"  checkpoint_dir: {checkpoint_dir}",
+                "  publish_every_updates: 3",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        bind=None,
+        batch_dir=None,
+        checkpoint_dir=None,
+        max_staleness=None,
+        publish_every_updates=None,
+        max_entities=4,
+        tier="privileged",
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["bind"] == "127.0.0.1:9999"
+    assert summary["checkpoint_dir"] == str(checkpoint_dir.resolve())
+    assert summary["max_staleness"] == 6
+    assert summary["publish_every_updates"] == 3
 
 
 def _load_script(name: str) -> ModuleType:
