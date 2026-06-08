@@ -68,6 +68,8 @@ the project version tracks the **schema_version** + roadmap phase.
   a timeout, and returns concrete reset failure status codes.
 - Mod reward hook scaffolds now install a shared RewardEventBuffer and expose
   typed event recorders for damage, death, heal/soul, and scene-change events.
+- Mod observation path now returns a minimal global/player snapshot and empty
+  entity/mask lists without throwing, ready for later boss/entity enrichment.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

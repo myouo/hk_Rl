@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace HKRLEnvMod.Observation
 {
     /// <summary>
@@ -7,9 +9,12 @@ namespace HKRLEnvMod.Observation
     /// </summary>
     public sealed class BossObserver
     {
-        public void ReadInto(/* entity list */)
+        public void ReadInto(ICollection<EntityObservation> entities)
         {
-            // TODO(phase-1): single boss; (phase-4): iterate all bosses.
+            if (entities == null)
+            {
+                throw new System.ArgumentNullException(nameof(entities));
+            }
         }
     }
 }

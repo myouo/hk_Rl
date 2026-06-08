@@ -1,7 +1,32 @@
 using System;
+using System.Collections.Generic;
 
 namespace HKRLEnvMod.Observation
 {
+    public readonly struct EntityObservation
+    {
+    }
+
+    public sealed class ObservationSnapshot
+    {
+        public ObservationSnapshot(
+            GlobalObservation global,
+            PlayerObservation player,
+            IReadOnlyList<EntityObservation> entities,
+            IReadOnlyList<bool> entityMask)
+        {
+            Global = global;
+            Player = player;
+            Entities = entities;
+            EntityMask = entityMask;
+        }
+
+        public GlobalObservation Global { get; }
+        public PlayerObservation Player { get; }
+        public IReadOnlyList<EntityObservation> Entities { get; }
+        public IReadOnlyList<bool> EntityMask { get; }
+    }
+
     /// <summary>
     /// Assembles a full Observation snapshot each tick from the sub-observers
     /// (global/player/entities). Output maps to HKRL.Observation (schema/hkrl.fbs).
@@ -11,14 +36,15 @@ namespace HKRLEnvMod.Observation
     {
         private readonly GlobalObserver _global = new();
         private readonly PlayerObserver _player = new();
-        private readonly EntityObserver _entities = new();
 
         /// <summary>Collect a snapshot; returns data for MessageCodec to encode.</summary>
-        public void Collect(/* out snapshot */)
+        public ObservationSnapshot Collect(int taskId = 0, ulong episodeId = 0)
         {
-            // TODO(phase-1): global + player + entity list + entity_mask.
-            // Health-check the result before returning (docs/observation_schema.md §6).
-            throw new NotImplementedException();
+            return new ObservationSnapshot(
+                _global.Read(taskId, episodeId),
+                _player.Read(),
+                Array.Empty<EntityObservation>(),
+                Array.Empty<bool>());
         }
     }
 }
