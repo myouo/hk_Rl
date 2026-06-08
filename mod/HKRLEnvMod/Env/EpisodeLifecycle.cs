@@ -27,7 +27,7 @@ namespace HKRLEnvMod.Env
         }
 
         /// <summary>Advance the state machine one tick. Returns the new state.</summary>
-        public HKRL.LifecycleState Tick()
+        public HKRL.LifecycleState Tick(bool resetReady = true)
         {
             State = State switch
             {
@@ -35,9 +35,15 @@ namespace HKRLEnvMod.Env
                 HKRL.LifecycleState.FreezeInput => HKRL.LifecycleState.ClearEvents,
                 HKRL.LifecycleState.ClearEvents => HKRL.LifecycleState.LoadScene,
                 HKRL.LifecycleState.LoadScene => HKRL.LifecycleState.WaitSceneReady,
-                HKRL.LifecycleState.WaitSceneReady => HKRL.LifecycleState.WaitPlayerReady,
-                HKRL.LifecycleState.WaitPlayerReady => HKRL.LifecycleState.WaitBossReady,
-                HKRL.LifecycleState.WaitBossReady => HKRL.LifecycleState.RestorePlayerState,
+                HKRL.LifecycleState.WaitSceneReady => resetReady
+                    ? HKRL.LifecycleState.WaitPlayerReady
+                    : HKRL.LifecycleState.WaitSceneReady,
+                HKRL.LifecycleState.WaitPlayerReady => resetReady
+                    ? HKRL.LifecycleState.WaitBossReady
+                    : HKRL.LifecycleState.WaitPlayerReady,
+                HKRL.LifecycleState.WaitBossReady => resetReady
+                    ? HKRL.LifecycleState.RestorePlayerState
+                    : HKRL.LifecycleState.WaitBossReady,
                 HKRL.LifecycleState.RestorePlayerState => HKRL.LifecycleState.ClearProjectiles,
                 HKRL.LifecycleState.ClearProjectiles => HKRL.LifecycleState.Countdown,
                 HKRL.LifecycleState.Countdown => HKRL.LifecycleState.Running,

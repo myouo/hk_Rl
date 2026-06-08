@@ -45,6 +45,12 @@ IDLE
 
 Each wait has a timeout → `StatusCode.*Timeout/NotFound`.
 
+Mod implementation: `StepController.FixedTick()` starts `ResetManager` on
+`RESET`/`SET_TASK`, polls it while the lifecycle is in reset states, and only lets
+`EpisodeLifecycle` leave the wait states after scene/player/boss readiness has
+been confirmed. Reset failures call `EpisodeLifecycle.Fail(status)` and are
+reported through `StepResponse.error_code`.
+
 ## 4. Worker-side contract
 
 The Gym `reset()` (`hkrl/env.py`) issues `RESET`, polls until `RUNNING` or an

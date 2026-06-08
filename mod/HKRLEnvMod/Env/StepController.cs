@@ -17,6 +17,7 @@ namespace HKRLEnvMod.Env
         private readonly ActionApplier _actions;
         private readonly RewardEventBuffer _rewards;
         private readonly EpisodeLifecycle _lifecycle;
+        private readonly ResetManager _resetManager;
         private readonly ActionMasker _masker;
         private readonly Heartbeat _heartbeat;
         private readonly ObservationCollector _observations;
@@ -28,6 +29,7 @@ namespace HKRLEnvMod.Env
                 new ActionApplier(),
                 new RewardEventBuffer(),
                 new EpisodeLifecycle(),
+                new ResetManager(),
                 new ActionMasker(),
                 new Heartbeat(),
                 new ObservationCollector())
@@ -39,6 +41,7 @@ namespace HKRLEnvMod.Env
             ActionApplier actions,
             RewardEventBuffer rewards,
             EpisodeLifecycle lifecycle,
+            ResetManager resetManager,
             ActionMasker masker,
             Heartbeat heartbeat,
             ObservationCollector observations)
@@ -47,6 +50,7 @@ namespace HKRLEnvMod.Env
             _actions = actions;
             _rewards = rewards;
             _lifecycle = lifecycle;
+            _resetManager = resetManager;
             _masker = masker;
             _heartbeat = heartbeat;
             _observations = observations;
@@ -63,7 +67,7 @@ namespace HKRLEnvMod.Env
             }
 
             Dispatch(request);
-            var state = _lifecycle.Tick();
+            var state = AdvanceLifecycle();
             if (state == HKRL.LifecycleState.ClearEvents)
             {
                 _rewards.Clear();
@@ -121,6 +125,7 @@ namespace HKRLEnvMod.Env
                 case HKRL.Command.SetTask:
                     _actions.Clear();
                     _rewards.Clear();
+                    _resetManager.BeginReset(request.TaskId);
                     _lifecycle.RequestReset();
                     break;
                 case HKRL.Command.Step:
@@ -135,6 +140,31 @@ namespace HKRLEnvMod.Env
                 case HKRL.Command.SetTimescale:
                     break;
             }
+        }
+
+        private HKRL.LifecycleState AdvanceLifecycle()
+        {
+            var resetReady = true;
+            if (_resetManager.IsActive)
+            {
+                var resetStatus = _resetManager.Poll();
+                if (resetStatus != HKRL.StatusCode.Ok)
+                {
+                    _resetManager.Clear();
+                    _lifecycle.Fail(resetStatus);
+                    return _lifecycle.State;
+                }
+
+                resetReady = _resetManager.IsComplete;
+            }
+
+            var state = _lifecycle.Tick(resetReady);
+            if (state == HKRL.LifecycleState.Cleanup)
+            {
+                _resetManager.Clear();
+            }
+
+            return state;
         }
 
         private static bool IsTerminal(HKRL.LifecycleState state)

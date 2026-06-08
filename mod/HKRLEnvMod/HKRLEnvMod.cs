@@ -103,6 +103,7 @@ namespace HKRLEnvMod
                     new ActionApplier(),
                     rewards,
                     new EpisodeLifecycle(),
+                    new ResetManager(),
                     new ActionMasker(),
                     new Heartbeat(),
                     new ObservationCollector());
