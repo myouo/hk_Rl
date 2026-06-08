@@ -48,6 +48,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod TCP server now accepts one client at a time on a background thread,
   transfers uint32-LE length-prefixed frames through thread-safe queues, and
   keeps Unity access out of the network loop.
+- Mod action mask layout now mirrors Python ordering and applies basic
+  player-readiness rules for jump, dash, attack, cast, focus, and nail-art
+  buttons.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
