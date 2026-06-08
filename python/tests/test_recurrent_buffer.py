@@ -82,6 +82,34 @@ def test_recurrent_buffer_minibatches_sequences() -> None:
     assert all(batch.obs["global"].shape == (1, 1, 1) for batch in batches)
 
 
+def test_recurrent_buffer_splits_sequences_at_truncation() -> None:
+    buffer = _tiny_buffer(capacity=3, sequence_length=3)
+    for step in range(3):
+        transition = _transition(step)
+        transition["truncated"] = np.array([step == 1])
+        transition["rnn_state"] = np.full((1, 1, 2), step, dtype=np.float32)
+        buffer.add(**transition)
+    buffer.compute_returns(last_value=np.array([0.0], dtype=np.float32), gamma=1.0, gae_lambda=1.0)
+
+    batches = list(buffer.iter_sequences())
+
+    assert len(batches) == 1
+    batch = batches[0]
+    assert batch.obs["global"].shape == (2, 3, 1)
+    np.testing.assert_array_equal(
+        batch.loss_mask,
+        np.array(
+            [
+                [True, True, False],
+                [True, False, False],
+            ]
+        ),
+    )
+    np.testing.assert_array_equal(batch.obs["global"][:, :, 0], [[0, 1, 0], [2, 0, 0]])
+    assert batch.rnn_state.shape == (1, 2, 2)
+    np.testing.assert_array_equal(batch.rnn_state[0, :, 0], [0.0, 2.0])
+
+
 def test_recurrent_buffer_exports_flat_rollout_batch() -> None:
     buffer = _tiny_buffer(capacity=2)
     for step in range(2):
@@ -107,11 +135,11 @@ def test_recurrent_buffer_rejects_overfill() -> None:
         buffer.add(**_transition(1))
 
 
-def _tiny_buffer(capacity: int) -> RecurrentRolloutBuffer:
+def _tiny_buffer(capacity: int, sequence_length: int = 1) -> RecurrentRolloutBuffer:
     return RecurrentRolloutBuffer(
         capacity=capacity,
         num_envs=1,
-        sequence_length=1,
+        sequence_length=sequence_length,
         obs_spec={
             "global": (1,),
             "player": (1,),

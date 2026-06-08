@@ -232,7 +232,10 @@ class RecurrentRolloutBuffer:
                 segment_end = segment_start
                 while segment_end < length:
                     segment_end += 1
-                    if self.dones[segment_end - 1, env_idx]:
+                    if (
+                        self.dones[segment_end - 1, env_idx]
+                        or self.truncateds[segment_end - 1, env_idx]
+                    ):
                         break
 
                 loss_start = segment_start

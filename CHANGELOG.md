@@ -100,6 +100,8 @@ the project version tracks the **schema_version** + roadmap phase.
   TCP rollout intake with update/publish after each accepted batch.
 - Test coverage now checks Python action-mask/button layout against the C# mod
   `ActionMasker`/`InputInjector` constants to catch cross-language drift.
+- Recurrent rollout sequence chunking now splits at both terminated and truncated
+  episode boundaries so hidden state does not leak across resets.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
