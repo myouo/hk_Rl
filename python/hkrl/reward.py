@@ -8,6 +8,7 @@ recompute shaping-free metrics.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 from hkrl.protocol import RewardEvent, RewardEventKind
@@ -33,10 +34,12 @@ class DefaultReward:
         ``dt`` scales the time penalty. Returns a float; terminal events
         (boss_kill / player_death) dominate by weight magnitude.
         """
+        if not math.isfinite(dt) or dt < 0.0:
+            raise ValueError("reward dt must be finite and non-negative")
         reward = self.w.time_penalty * dt
 
         for event in events:
-            amount = float(event.amount)
+            amount = _event_amount(event)
 
             if event.kind == RewardEventKind.DAMAGE_DEALT:
                 reward += self.w.boss_damage * amount
@@ -70,7 +73,7 @@ class DefaultReward:
         }
 
         for event in events:
-            amount = float(event.amount)
+            amount = _event_amount(event)
 
             if event.kind == RewardEventKind.DAMAGE_DEALT:
                 stats["damage_dealt"] += amount
@@ -88,6 +91,25 @@ class DefaultReward:
                 stats["invalid_actions"] += 1.0
 
         return stats
+
+
+def _event_amount(event: RewardEvent) -> float:
+    amount = float(event.amount)
+    if not math.isfinite(amount):
+        raise ValueError("reward event amount must be finite")
+    if event.kind in _NON_NEGATIVE_AMOUNT_KINDS and amount < 0.0:
+        raise ValueError(f"{event.kind.name} reward event amount must be non-negative")
+    return amount
+
+
+_NON_NEGATIVE_AMOUNT_KINDS: frozenset[RewardEventKind] = frozenset(
+    {
+        RewardEventKind.DAMAGE_DEALT,
+        RewardEventKind.DAMAGE_TAKEN,
+        RewardEventKind.HEAL,
+        RewardEventKind.SOUL_GAINED,
+    }
+)
 
 
 # Re-export for convenience / discoverability.

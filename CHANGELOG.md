@@ -150,6 +150,8 @@ the project version tracks the **schema_version** + roadmap phase.
   responses that leave the RUNNING/terminal lifecycle states.
 - StepRequest encoding now rejects non-binary button mapping/sequence values
   instead of treating arbitrary truthy values as pressed buttons.
+- DefaultReward now rejects non-finite reward inputs and negative amount-bearing
+  events before they can pollute scalar rewards or evaluator stats.
 - Python action-mask layout construction now rejects negative macro counts
   instead of silently producing a malformed mask width.
 - Mod STEP dispatch now emits `InvalidAction` reward events for wire-level

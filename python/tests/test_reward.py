@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hkrl.protocol import RewardEvent, RewardEventKind
 from hkrl.reward import DefaultReward
 from hkrl.utils.config import RewardWeights
@@ -51,3 +52,24 @@ def test_shaping_free_stats_ignore_scalar_weights() -> None:
         "player_death": 1.0,
         "invalid_actions": 1.0,
     }
+
+
+def test_default_reward_rejects_non_finite_inputs() -> None:
+    reward = DefaultReward()
+
+    with pytest.raises(ValueError, match="dt"):
+        reward([], dt=float("nan"))
+
+    with pytest.raises(ValueError, match="finite"):
+        reward([RewardEvent(RewardEventKind.DAMAGE_DEALT, amount=float("inf"))])
+
+
+def test_default_reward_rejects_negative_amount_events() -> None:
+    reward = DefaultReward()
+    events = [RewardEvent(RewardEventKind.DAMAGE_TAKEN, amount=-1.0)]
+
+    with pytest.raises(ValueError, match="non-negative"):
+        reward(events)
+
+    with pytest.raises(ValueError, match="non-negative"):
+        reward.shaping_free(events)
