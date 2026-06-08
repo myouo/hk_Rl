@@ -12,6 +12,7 @@ from hkrl.utils.config import (
     load_yaml,
     resolve_auth_token,
     validate_bind_address,
+    validate_service_auth,
 )
 
 
@@ -216,3 +217,13 @@ def test_validate_bind_address_rejects_out_of_scope_binds() -> None:
         validate_bind_address("8.8.8.8:5600", "lan")
     with pytest.raises(ValueError, match="host:port"):
         validate_bind_address("127.0.0.1", "localhost")
+
+
+def test_validate_service_auth_requires_token_for_non_loopback_bind() -> None:
+    local = load_train_config(Path("../configs/train/ppo_mlp.yaml"))
+    remote = load_train_config(Path("../configs/train/remote_learner.yaml"))
+
+    validate_service_auth("127.0.0.1:5600", local)
+    validate_service_auth("0.0.0.0:5600", remote)
+    with pytest.raises(ValueError, match="require_token"):
+        validate_service_auth("0.0.0.0:5600", local)

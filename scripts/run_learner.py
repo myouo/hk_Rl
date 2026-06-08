@@ -34,6 +34,7 @@ from hkrl.utils.config import (
     load_train_config,
     resolve_auth_token,
     validate_bind_address,
+    validate_service_auth,
 )
 from hkrl.utils.registry import get
 
@@ -228,6 +229,7 @@ def _serve_network_intake(
     if intake_count == 0:
         return 0, 0
 
+    validate_service_auth(bind, cfg)
     auth_token = resolve_auth_token(cfg)
     accepted = 0
     with BatchIntakeServer(
@@ -246,6 +248,7 @@ def _serve_network_forever(
     *,
     timeout_s: float,
 ) -> tuple[int, int]:
+    validate_service_auth(bind, cfg)
     auth_token = resolve_auth_token(cfg)
     submitted = 0
     accepted = 0

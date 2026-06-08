@@ -151,6 +151,8 @@ the project version tracks the **schema_version** + roadmap phase.
   zero rollout steps, out-of-range action repeats, and invalid service ports.
 - Train/task config loading now rejects empty required strings such as task ids,
   scene names, model names, bind addresses, and checkpoint directories.
+- Learner TCP intake now rejects non-loopback service binds unless token auth is
+  enabled, preserving the LAN/localhost + token-auth runtime boundary.
 - Mod reward hooks now wrap event recording in try/catch and log failures through
   `Debug.Logger`, protecting the Unity main thread from hook exceptions.
 - Mod observation collection now catches player/entity/global read failures,

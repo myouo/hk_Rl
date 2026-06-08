@@ -235,6 +235,13 @@ def validate_bind_address(bind: str, bind_scope: Literal["lan", "localhost"]) ->
     raise ValueError(f"unsupported bind_scope {bind_scope!r}")
 
 
+def validate_service_auth(bind: str, config: TrainConfig) -> None:
+    """Require token auth for any service reachable beyond loopback."""
+    host, _ = _split_bind(bind)
+    if not _is_loopback_host(host) and not config.security.require_token:
+        raise ValueError("non-loopback service bind requires security.require_token=true")
+
+
 def _split_bind(bind: str) -> tuple[str, int]:
     if bind.startswith("["):
         host, sep, rest = bind[1:].partition("]")
