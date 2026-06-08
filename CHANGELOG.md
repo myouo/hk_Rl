@@ -72,6 +72,8 @@ the project version tracks the **schema_version** + roadmap phase.
   action-mask handling, tensor-to-env action conversion, and GAE bootstrap.
 - GameWorker now hot-swaps verified checkpoint weights before rollouts and tags
   collected batches with the loaded learner policy version.
+- GameWorker run loop now supports injectable rollout upload and heartbeat
+  callbacks for learner/coordinator integration.
 - FrameStack wrapper now stacks dict observation feature axes and updates the
   Gym observation space for short-history MLP baselines.
 - ScriptedAggroPolicy now provides a mask-aware heuristic baseline that approaches

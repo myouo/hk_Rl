@@ -91,6 +91,49 @@ def test_game_worker_hot_swaps_new_checkpoint_before_rollout() -> None:
     assert batch.policy_version == 7
 
 
+def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
+    env = FakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    uploaded: list[Any] = []
+    heartbeats: list[dict[str, Any]] = []
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        learner_endpoint="learner:5600",
+        batch_uploader=uploaded.append,
+        heartbeat_sink=heartbeats.append,
+    )
+
+    worker.run(total_steps=4)
+
+    assert len(uploaded) == 2
+    assert [int(batch.rewards.size) for batch in uploaded] == [2, 2]
+    assert heartbeats == [
+        {
+            "checkpoint_version": -1,
+            "learner_endpoint": "learner:5600",
+            "policy_version": 0,
+            "rollout_steps": 2,
+        },
+        {
+            "checkpoint_version": -1,
+            "learner_endpoint": "learner:5600",
+            "policy_version": 0,
+            "rollout_steps": 2,
+        },
+    ]
+
+
 class FakeEnv:
     def __init__(self) -> None:
         self.observation_space = make_observation_space(max_entities=4, tier="privileged")

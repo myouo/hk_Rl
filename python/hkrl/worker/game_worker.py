@@ -7,7 +7,7 @@ NEVER crosses the remote network.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from numbers import Integral
 from typing import Any
 
@@ -36,12 +36,16 @@ class GameWorker:
         config: TrainConfig,
         checkpoint_client: CheckpointClient | None = None,
         learner_endpoint: str | None = None,
+        batch_uploader: Callable[[RolloutBatch], None] | None = None,
+        heartbeat_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self.env = env
         self.model = model
         self.cfg = config
         self.checkpoint_client = checkpoint_client
         self.learner_endpoint = learner_endpoint
+        self.batch_uploader = batch_uploader
+        self.heartbeat_sink = heartbeat_sink
         self.device = _model_device(model)
         action_space: Any = env.action_space
         observation_space: Any = env.observation_space
@@ -69,7 +73,6 @@ class GameWorker:
         self._info: dict[str, Any] = {}
         self._rnn_state = model.initial_state(batch_size=1, device=self.device)
         self.last_batch: RolloutBatch | None = None
-        # TODO(phase-6): uploader + heartbeat.
 
     def run(self, total_steps: int | None = None) -> None:
         """Sampling loop. Handles reset failures, reconnect, and weight reloads.
@@ -84,6 +87,8 @@ class GameWorker:
         while total_steps is None or steps < total_steps:
             batch = self.collect_rollout()
             self.last_batch = batch
+            self._upload_batch(batch)
+            self._emit_heartbeat(batch)
             steps += int(batch.rewards.size)
 
     def collect_rollout(self) -> RolloutBatch:
@@ -160,6 +165,22 @@ class GameWorker:
         self.policy_version = int(policy_version)
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
         return True
+
+    def _upload_batch(self, batch: RolloutBatch) -> None:
+        if self.batch_uploader is not None:
+            self.batch_uploader(batch)
+
+    def _emit_heartbeat(self, batch: RolloutBatch) -> None:
+        if self.heartbeat_sink is None:
+            return
+        self.heartbeat_sink(
+            {
+                "checkpoint_version": self.checkpoint_version,
+                "learner_endpoint": self.learner_endpoint,
+                "policy_version": self.policy_version,
+                "rollout_steps": int(batch.rewards.size),
+            }
+        )
 
     def _ensure_reset(self) -> None:
         if self._obs is None:
