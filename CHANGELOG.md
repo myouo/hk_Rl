@@ -218,6 +218,8 @@ the project version tracks the **schema_version** + roadmap phase.
   time-to-kill for evaluator/dashboard consumers.
 - TaskSampler now provides seeded weighted task sampling with mastered-task replay
   and win-rate based reweighting for anti-forgetting curricula.
+- TaskSampler now rejects non-finite per-task win rates before updating weights,
+  preventing malformed evaluator metrics from skewing task assignment.
 - Curriculum now exposes active task stages and advances when all active tasks
   meet configured win-rate and episode-count gates.
 - Coordinator now tracks worker registration, heartbeats, task assignment,

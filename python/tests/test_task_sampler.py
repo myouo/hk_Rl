@@ -24,6 +24,13 @@ def test_task_sampler_updates_weights_and_mastered_set() -> None:
     assert sampler.mastered_tasks == {"a"}
 
 
+def test_task_sampler_rejects_non_finite_winrates() -> None:
+    sampler = TaskSampler(["a"], seed=0)
+
+    with pytest.raises(ValueError, match="finite"):
+        sampler.update_weights({"a": float("nan")})
+
+
 def test_task_sampler_replays_mastered_tasks_when_requested() -> None:
     sampler = TaskSampler(["a", "b"], replay_fraction=1.0, mastered_winrate=0.8, seed=0)
     sampler.update_weights({"a": 1.0, "b": 0.0})

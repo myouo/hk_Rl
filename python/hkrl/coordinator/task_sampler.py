@@ -51,7 +51,10 @@ class TaskSampler:
     def update_weights(self, per_task_winrate: dict[str, float]) -> None:
         """Reweight toward weaker tasks; keep replay for mastered ones."""
         for task_id in self.task_ids:
-            winrate = float(np.clip(per_task_winrate.get(task_id, 0.0), 0.0, 1.0))
+            winrate = float(per_task_winrate.get(task_id, 0.0))
+            if not np.isfinite(winrate):
+                raise ValueError(f"winrate for task {task_id!r} must be finite")
+            winrate = float(np.clip(winrate, 0.0, 1.0))
             self.weights[task_id] = max(0.05, 1.0 - winrate)
             if winrate >= self.mastered_winrate:
                 self.mastered_tasks.add(task_id)
