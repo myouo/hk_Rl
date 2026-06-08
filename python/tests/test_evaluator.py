@@ -127,6 +127,12 @@ def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
     evaluator.evaluate(episodes_per_task=1)
 
     assert model.seen_states == [0.0, 1.0]
+    np.testing.assert_array_equal(model.seen_prev_actions[0], np.zeros((1, 12), dtype=np.float32))
+    np.testing.assert_array_equal(
+        model.seen_prev_actions[1],
+        np.array([[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),
+    )
+    assert model.seen_prev_rewards == [0.0, 1.0]
 
 
 class StatefulActorCritic(ActorCritic):
@@ -134,6 +140,8 @@ class StatefulActorCritic(ActorCritic):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.zeros(()))
         self.seen_states: list[float] = []
+        self.seen_prev_actions: list[np.ndarray] = []
+        self.seen_prev_rewards: list[float] = []
 
     def initial_state(self, batch_size: int, device: torch.device | None = None) -> RnnState:
         return torch.zeros((1, batch_size, 1), device=device)
@@ -154,9 +162,11 @@ class StatefulActorCritic(ActorCritic):
         action_mask: Tensor | None = None,
         deterministic: bool = False,
     ) -> tuple[Tensor, Tensor, Tensor, RnnState]:
-        del obs, action_mask, deterministic
+        del action_mask, deterministic
         assert rnn_state is not None
         self.seen_states.append(float(rnn_state.reshape(-1)[0].detach().cpu()))
+        self.seen_prev_actions.append(obs["prev_action"].detach().cpu().numpy().copy())
+        self.seen_prev_rewards.append(float(obs["prev_reward"].reshape(-1)[0].detach().cpu()))
         action = torch.zeros((1, 12), dtype=torch.long)
         action[:, 0] = 1
         action[:, 1] = 1

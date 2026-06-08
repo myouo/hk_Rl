@@ -17,6 +17,7 @@ import torch
 
 from hkrl import protocol
 from hkrl.models.base import ActorCritic
+from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
 from hkrl.utils.config import TaskConfig
 from hkrl.worker.game_worker import action_tensor_to_env_action
 
@@ -94,9 +95,18 @@ class Evaluator:
         terminated = False
         truncated = False
         steps = 0
+        prev_action: np.ndarray = _zero_prev_action(env)
+        prev_reward: np.ndarray = np.zeros((1,), dtype=np.float32)
 
         for step in range(self.max_steps_per_episode):
-            action, rnn_state = self._act(env, obs, info, rnn_state)
+            action, rnn_state, action_tensor = self._act(
+                env,
+                obs,
+                info,
+                rnn_state,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+            )
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
             steps = step + 1
@@ -125,6 +135,9 @@ class Evaluator:
 
             if terminated or truncated:
                 break
+            if action_tensor is not None:
+                prev_action = action_tensor
+            prev_reward = np.array([reward], dtype=np.float32)
 
         return _EpisodeResult(
             won=won,
@@ -147,11 +160,25 @@ class Evaluator:
         device = _model_device(self.model)
         return self.model.initial_state(batch_size=1, device=device)
 
-    def _act(self, env: Any, obs: Any, info: dict[str, Any], rnn_state: Any) -> tuple[Any, Any]:
+    def _act(
+        self,
+        env: Any,
+        obs: Any,
+        info: dict[str, Any],
+        rnn_state: Any,
+        *,
+        prev_action: np.ndarray,
+        prev_reward: np.ndarray,
+    ) -> tuple[Any, Any, np.ndarray | None]:
         action_mask = info.get("action_mask")
         if isinstance(self.model, ActorCritic):
             device = _model_device(self.model)
-            obs_tensor = _obs_to_tensor(obs, device)
+            obs_tensor = _obs_to_tensor(
+                obs,
+                device,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+            )
             mask_tensor = None
             if action_mask is not None:
                 mask_tensor = torch.as_tensor(
@@ -166,8 +193,13 @@ class Evaluator:
                 deterministic=True,
             )
             enable_macro = "macro" in env.action_space.spaces
-            return action_tensor_to_env_action(action[0], enable_macro=enable_macro), next_state
-        return self.model.act(obs, action_mask), None
+            action_array = action.detach().cpu().numpy().reshape(1, -1).astype(np.int64, copy=True)
+            return (
+                action_tensor_to_env_action(action[0], enable_macro=enable_macro),
+                next_state,
+                action_array,
+            )
+        return self.model.act(obs, action_mask), None, None
 
     def _emit_replay_step(
         self,
@@ -365,8 +397,14 @@ def _jsonable(value: Any) -> Any:
     return str(value)
 
 
-def _obs_to_tensor(obs: Any, device: torch.device) -> dict[str, torch.Tensor]:
-    return {
+def _obs_to_tensor(
+    obs: Any,
+    device: torch.device,
+    *,
+    prev_action: np.ndarray | None = None,
+    prev_reward: np.ndarray | None = None,
+) -> dict[str, torch.Tensor]:
+    tensors = {
         "global": torch.as_tensor(obs["global"][None, :], dtype=torch.float32, device=device),
         "player": torch.as_tensor(obs["player"][None, :], dtype=torch.float32, device=device),
         "entities": torch.as_tensor(
@@ -376,6 +414,17 @@ def _obs_to_tensor(obs: Any, device: torch.device) -> dict[str, torch.Tensor]:
             obs["entity_mask"][None, :], dtype=torch.bool, device=device
         ),
     }
+    if prev_action is not None:
+        tensors["prev_action"] = torch.as_tensor(prev_action, dtype=torch.float32, device=device)
+    if prev_reward is not None:
+        tensors["prev_reward"] = torch.as_tensor(prev_reward, dtype=torch.float32, device=device)
+    return tensors
+
+
+def _zero_prev_action(env: Any) -> np.ndarray:
+    enable_macro = "macro" in env.action_space.spaces
+    action_dim = ACTION_TENSOR_DIM_NO_MACRO + (1 if enable_macro else 0)
+    return np.zeros((1, action_dim), dtype=np.int64)
 
 
 def _model_device(model: ActorCritic) -> torch.device:
