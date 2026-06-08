@@ -295,6 +295,8 @@ def _buttons_to_mask(buttons: Any) -> int:
         for name, enabled in buttons.items():
             if name not in BUTTON_BITS:
                 raise ValueError(f"unknown button name: {name}")
+            if enabled not in (False, True):
+                raise ValueError("button mapping values must be boolean")
             if enabled:
                 mask |= 1 << BUTTON_BITS[name]
         return mask
@@ -309,6 +311,8 @@ def _buttons_to_mask(buttons: Any) -> int:
 
     mask = 0
     for idx, enabled in enumerate(values):
+        if enabled not in (0, 1, False, True):
+            raise ValueError("buttons sequence values must be binary")
         if enabled:
             mask |= 1 << idx
     return mask

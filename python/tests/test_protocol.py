@@ -120,6 +120,14 @@ def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
     assert request.ActionRepeat() == 1
 
 
+def test_encode_step_request_rejects_non_binary_buttons() -> None:
+    with pytest.raises(ValueError, match="button mapping values"):
+        protocol.encode_step_request(action={"buttons": {"attack": "yes"}})
+
+    with pytest.raises(ValueError, match="buttons sequence values"):
+        protocol.encode_step_request(action={"buttons": [0, 1, 2, 0, 0, 0, 0, 0, 0]})
+
+
 def test_decode_step_response_decodes_observation_events_and_mask() -> None:
     frame = _build_step_response()
 
