@@ -62,7 +62,7 @@ class JsonlSink:
     def _write(self, payload: dict[str, Any]) -> None:
         if self._fh is None:
             raise RuntimeError("JsonlSink is closed")
-        self._fh.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+        self._fh.write(json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":")) + "\n")
 
 
 class CsvSink:
@@ -103,8 +103,8 @@ class CsvSink:
     def log_episode(self, record: dict[str, Any]) -> None:
         payload = dict(record)
         payload.setdefault("type", "episode")
-        row = dict(payload)
-        row["record"] = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        row = _jsonable(dict(payload))
+        row["record"] = json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":"))
         self._write(row)
 
     def flush(self) -> None:
@@ -155,7 +155,9 @@ class StdoutSink:
     def _write(self, payload: dict[str, Any]) -> None:
         if self._closed:
             raise RuntimeError("StdoutSink is closed")
-        self._stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+        self._stream.write(
+            json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":")) + "\n"
+        )
 
 
 def make_sink(kind: str = "jsonl", **kwargs: Any) -> MetricSink:
@@ -185,3 +187,20 @@ def make_sink(kind: str = "jsonl", **kwargs: Any) -> MetricSink:
         return CsvSink(path, fieldnames=fieldnames)
 
     raise ValueError(f"unknown metric sink kind: {kind}")
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except ValueError:
+            pass
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        return _jsonable(tolist())
+    return value

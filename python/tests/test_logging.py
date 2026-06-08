@@ -7,6 +7,7 @@ import io
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 from hkrl.utils.logging import CsvSink, JsonlSink, StdoutSink, make_sink
 
@@ -34,6 +35,36 @@ def test_jsonl_sink_rejects_write_after_close(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="closed"):
         sink.log_scalar("reward", 1.0, step=1)
+
+
+def test_metric_sinks_write_numpy_episode_values(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "metrics.jsonl"
+    csv_path = tmp_path / "metrics.csv"
+    stdout = io.StringIO()
+    record = {
+        "episode": np.int64(7),
+        "reward": np.float32(1.5),
+        "values": np.array([1, 2], dtype=np.int64),
+    }
+
+    jsonl = JsonlSink(jsonl_path)
+    csv_sink = CsvSink(csv_path)
+    stdout_sink = StdoutSink(stream=stdout)
+    for sink in (jsonl, csv_sink, stdout_sink):
+        sink.log_episode(record)
+        sink.flush()
+        sink.close()
+
+    assert json.loads(jsonl_path.read_text(encoding="utf-8")) == {
+        "episode": 7,
+        "reward": 1.5,
+        "type": "episode",
+        "values": [1, 2],
+    }
+    with csv_path.open(encoding="utf-8", newline="") as fh:
+        row = next(csv.DictReader(fh))
+    assert json.loads(row["record"])["values"] == [1, 2]
+    assert json.loads(stdout.getvalue())["reward"] == 1.5
 
 
 def test_csv_sink_writes_scalar_and_episode_records(tmp_path: Path) -> None:
