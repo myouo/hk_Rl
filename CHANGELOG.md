@@ -50,6 +50,8 @@ the project version tracks the **schema_version** + roadmap phase.
   entity-mask padding suppression and exposes act/evaluate_actions for PPO.
 - Phase 5 model encoders now embed global, player, and entity features with
   learned entity type/stable-id embeddings for attention/recurrent policies.
+- Phase 5 entity attention modules now provide masked Transformer pooling and
+  player cross-attention with safe all-padding handling.
 - Synchronous PPO now runs clipped policy/value updates over flat rollout
   batches, reports core training metrics, and exports advantages/returns in
   RolloutBatch.
