@@ -141,6 +141,8 @@ the project version tracks the **schema_version** + roadmap phase.
   across episode steps.
 - `scripts/run_eval.py` now sha256-verifies CheckpointRegistry entries before
   loading evaluator policy weights.
+- `scripts/run_eval.py` now rejects model-policy task sets with incompatible
+  observation/action layouts before evaluation starts.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - `scripts/train.py`/`hkrl.cli` now run local recurrent PPO training with

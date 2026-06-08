@@ -71,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     tasks = [load_task_config(path) for path in args.tasks]
+    if args.policy in {"mlp", "model"}:
+        _validate_model_task_layouts(tasks)
     train_cfg = load_train_config(args.train_config)
     policy = _build_policy(args, tasks[0], train_cfg)
 
@@ -118,6 +120,19 @@ def _build_metadata(
         "train_config": args.train_config,
         "transport": train_cfg.transport.name,
     }
+
+
+def _validate_model_task_layouts(tasks: list[TaskConfig]) -> None:
+    base = tasks[0]
+    for task in tasks[1:]:
+        if task.observation.max_entities != base.observation.max_entities:
+            raise ValueError("all evaluator model tasks must share observation.max_entities")
+        if task.observation.tier != base.observation.tier:
+            raise ValueError("all evaluator model tasks must share observation.tier")
+        if task.action.enable_macro_actions != base.action.enable_macro_actions:
+            raise ValueError("all evaluator model tasks must share action.enable_macro_actions")
+        if task.action.n_macro_actions != base.action.n_macro_actions:
+            raise ValueError("all evaluator model tasks must share action.n_macro_actions")
 
 
 def _build_policy(

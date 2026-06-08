@@ -177,6 +177,17 @@ def test_run_eval_builds_reproducibility_metadata() -> None:
     }
 
 
+def test_run_eval_rejects_incompatible_model_task_layouts() -> None:
+    module = _load_script("run_eval.py")
+    tasks = [
+        module.TaskConfig(task_id="a", wire_id=1, scene="A", action={"n_macro_actions": 11}),
+        module.TaskConfig(task_id="b", wire_id=2, scene="B", action={"n_macro_actions": 4}),
+    ]
+
+    with pytest.raises(ValueError, match="n_macro_actions"):
+        module._validate_model_task_layouts(tasks)
+
+
 def test_run_eval_loads_wrapped_or_raw_baseline_metrics(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     raw = tmp_path / "raw.json"
