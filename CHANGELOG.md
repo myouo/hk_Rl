@@ -86,6 +86,8 @@ the project version tracks the **schema_version** + roadmap phase.
   verification before loading weights for hot-swaps.
 - LearnerServer now provides in-process RolloutBatch intake, APPO updates,
   policy-version accounting, and checkpoint publishing through the registry.
+- `scripts/run_learner.py` now builds a config-driven learner model/server and
+  emits a JSON startup summary for Phase 6 smoke checks.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
