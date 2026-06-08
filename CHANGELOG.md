@@ -33,6 +33,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Python TCP entry points now honor `security.require_token` by reading
   `security.auth_token_env`, and the mod TCP server consumes/verifies the auth
   frame before forwarding protocol requests.
+- Mod TCP server now drains outbound response frames only after authentication,
+  preventing stale responses from being exposed to unauthenticated clients.
 - `scripts/run_eval.py` now uses the same security token config for evaluator TCP
   env connections.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with

@@ -137,7 +137,10 @@ namespace HKRLEnvMod.Transport
 
             while (_running && client.Connected)
             {
-                DrainOutbound(stream);
+                if (authenticated)
+                {
+                    DrainOutbound(stream);
+                }
 
                 if (!stream.DataAvailable)
                 {

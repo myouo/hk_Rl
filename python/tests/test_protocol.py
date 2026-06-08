@@ -167,6 +167,15 @@ def test_tcp_frame_limit_matches_mod_server() -> None:
     assert "MaxFrameBytes = 16 * 1024 * 1024" in server
 
 
+def test_mod_tcp_server_drains_outbound_only_after_auth() -> None:
+    root = Path(__file__).parents[2]
+    server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
+
+    assert "if (authenticated)" in server
+    assert "DrainOutbound(stream);" in server
+    assert server.index("if (authenticated)") < server.index("DrainOutbound(stream);")
+
+
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
