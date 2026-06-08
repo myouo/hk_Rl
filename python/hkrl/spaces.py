@@ -38,16 +38,42 @@ ARENA_SCALE = 30.0
 VEL_SCALE = 20.0
 T_MAX = 2.0  # seconds, for clamping cooldown/lock/ttl/invuln timers
 
+# Feature vector sizes used by decoded observations before model-specific
+# embedding/splitting. Keep these aligned with docs/observation_schema.md.
+GLOBAL_FEATURE_DIM = 9
+PLAYER_FEATURE_DIMS: dict[str, int] = {
+    "privileged": 25,
+    "reduced": 21,
+    "human_visible": 15,
+}
+ENTITY_FEATURE_DIMS: dict[str, int] = {
+    "privileged": 24,
+    "reduced": 18,
+    "human_visible": 12,
+}
+
 
 def make_action_space(enable_macro: bool = True, n_macros: int = 11) -> gym.spaces.Dict:
     """Build the hybrid action space (docs/action_space.md §2).
 
     Components: movement_x Discrete(3), aim_y Discrete(3), buttons MultiBinary(9),
     duration Discrete(4), macro Discrete(n_macros+1) when enabled.
-
-    TODO(phase-2): construct gymnasium.spaces.Dict; import gymnasium lazily.
     """
-    raise NotImplementedError
+    if n_macros < 0:
+        raise ValueError("n_macros must be non-negative")
+
+    from gymnasium import spaces as gym_spaces
+
+    space_dict: dict[str, gym_spaces.Space] = {
+        "movement_x": gym_spaces.Discrete(N_MOVEMENT_X),
+        "aim_y": gym_spaces.Discrete(N_AIM_Y),
+        "buttons": gym_spaces.MultiBinary(N_BUTTONS),
+        "duration": gym_spaces.Discrete(N_DURATION),
+    }
+    if enable_macro:
+        space_dict["macro"] = gym_spaces.Discrete(n_macros + 1)
+
+    return gym_spaces.Dict(space_dict)
 
 
 def make_observation_space(max_entities: int = 64, tier: str = "privileged") -> gym.spaces.Dict:
@@ -55,10 +81,39 @@ def make_observation_space(max_entities: int = 64, tier: str = "privileged") -> 
 
     Keys: global, player, entities (max_entities x feat), entity_mask. Feature
     dims depend on ``tier`` (privileged/reduced/human_visible).
-
-    TODO(phase-2/phase-4): construct spaces; feat dims from schema field sets.
     """
-    raise NotImplementedError
+    if max_entities <= 0:
+        raise ValueError("max_entities must be positive")
+    if tier not in PLAYER_FEATURE_DIMS:
+        known = ", ".join(sorted(PLAYER_FEATURE_DIMS))
+        raise ValueError(f"unknown observation tier {tier!r}; expected one of: {known}")
+
+    import numpy as np
+    from gymnasium import spaces as gym_spaces
+
+    return gym_spaces.Dict(
+        {
+            "global": gym_spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(GLOBAL_FEATURE_DIM,),
+                dtype=np.float32,
+            ),
+            "player": gym_spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(PLAYER_FEATURE_DIMS[tier],),
+                dtype=np.float32,
+            ),
+            "entities": gym_spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(max_entities, ENTITY_FEATURE_DIMS[tier]),
+                dtype=np.float32,
+            ),
+            "entity_mask": gym_spaces.MultiBinary(max_entities),
+        }
+    )
 
 
 def action_mask_layout(enable_macro: bool = True, n_macros: int = 11) -> list[str]:
