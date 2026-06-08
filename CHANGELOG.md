@@ -57,6 +57,8 @@ the project version tracks the **schema_version** + roadmap phase.
   Gym observation space for short-history MLP baselines.
 - ScriptedAggroPolicy now provides a mask-aware heuristic baseline that approaches
   and attacks the nearest boss/entity from structured observations.
+- Evaluator now runs fixed-seed task episodes through an injected eval env factory,
+  aggregates shaping-free metrics, and reports win-rate regression deltas.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
