@@ -17,7 +17,7 @@ from hkrl.learner.learner_server import LearnerServer
 from hkrl.training.batch_io import deserialize_rollout_batch, serialize_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
 
-BATCH_INTAKE_TYPE = "hkrl.rollout_batch.v1"
+BATCH_INTAKE_TYPE = "hkrl.rollout_batch.v2"
 MAX_FRAME_BYTES = 512 * 1024 * 1024
 
 
