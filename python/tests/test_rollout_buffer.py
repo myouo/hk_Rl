@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 
-import pytest
+import numpy as np
+from hkrl.training.gae import compute_gae
 from hkrl.training.rollout_buffer import RolloutBatch
 
 
@@ -31,15 +32,46 @@ def test_rollout_batch_has_required_fields() -> None:
     assert required <= names
 
 
-@pytest.mark.xfail(reason="GAE implementation lands in phase 3", strict=True)
-def test_compute_gae() -> None:
-    import numpy as np
-    from hkrl.training.gae import compute_gae
-
-    compute_gae(
-        rewards=np.zeros((4, 1)),
-        values=np.zeros((4, 1)),
-        dones=np.zeros((4, 1)),
-        truncateds=np.zeros((4, 1)),
-        last_value=np.zeros((1,)),
+def test_compute_gae_reverse_recursion() -> None:
+    advantages, returns = compute_gae(
+        rewards=np.ones((3, 1), dtype=np.float32),
+        values=np.zeros((3, 1), dtype=np.float32),
+        dones=np.zeros((3, 1), dtype=bool),
+        truncateds=np.zeros((3, 1), dtype=bool),
+        last_value=np.zeros((1,), dtype=np.float32),
+        gamma=1.0,
+        gae_lambda=1.0,
     )
+
+    np.testing.assert_allclose(advantages[:, 0], np.array([3.0, 2.0, 1.0]))
+    np.testing.assert_allclose(returns[:, 0], np.array([3.0, 2.0, 1.0]))
+
+
+def test_compute_gae_terminated_step_does_not_bootstrap() -> None:
+    advantages, returns = compute_gae(
+        rewards=np.array([[1.0]], dtype=np.float32),
+        values=np.array([[0.0]], dtype=np.float32),
+        dones=np.array([[True]]),
+        truncateds=np.array([[False]]),
+        last_value=np.array([10.0], dtype=np.float32),
+        gamma=1.0,
+        gae_lambda=1.0,
+    )
+
+    np.testing.assert_allclose(advantages, np.array([[1.0]], dtype=np.float32))
+    np.testing.assert_allclose(returns, np.array([[1.0]], dtype=np.float32))
+
+
+def test_compute_gae_truncated_step_bootstraps() -> None:
+    advantages, returns = compute_gae(
+        rewards=np.array([[1.0]], dtype=np.float32),
+        values=np.array([[0.0]], dtype=np.float32),
+        dones=np.array([[True]]),
+        truncateds=np.array([[True]]),
+        last_value=np.array([10.0], dtype=np.float32),
+        gamma=1.0,
+        gae_lambda=1.0,
+    )
+
+    np.testing.assert_allclose(advantages, np.array([[11.0]], dtype=np.float32))
+    np.testing.assert_allclose(returns, np.array([[11.0]], dtype=np.float32))
