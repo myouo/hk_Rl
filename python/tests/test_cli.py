@@ -154,6 +154,8 @@ def test_run_ppo_training_loop_collects_updates_and_logs() -> None:
     summary = run_ppo_training_loop(worker=worker, algo=algo, sink=sink, updates=2)
 
     assert worker.collect_calls == 2
+    assert worker.collected_versions == [0, 1]
+    assert worker.policy_version == 2
     assert algo.buffers == [worker.buffer, worker.buffer]
     assert summary == {
         "updates": 2,
@@ -208,19 +210,22 @@ def test_run_ppo_training_loop_publishes_registry_checkpoint(tmp_path: Path) -> 
 
 
 class FakeBatch:
-    def __init__(self) -> None:
+    def __init__(self, policy_version: int = 7) -> None:
         self.rewards = np.ones((3, 1), dtype=np.float32)
-        self.policy_version = 7
+        self.policy_version = policy_version
 
 
 class FakeWorker:
     def __init__(self) -> None:
         self.buffer = object()
         self.collect_calls = 0
+        self.collected_versions: list[int] = []
+        self.policy_version = 0
 
     def collect_rollout(self) -> FakeBatch:
         self.collect_calls += 1
-        return FakeBatch()
+        self.collected_versions.append(self.policy_version)
+        return FakeBatch(policy_version=self.policy_version)
 
 
 class FakeAlgo:

@@ -252,6 +252,8 @@ def run_ppo_training_loop(
                 "policy_version": int(getattr(batch, "policy_version", 0)),
             }
         )
+        if hasattr(worker, "policy_version"):
+            worker.policy_version = update
 
         if registry is not None:
             assert model is not None
