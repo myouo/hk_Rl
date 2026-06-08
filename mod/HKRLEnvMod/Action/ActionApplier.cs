@@ -33,9 +33,10 @@ namespace HKRLEnvMod.Action
                 _macros.Begin(action.MacroId);
             }
 
-            var primitive = ToPrimitive(action);
+            var macroActive = _macros.IsActive;
+            var primitive = macroActive ? _macros.Tick() : ToPrimitive(action);
             _heldInput = primitive;
-            _heldTicksRemaining = DurationFromIndex(action.DurationIdx) - 1;
+            _heldTicksRemaining = macroActive ? 0 : DurationFromIndex(action.DurationIdx) - 1;
             _input.Apply(primitive);
         }
 

@@ -74,6 +74,8 @@ the project version tracks the **schema_version** + roadmap phase.
   buttons.
 - Mod primitive action path now maps decoded wire actions into movement/aim/button
   input state with button-bit clamping and duration hold bookkeeping.
+- Mod macro action scheduler now expands the PRD macro ids into deterministic
+  primitive input plans consumed by ActionApplier.
 - Mod episode lifecycle now advances through reset, running, termination, report,
   cleanup, tracks episode ids, and surfaces lifecycle error codes.
 - Mod StepController now drains inbound requests, dispatches reset/step/task/ping
