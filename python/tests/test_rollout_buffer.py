@@ -190,7 +190,7 @@ def test_rollout_batch_npz_roundtrip(tmp_path: Path) -> None:
 def test_rollout_batch_npz_roundtrip_with_rnn_state(tmp_path: Path) -> None:
     batch = _sample_batch(
         policy_version=10,
-        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 6),
+        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 1, 6),
     )
     path = save_rollout_batch(tmp_path / "nested" / "batch.npz", batch)
 
@@ -205,7 +205,7 @@ def test_rollout_batch_npz_roundtrip_with_rnn_state(tmp_path: Path) -> None:
 def test_rollout_batch_memory_roundtrip_with_rnn_state() -> None:
     batch = _sample_batch(
         policy_version=11,
-        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 6),
+        rnn_states=np.arange(12, dtype=np.float32).reshape(2, 1, 1, 6),
     )
 
     loaded = deserialize_rollout_batch(serialize_rollout_batch(batch))
@@ -221,6 +221,16 @@ def test_rollout_batch_deserialize_rejects_mismatched_time_env_shapes() -> None:
     batch.rewards = np.ones((1, 1), dtype=np.float32)
 
     with pytest.raises(ValueError, match="time/env shape"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
+def test_rollout_batch_deserialize_rejects_bad_rnn_state_shape() -> None:
+    batch = _sample_batch(
+        policy_version=13,
+        rnn_states=np.zeros((2, 1, 6), dtype=np.float32),
+    )
+
+    with pytest.raises(ValueError, match="rnn_states"):
         deserialize_rollout_batch(serialize_rollout_batch(batch))
 
 

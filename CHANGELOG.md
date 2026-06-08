@@ -132,6 +132,8 @@ the project version tracks the **schema_version** + roadmap phase.
   after each update so subsequent rollouts are tagged with the active weights.
 - RolloutBatch NPZ deserialization now rejects fields with inconsistent
   `(time, env)` prefixes before they reach learner updates.
+- RolloutBatch NPZ deserialization now enforces 4D recurrent-state payloads
+  shaped `(time, layers, envs, hidden)`.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

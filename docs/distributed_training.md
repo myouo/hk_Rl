@@ -52,7 +52,8 @@ human-readable task names used in evaluator output.
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner
 integration tests. Network transports for batches should preserve this field
 contract even if they use a different envelope. Deserialization rejects batches
-whose fields do not share the same `(time, env)` prefix, so malformed worker
+whose fields do not share the same `(time, env)` prefix, and rejects recurrent
+state payloads that are not `(time, layers, envs, hidden)`, so malformed worker
 uploads fail at the intake boundary instead of inside the optimizer.
 
 For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes

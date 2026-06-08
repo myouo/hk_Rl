@@ -131,6 +131,19 @@ def _validate_batch_shapes(batch: RolloutBatch) -> None:
                 f"got {array.shape}"
             )
 
+    if batch.rnn_states is not None:
+        rnn_states = np.asarray(batch.rnn_states)
+        if rnn_states.ndim != 4:
+            raise ValueError(
+                "RolloutBatch rnn_states must have shape (time, layers, envs, hidden), "
+                f"got {rnn_states.shape}"
+            )
+        if rnn_states.shape[0] != expected[0] or rnn_states.shape[2] != expected[1]:
+            raise ValueError(
+                "RolloutBatch rnn_states must align with rollout time/env shape "
+                f"{expected}, got {rnn_states.shape}"
+            )
+
 
 def _array(data: np.lib.npyio.NpzFile, key: str) -> np.ndarray:
     if key not in data.files:
