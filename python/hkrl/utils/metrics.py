@@ -6,6 +6,7 @@ invalid-action ratio, generalization, old-task regression) — NOT training rewa
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 
 # Canonical metric keys (keep in sync with docs/metrics.md §1).
@@ -48,15 +49,31 @@ class EpisodeStats:
 
 class RunningMeter:
     """Windowed mean/EMA for streaming scalars.
-
-    TODO(phase-2): implement deque-backed window + EMA.
     """
 
     def __init__(self, window: int = 100) -> None:
+        if window <= 0:
+            raise ValueError("window must be positive")
+
         self.window = window
+        self.values: deque[float] = deque(maxlen=window)
+        self.ema: float | None = None
+        self.ema_alpha = 2.0 / (window + 1.0)
 
     def update(self, value: float) -> None:
-        raise NotImplementedError  # TODO(phase-2)
+        value = float(value)
+        self.values.append(value)
+
+        if self.ema is None:
+            self.ema = value
+        else:
+            self.ema = self.ema_alpha * value + (1.0 - self.ema_alpha) * self.ema
 
     def mean(self) -> float:
-        raise NotImplementedError  # TODO(phase-2)
+        if not self.values:
+            return 0.0
+        return sum(self.values) / len(self.values)
+
+    def ema_mean(self) -> float:
+        """Return the exponential moving average, or 0.0 before any update."""
+        return 0.0 if self.ema is None else self.ema

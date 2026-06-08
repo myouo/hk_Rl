@@ -32,18 +32,62 @@ class DefaultReward:
 
         ``dt`` scales the time penalty. Returns a float; terminal events
         (boss_kill / player_death) dominate by weight magnitude.
-
-        TODO(phase-2): implement the sum over RewardEventKind using self.w.
         """
-        raise NotImplementedError
+        reward = self.w.time_penalty * dt
+
+        for event in events:
+            amount = float(event.amount)
+
+            if event.kind == RewardEventKind.DAMAGE_DEALT:
+                reward += self.w.boss_damage * amount
+            elif event.kind == RewardEventKind.DAMAGE_TAKEN:
+                reward += self.w.player_damage * amount
+            elif event.kind == RewardEventKind.SOUL_GAINED:
+                reward += self.w.soul_gained * amount
+            elif event.kind == RewardEventKind.HEAL:
+                reward += self.w.heal_amount * amount
+            elif event.kind == RewardEventKind.BOSS_KILLED:
+                reward += self.w.boss_kill
+            elif event.kind == RewardEventKind.PLAYER_DEATH:
+                reward += self.w.player_death
+            elif event.kind == RewardEventKind.INVALID_ACTION:
+                reward += self.w.invalid_action
+
+        return float(reward)
 
     def shaping_free(self, events: Sequence[RewardEvent]) -> dict[str, float]:
         """Return shaping-free outcome stats (damage ratio, kill, death) for the
         evaluator. Never includes distance/positioning shaping. docs/metrics.md §2.
-
-        TODO(phase-3): implement.
         """
-        raise NotImplementedError
+        stats = {
+            "damage_dealt": 0.0,
+            "damage_taken": 0.0,
+            "heal_amount": 0.0,
+            "soul_gained": 0.0,
+            "boss_killed": 0.0,
+            "player_death": 0.0,
+            "invalid_actions": 0.0,
+        }
+
+        for event in events:
+            amount = float(event.amount)
+
+            if event.kind == RewardEventKind.DAMAGE_DEALT:
+                stats["damage_dealt"] += amount
+            elif event.kind == RewardEventKind.DAMAGE_TAKEN:
+                stats["damage_taken"] += amount
+            elif event.kind == RewardEventKind.HEAL:
+                stats["heal_amount"] += amount
+            elif event.kind == RewardEventKind.SOUL_GAINED:
+                stats["soul_gained"] += amount
+            elif event.kind == RewardEventKind.BOSS_KILLED:
+                stats["boss_killed"] += 1.0
+            elif event.kind == RewardEventKind.PLAYER_DEATH:
+                stats["player_death"] += 1.0
+            elif event.kind == RewardEventKind.INVALID_ACTION:
+                stats["invalid_actions"] += 1.0
+
+        return stats
 
 
 # Re-export for convenience / discoverability.
