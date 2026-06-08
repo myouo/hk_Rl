@@ -97,6 +97,42 @@ def test_csharp_action_masker_constants_match_python_layout() -> None:
     assert constants["ButtonNailArtRelease"] == spaces.BUTTON_BITS["nail_art_release"]
 
 
+def test_csharp_macro_scheduler_cases_match_python_macro_count() -> None:
+    text = (Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/MacroActionScheduler.cs").read_text(
+        encoding="utf-8"
+    )
+    cases = sorted({int(value) for value in re.findall(r"^\s*(\d+)\s*=>", text, re.MULTILINE)})
+
+    assert cases == list(range(spaces.DEFAULT_N_MACROS))
+
+
+def test_csharp_action_masker_masks_unavailable_macros_after_noop_slot() -> None:
+    path = Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/ActionMasker.cs"
+    text = path.read_text(encoding="utf-8")
+    constants = _csharp_int_constants(path)
+
+    macro_names = [
+        "MacroApproach",
+        "MacroRetreat",
+        "MacroJumpAttack",
+        "MacroPogo",
+        "MacroDashAway",
+        "MacroDashThrough",
+        "MacroCastForward",
+        "MacroCastUp",
+        "MacroFocusWhenSafe",
+        "MacroShortHop",
+        "MacroLongJump",
+    ]
+    assert [constants[name] for name in macro_names] == list(range(spaces.DEFAULT_N_MACROS))
+
+    # action-space macro:0 is "no macro"; mod macro id 0 starts at flat mask macro:1.
+    assert "MacroOffset + 1 + macroId" in text
+
+    for name in macro_names[2:]:
+        assert f"MaskMacro(mask, {name})" in text
+
+
 def test_csharp_input_injector_button_mask_matches_python_layout() -> None:
     text = (Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/InputInjector.cs").read_text(
         encoding="utf-8"

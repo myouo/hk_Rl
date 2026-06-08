@@ -69,6 +69,18 @@ namespace HKRLEnvMod.Action
         public const int ButtonNailArtHold = 7;
         public const int ButtonNailArtRelease = 8;
 
+        public const int MacroApproach = 0;
+        public const int MacroRetreat = 1;
+        public const int MacroJumpAttack = 2;
+        public const int MacroPogo = 3;
+        public const int MacroDashAway = 4;
+        public const int MacroDashThrough = 5;
+        public const int MacroCastForward = 6;
+        public const int MacroCastUp = 7;
+        public const int MacroFocusWhenSafe = 8;
+        public const int MacroShortHop = 9;
+        public const int MacroLongJump = 10;
+
         /// <summary>Return the mask in canonical layout order.</summary>
         public bool[] Compute(
             PlayerActionState? player = null,
@@ -114,35 +126,93 @@ namespace HKRLEnvMod.Action
             var castLocked = player.CastLockTimer > 0.0f;
             var insufficientSoul = player.Soul < SpellSoulCost;
             var cannotJump = !player.OnGround && !player.DoubleJumpAvailable;
+            var dashUnavailable = player.DashCooldown > 0.0f || attackLocked || player.Focusing;
+            var attackUnavailable = attackLocked || player.Focusing || !player.CanAttack;
+            var castUnavailable = insufficientSoul || attackLocked || castLocked || player.Focusing || !player.CanCast;
+            var focusUnavailable = insufficientSoul || attackLocked || !player.CanFocus;
 
             if (cannotJump)
             {
                 MaskButton(mask, ButtonJumpTap);
                 MaskButton(mask, ButtonJumpHold);
             }
-            if (player.DashCooldown > 0.0f || attackLocked || player.Focusing)
+            if (dashUnavailable)
             {
                 MaskButton(mask, ButtonDash);
             }
-            if (attackLocked || player.Focusing || !player.CanAttack)
+            if (attackUnavailable)
             {
                 MaskButton(mask, ButtonAttack);
                 MaskButton(mask, ButtonNailArtHold);
                 MaskButton(mask, ButtonNailArtRelease);
             }
-            if (insufficientSoul || attackLocked || castLocked || player.Focusing || !player.CanCast)
+            if (castUnavailable)
             {
                 MaskButton(mask, ButtonCast);
             }
-            if (insufficientSoul || attackLocked || !player.CanFocus)
+            if (focusUnavailable)
             {
                 MaskButton(mask, ButtonFocusHold);
+            }
+
+            ApplyMacroRules(
+                mask,
+                cannotJump,
+                dashUnavailable,
+                attackUnavailable,
+                castUnavailable,
+                focusUnavailable);
+        }
+
+        private static void ApplyMacroRules(
+            bool[] mask,
+            bool cannotJump,
+            bool dashUnavailable,
+            bool attackUnavailable,
+            bool castUnavailable,
+            bool focusUnavailable)
+        {
+            if (cannotJump || attackUnavailable)
+            {
+                MaskMacro(mask, MacroJumpAttack);
+            }
+            if (attackUnavailable)
+            {
+                MaskMacro(mask, MacroPogo);
+            }
+            if (dashUnavailable)
+            {
+                MaskMacro(mask, MacroDashAway);
+                MaskMacro(mask, MacroDashThrough);
+            }
+            if (castUnavailable)
+            {
+                MaskMacro(mask, MacroCastForward);
+                MaskMacro(mask, MacroCastUp);
+            }
+            if (focusUnavailable)
+            {
+                MaskMacro(mask, MacroFocusWhenSafe);
+            }
+            if (cannotJump)
+            {
+                MaskMacro(mask, MacroShortHop);
+                MaskMacro(mask, MacroLongJump);
             }
         }
 
         private static void MaskButton(bool[] mask, int buttonIndex)
         {
             mask[ButtonOffset + buttonIndex] = false;
+        }
+
+        private static void MaskMacro(bool[] mask, int macroId)
+        {
+            var index = MacroOffset + 1 + macroId;
+            if (index > MacroOffset && index < mask.Length)
+            {
+                mask[index] = false;
+            }
         }
     }
 }

@@ -132,6 +132,9 @@ the project version tracks the **schema_version** + roadmap phase.
   out-of-range action components before applying safe clamped input.
 - Mod StepResponse action masks now use the observed player readiness fields
   instead of always returning the all-valid fallback mask.
+- Mod StepResponse action masks now also mask macro actions whose primitive
+  sequences require currently unavailable jump, dash, attack, cast, or focus
+  inputs.
 - Mod PlayerObserver now reads hp/soul from PlayerData via reflection with safe
   fallbacks for minor game/API field-name drift.
 - Mod PlayerObserver caches PlayerData type lookup so per-tick observation reads

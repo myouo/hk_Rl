@@ -76,6 +76,10 @@ constant in `hkrl/spaces.py` and MUST match the mod's `ActionMasker`.
 StepResponse masks are computed from the same tick's observed player readiness
 where available (`soul`, grounded/double-jump, and can-attack/cast/focus flags),
 with cooldown/lock timers defaulting open until the mod reader exposes them.
+The macro slice uses the same readiness rules as the primitive buttons:
+`macro:0` is the no-macro/primitive path, while `macro:1..M` map to mod macro
+ids `0..M-1` and are masked when their primitive sequence would require an
+unavailable jump, dash, attack, cast, or focus input.
 
 ## 4. Duration & action_repeat
 
