@@ -20,6 +20,7 @@ from hkrl.spaces import (
     ENTITY_FEATURE_DIMS,
     GLOBAL_FEATURE_DIM,
     PLAYER_FEATURE_DIMS,
+    action_mask_layout,
     make_action_space,
     make_observation_space,
 )
@@ -99,6 +100,7 @@ class HKRLEnv(gym.Env):
         if response.observation is None:
             raise EnvProtocolError("reset reached RUNNING without an observation")
 
+        self._validate_action_mask(response.action_mask)
         self._running = True
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
@@ -127,6 +129,7 @@ class HKRLEnv(gym.Env):
         if response.observation is None:
             raise EnvProtocolError("step response did not include an observation")
 
+        self._validate_action_mask(response.action_mask)
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
@@ -180,6 +183,7 @@ class HKRLEnv(gym.Env):
         if response.observation is None:
             raise EnvProtocolError("set_task reached RUNNING without an observation")
 
+        self._validate_action_mask(response.action_mask)
         self._running = True
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
@@ -345,6 +349,17 @@ class HKRLEnv(gym.Env):
             has_boss = bool((valid_entities[:, 1] == float(protocol.EntityType.BOSS)).any())
             if not has_boss:
                 raise EnvProtocolError("boss task observation contains no boss entity")
+
+    def _validate_action_mask(self, action_mask: np.ndarray) -> None:
+        mask = np.asarray(action_mask, dtype=bool).reshape(-1)
+        expected = len(
+            action_mask_layout(
+                enable_macro=self.task.action.enable_macro_actions,
+                n_macros=self.task.action.n_macro_actions,
+            )
+        )
+        if mask.shape != (expected,):
+            raise EnvProtocolError(f"action_mask length {mask.size} != expected {expected}")
 
     def _next_tick_id(self) -> int:
         tick_id = self._tick_id

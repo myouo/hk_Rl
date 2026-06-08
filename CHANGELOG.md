@@ -118,6 +118,8 @@ the project version tracks the **schema_version** + roadmap phase.
   returns early if a terminal reward event occurs during the repeat window.
 - HKRLEnv now computes step reward `dt` from `server_tick` deltas so early
   terminal responses do not overcharge time penalties.
+- HKRLEnv now rejects action masks whose length does not match the current task's
+  canonical action-mask layout.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

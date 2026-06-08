@@ -354,6 +354,25 @@ def test_env_rejects_mismatched_entity_mask() -> None:
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
+def test_env_rejects_mismatched_action_mask() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                action_mask_len=1,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="action_mask length"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
 def test_env_rejects_non_finite_observation_values() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 
@@ -431,10 +450,11 @@ def _build_response(
     entity_max_hp: int = 30,
     entity_pos_x: float = 0.0,
     server_tick: int | None = None,
+    action_mask_len: int = 31,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
-        builder, FbStepResponse.StepResponseStartActionMaskVector, [True]
+        builder, FbStepResponse.StepResponseStartActionMaskVector, [True] * action_mask_len
     )
     observation = _build_observation(
         builder,
