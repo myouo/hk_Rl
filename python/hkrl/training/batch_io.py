@@ -37,6 +37,18 @@ _ARRAY_FIELDS: tuple[str, ...] = (
     "task_ids",
 )
 
+_FINITE_FIELDS: tuple[str, ...] = (
+    "obs_global",
+    "obs_player",
+    "obs_entities",
+    "log_probs",
+    "values",
+    "advantages",
+    "returns",
+    "rewards",
+    "prev_rewards",
+)
+
 
 def save_rollout_batch(path: str | Path, batch: RolloutBatch) -> Path:
     """Persist a RolloutBatch atomically as a compressed, pickle-free NPZ file."""
@@ -147,6 +159,9 @@ def _validate_batch_shapes(batch: RolloutBatch) -> None:
             f"got {np.asarray(batch.prev_actions).shape} vs {np.asarray(batch.actions).shape}"
         )
 
+    for field in _FINITE_FIELDS:
+        _require_finite(field, np.asarray(getattr(batch, field)))
+
     if batch.rnn_states is not None:
         rnn_states = np.asarray(batch.rnn_states)
         if rnn_states.ndim != 4:
@@ -159,12 +174,18 @@ def _validate_batch_shapes(batch: RolloutBatch) -> None:
                 "RolloutBatch rnn_states must align with rollout time/env shape "
                 f"{expected}, got {rnn_states.shape}"
             )
+        _require_finite("rnn_states", rnn_states)
 
 
 def _array(data: np.lib.npyio.NpzFile, key: str) -> np.ndarray:
     if key not in data.files:
         raise ValueError(f"RolloutBatch file missing field {key!r}")
     return data[key].copy()
+
+
+def _require_finite(field: str, array: np.ndarray) -> None:
+    if not np.isfinite(array).all():
+        raise ValueError(f"RolloutBatch field {field!r} contains non-finite values")
 
 
 def _scalar_int(data: np.lib.npyio.NpzFile, key: str) -> int:

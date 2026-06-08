@@ -167,6 +167,8 @@ the project version tracks the **schema_version** + roadmap phase.
   memory context.
 - RolloutBatch NPZ deserialization now rejects negative policy versions, flat
   action-mask payloads, and `prev_actions` shapes that differ from `actions`.
+- RolloutBatch NPZ deserialization now rejects non-finite observation, reward,
+  return, log-probability, previous-reward, and recurrent-state values.
 - Checkpoint registry/client parsing now rejects empty checkpoint paths before
   filesystem or HTTP reads.
 - Checkpoint registry/client parsing now rejects non-positive versions,

@@ -258,6 +258,27 @@ def test_rollout_batch_deserialize_rejects_negative_policy_version() -> None:
         deserialize_rollout_batch(serialize_rollout_batch(batch))
 
 
+def test_rollout_batch_deserialize_rejects_non_finite_values() -> None:
+    batch = _sample_batch(policy_version=16)
+    batch.rewards = batch.rewards.copy()
+    batch.rewards[0, 0] = np.nan
+
+    with pytest.raises(ValueError, match="non-finite"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
+def test_rollout_batch_deserialize_rejects_non_finite_rnn_states() -> None:
+    batch = _sample_batch(
+        policy_version=17,
+        rnn_states=np.zeros((2, 1, 1, 6), dtype=np.float32),
+    )
+    assert batch.rnn_states is not None
+    batch.rnn_states[0, 0, 0, 0] = np.inf
+
+    with pytest.raises(ValueError, match="rnn_states"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
 def test_rollout_batch_npz_rejects_unknown_format_version(tmp_path: Path) -> None:
     path = tmp_path / "bad.npz"
     with open(path, "wb") as fh:
