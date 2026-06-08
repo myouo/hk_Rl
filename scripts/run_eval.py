@@ -86,7 +86,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
 def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
     if args.policy == "scripted":
         return ScriptedAggroPolicy(
-            spaces.make_action_space(enable_macro=task.action.enable_macro_actions)
+            spaces.make_action_space(
+                enable_macro=task.action.enable_macro_actions,
+                n_macros=task.action.n_macro_actions,
+            )
         )
 
     checkpoint_path = _resolve_checkpoint_path(args)
@@ -105,6 +108,7 @@ def _build_policy(args: argparse.Namespace, task: TaskConfig) -> Any:
         },
         hidden=train_cfg.model.rnn_hidden or 256,
         enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
     )
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     if isinstance(state, dict):

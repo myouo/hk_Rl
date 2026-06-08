@@ -24,8 +24,8 @@ def test_action_mask_layout_length() -> None:
 
 def test_action_mask_layout_with_macros_grows() -> None:
     base = len(spaces.action_mask_layout(enable_macro=False))
-    with_macro = len(spaces.action_mask_layout(enable_macro=True, n_macros=11))
-    assert with_macro == base + 12  # n_macros + 1 (none)
+    with_macro = len(spaces.action_mask_layout(enable_macro=True, n_macros=spaces.DEFAULT_N_MACROS))
+    assert with_macro == base + spaces.DEFAULT_N_MACROS + 1
 
 
 def test_duration_ticks_match_count() -> None:
@@ -33,14 +33,17 @@ def test_duration_ticks_match_count() -> None:
 
 
 def test_make_action_space() -> None:
-    action_space = spaces.make_action_space(enable_macro=True, n_macros=11)
+    action_space = spaces.make_action_space(
+        enable_macro=True,
+        n_macros=spaces.DEFAULT_N_MACROS,
+    )
 
     assert isinstance(action_space, gym.spaces.Dict)
     assert action_space["movement_x"].n == spaces.N_MOVEMENT_X
     assert action_space["aim_y"].n == spaces.N_AIM_Y
     assert action_space["buttons"].n == spaces.N_BUTTONS
     assert action_space["duration"].n == spaces.N_DURATION
-    assert action_space["macro"].n == 12
+    assert action_space["macro"].n == spaces.DEFAULT_N_MACROS + 1
 
 
 def test_make_action_space_without_macro() -> None:

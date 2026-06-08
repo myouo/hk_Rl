@@ -29,3 +29,4 @@ observation:
 action:
   action_repeat: 2
   enable_macro_actions: true
+  n_macro_actions: 11

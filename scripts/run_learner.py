@@ -22,7 +22,7 @@ from hkrl.learner.learner_server import LearnerServer
 # Import model modules for registry side effects.
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
-from hkrl.spaces import make_observation_space
+from hkrl.spaces import DEFAULT_N_MACROS, make_observation_space
 from hkrl.training.batch_io import load_rollout_batch
 from hkrl.utils.config import load_train_config
 from hkrl.utils.registry import get
@@ -37,6 +37,8 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--max-staleness", type=int, default=None)
     p.add_argument("--publish-every-updates", type=int, default=None)
     p.add_argument("--max-entities", type=int, default=64)
+    p.add_argument("--disable-macro-actions", action="store_true")
+    p.add_argument("--n-macro-actions", type=int, default=DEFAULT_N_MACROS)
     p.add_argument(
         "--tier",
         default="privileged",
@@ -73,6 +75,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "entity_mask": observation_space["entity_mask"].shape,
         },
         max_entities=args.max_entities,
+        enable_macro=not args.disable_macro_actions,
+        n_macros=args.n_macro_actions,
     )
     registry = CheckpointRegistry(str(Path(checkpoint_dir)))
     server = LearnerServer(
@@ -92,9 +96,11 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "batch_dir": args.batch_dir,
         "bind": bind,
         "checkpoint_dir": registry.root,
+        "enable_macro_actions": not args.disable_macro_actions,
         "latest_checkpoint": None if latest is None else latest.version,
         "max_staleness": max_staleness,
         "model": cfg.model.name,
+        "n_macro_actions": args.n_macro_actions,
         "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
@@ -103,13 +109,21 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def _build_model(cfg: Any, obs_dims: dict[str, tuple[int, ...]], *, max_entities: int) -> Any:
+def _build_model(
+    cfg: Any,
+    obs_dims: dict[str, tuple[int, ...]],
+    *,
+    max_entities: int,
+    enable_macro: bool,
+    n_macros: int,
+) -> Any:
     model_cls = get("model", cfg.model.name)
     if cfg.model.name == "mlp":
         return model_cls(
             obs_dims,
             hidden=cfg.model.rnn_hidden,
-            enable_macro=True,
+            enable_macro=enable_macro,
+            n_macros=n_macros,
         )
     return model_cls(
         obs_dims,
@@ -118,7 +132,8 @@ def _build_model(cfg: Any, obs_dims: dict[str, tuple[int, ...]], *, max_entities
         attention_heads=cfg.model.attention_heads,
         rnn_type=cfg.model.rnn_type,
         rnn_hidden=cfg.model.rnn_hidden,
-        enable_macro=True,
+        enable_macro=enable_macro,
+        n_macros=n_macros,
         max_entities=max_entities,
     )
 

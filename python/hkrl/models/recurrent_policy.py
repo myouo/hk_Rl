@@ -18,6 +18,7 @@ from hkrl.models.base import ActorCritic, RnnState
 from hkrl.models.encoders import EntityEncoder, GlobalEncoder, PlayerEncoder
 from hkrl.models.entity_attention import EntityTransformerEncoder
 from hkrl.models.heads import CompositeActionDistribution, HybridPolicyHead, ValueHead
+from hkrl.spaces import DEFAULT_N_MACROS
 from hkrl.utils.registry import register_model
 
 
@@ -40,6 +41,7 @@ class EntityAttentionRecurrentAC(ActorCritic):
         rnn_type: str = "gru",
         rnn_hidden: int = 256,
         enable_macro: bool = True,
+        n_macros: int = DEFAULT_N_MACROS,
         max_entities: int = 64,
     ) -> None:
         super().__init__()
@@ -63,7 +65,11 @@ class EntityAttentionRecurrentAC(ActorCritic):
         memory_input_dim = entity_hidden * 3
         rnn_cls = nn.GRU if rnn_type == "gru" else nn.LSTM
         self.rnn = rnn_cls(memory_input_dim, rnn_hidden, batch_first=True)
-        self.policy = HybridPolicyHead(rnn_hidden, enable_macro=enable_macro)
+        self.policy = HybridPolicyHead(
+            rnn_hidden,
+            enable_macro=enable_macro,
+            n_macros=n_macros,
+        )
         self.value = ValueHead(rnn_hidden)
         self.max_entities = max_entities
 

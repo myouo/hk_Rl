@@ -13,7 +13,7 @@ import torch
 from torch import Tensor, nn
 from torch.distributions import Bernoulli, Categorical
 
-from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
+from hkrl.spaces import DEFAULT_N_MACROS, N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
 
 ACTION_TENSOR_DIM_NO_MACRO = 1 + 1 + N_BUTTONS + 1
 
@@ -107,7 +107,9 @@ class HybridPolicyHead(nn.Module):
     buttons Bernoulli(9), duration Categorical(4), macro Categorical(M+1) optional.
     """
 
-    def __init__(self, in_dim: int, enable_macro: bool = True, n_macros: int = 11) -> None:
+    def __init__(
+        self, in_dim: int, enable_macro: bool = True, n_macros: int = DEFAULT_N_MACROS
+    ) -> None:
         super().__init__()
         if n_macros < 0:
             raise ValueError("n_macros must be non-negative")

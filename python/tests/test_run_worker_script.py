@@ -41,10 +41,12 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "auth_token_required": True,
         "batch_dir": str(tmp_path / "batches"),
         "dry_run": True,
+        "enable_macro_actions": True,
         "learner": "127.0.0.1:5600",
         "latest_checkpoint": 1,
         "max_consecutive_failures": 5,
         "model": "entity_attention_gru",
+        "n_macro_actions": 11,
         "registry": str(tmp_path / "checkpoints"),
         "task_id": "gruz_mother",
         "task_ids": ["gruz_mother"],
@@ -64,6 +66,31 @@ def test_run_worker_task_provider_cycles_tasks() -> None:
     assert provider().task_id == "a"
     assert provider().task_id == "b"
     assert provider().task_id == "a"
+
+
+def test_run_worker_rejects_incompatible_task_layouts() -> None:
+    module = _load_script("run_worker.py")
+    tasks = [
+        module.TaskConfig(
+            task_id="a",
+            wire_id=1,
+            scene="A",
+            action={"n_macro_actions": 11},
+        ),
+        module.TaskConfig(
+            task_id="b",
+            wire_id=2,
+            scene="B",
+            action={"n_macro_actions": 4},
+        ),
+    ]
+
+    try:
+        module._validate_task_layouts(tasks)
+    except ValueError as exc:
+        assert "n_macro_actions" in str(exc)
+    else:
+        raise AssertionError("expected incompatible macro layouts to fail")
 
 
 def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:

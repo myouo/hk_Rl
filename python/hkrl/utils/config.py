@@ -15,6 +15,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from hkrl.spaces import DEFAULT_N_MACROS
+
 
 class StrictConfigModel(BaseModel):
     """Config base that rejects unknown keys instead of silently ignoring typos."""
@@ -45,6 +47,7 @@ class ObservationConfig(StrictConfigModel):
 class ActionConfig(StrictConfigModel):
     action_repeat: int = 2
     enable_macro_actions: bool = True
+    n_macro_actions: int = Field(default=DEFAULT_N_MACROS, ge=0)
 
 
 class TaskConfig(StrictConfigModel):

@@ -215,6 +215,7 @@ class HKRLEnv(gym.Env):
         )
         self.action_space = make_action_space(
             enable_macro=task.action.enable_macro_actions,
+            n_macros=task.action.n_macro_actions,
         )
 
     def _await_running(self, timeout_s: float) -> protocol.StatusCode:

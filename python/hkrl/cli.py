@@ -90,6 +90,7 @@ def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
         },
         hidden=cfg.model.rnn_hidden or 256,
         enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
     )
     worker = GameWorker(env=env, model=model, config=cfg)
     algo = PPO(model=model, config=cfg)

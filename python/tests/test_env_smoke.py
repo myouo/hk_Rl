@@ -98,6 +98,7 @@ def test_env_constructs_spaces_from_task_config() -> None:
 
     assert env.observation_space["entities"].shape[0] == task.observation.max_entities
     assert "macro" in env.action_space.spaces
+    assert env.action_space["macro"].n == task.action.n_macro_actions + 1
 
     env.close()
     assert transport.closed

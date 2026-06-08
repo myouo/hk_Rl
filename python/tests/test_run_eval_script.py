@@ -68,6 +68,7 @@ def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
         },
         hidden=256,
         enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
     )
 
 

@@ -69,6 +69,7 @@ def test_load_task_config_preserves_wire_id() -> None:
 
     assert gruz.task_id == "gruz_mother"
     assert gruz.wire_id == 0
+    assert gruz.action.n_macro_actions == 11
     assert hornet.wire_id == 1
     assert mantis.wire_id == 2
 

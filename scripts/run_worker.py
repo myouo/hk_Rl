@@ -70,6 +70,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         cfg,
         obs_dims,
         enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
         max_entities=task.observation.max_entities,
     )
     checkpoint_client = CheckpointClient(args.registry) if args.registry else None
@@ -86,10 +87,12 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "auth_token_required": cfg.security.require_token,
             "dry_run": True,
             "batch_dir": args.batch_dir,
+            "enable_macro_actions": task.action.enable_macro_actions,
             "learner": args.learner,
             "latest_checkpoint": latest_checkpoint,
             "max_consecutive_failures": args.max_consecutive_failures,
             "model": cfg.model.name,
+            "n_macro_actions": task.action.n_macro_actions,
             "registry": args.registry,
             "task_id": task.task_id,
             "task_ids": [item.task_id for item in tasks],
@@ -128,9 +131,11 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "batch_dir": args.batch_dir,
             "consecutive_failures": worker.consecutive_failures,
             "dry_run": False,
+            "enable_macro_actions": task.action.enable_macro_actions,
             "last_error": worker.last_error,
             "learner": args.learner,
             "model": cfg.model.name,
+            "n_macro_actions": task.action.n_macro_actions,
             "policy_version": worker.policy_version,
             "rollout_steps": 0 if last_batch is None else int(last_batch.rewards.size),
             "spooled_batches": spooled_batches,
@@ -148,6 +153,7 @@ def _build_model(
     obs_dims: dict[str, tuple[int, ...]],
     *,
     enable_macro: bool,
+    n_macros: int,
     max_entities: int,
 ) -> Any:
     model_cls = get("model", cfg.model.name)
@@ -156,6 +162,7 @@ def _build_model(
             obs_dims,
             hidden=cfg.model.rnn_hidden,
             enable_macro=enable_macro,
+            n_macros=n_macros,
         )
     return model_cls(
         obs_dims,
@@ -165,6 +172,7 @@ def _build_model(
         rnn_type=cfg.model.rnn_type,
         rnn_hidden=cfg.model.rnn_hidden,
         enable_macro=enable_macro,
+        n_macros=n_macros,
         max_entities=max_entities,
     )
 
@@ -174,7 +182,21 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     tasks = [load_task_config(path) for path in paths]
     if not tasks:
         raise ValueError("at least one task is required")
+    _validate_task_layouts(tasks)
     return tasks
+
+
+def _validate_task_layouts(tasks: list[TaskConfig]) -> None:
+    base = tasks[0]
+    for task in tasks[1:]:
+        if task.observation.max_entities != base.observation.max_entities:
+            raise ValueError("all worker tasks must share observation.max_entities")
+        if task.observation.tier != base.observation.tier:
+            raise ValueError("all worker tasks must share observation.tier")
+        if task.action.enable_macro_actions != base.action.enable_macro_actions:
+            raise ValueError("all worker tasks must share action.enable_macro_actions")
+        if task.action.n_macro_actions != base.action.n_macro_actions:
+            raise ValueError("all worker tasks must share action.n_macro_actions")
 
 
 def _make_task_provider(tasks: list[TaskConfig]) -> Callable[[], TaskConfig | None] | None:

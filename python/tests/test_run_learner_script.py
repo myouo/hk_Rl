@@ -23,6 +23,8 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
         max_staleness=2,
         publish_every_updates=1,
         max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
         tier="privileged",
     )
 
@@ -33,9 +35,11 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["batch_dir"] is None
     assert summary["bind"] == "127.0.0.1:0"
     assert summary["checkpoint_dir"] == str(tmp_path.resolve())
+    assert summary["enable_macro_actions"] is True
     assert summary["latest_checkpoint"] is None
     assert summary["max_staleness"] == 2
     assert summary["model"] == "entity_attention_gru"
+    assert summary["n_macro_actions"] == 11
     assert summary["publish_every_updates"] == 1
     assert summary["policy_version"] == 0
     assert summary["queued_batches"] == 0
@@ -71,6 +75,8 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
         max_staleness=2,
         publish_every_updates=1,
         max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
         tier="privileged",
     )
 
@@ -114,6 +120,8 @@ def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
         max_staleness=None,
         publish_every_updates=None,
         max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
         tier="privileged",
     )
 

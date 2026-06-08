@@ -15,6 +15,7 @@ from torch import Tensor, nn
 
 from hkrl.models.base import ActorCritic, RnnState
 from hkrl.models.heads import CompositeActionDistribution, HybridPolicyHead, ValueHead
+from hkrl.spaces import DEFAULT_N_MACROS
 from hkrl.utils.registry import register_model
 
 
@@ -27,7 +28,7 @@ class MlpActorCritic(ActorCritic):
         obs_dims: dict[str, Any],
         hidden: int = 256,
         enable_macro: bool = True,
-        n_macros: int = 11,
+        n_macros: int = DEFAULT_N_MACROS,
     ) -> None:
         super().__init__()
         global_dim = _flat_dim(obs_dims, "global")

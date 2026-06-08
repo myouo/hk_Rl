@@ -32,6 +32,7 @@ N_MOVEMENT_X = 3  # left / neutral / right
 N_AIM_Y = 3  # down / neutral / up
 DURATION_TICKS: tuple[int, ...] = (1, 2, 4, 8)
 N_DURATION = len(DURATION_TICKS)
+DEFAULT_N_MACROS = 11
 
 # Normalization constants (docs/observation_schema.md §2). Tune per-arena.
 ARENA_SCALE = 30.0
@@ -53,7 +54,9 @@ ENTITY_FEATURE_DIMS: dict[str, int] = {
 }
 
 
-def make_action_space(enable_macro: bool = True, n_macros: int = 11) -> gym.spaces.Dict:
+def make_action_space(
+    enable_macro: bool = True, n_macros: int = DEFAULT_N_MACROS
+) -> gym.spaces.Dict:
     """Build the hybrid action space (docs/action_space.md §2).
 
     Components: movement_x Discrete(3), aim_y Discrete(3), buttons MultiBinary(9),
@@ -116,7 +119,7 @@ def make_observation_space(max_entities: int = 64, tier: str = "privileged") -> 
     )
 
 
-def action_mask_layout(enable_macro: bool = True, n_macros: int = 11) -> list[str]:
+def action_mask_layout(enable_macro: bool = True, n_macros: int = DEFAULT_N_MACROS) -> list[str]:
     """Canonical flat index order for ``StepResponse.action_mask`` (and policy heads).
 
     Order: movement_x(3), aim_y(3), buttons(9), duration(4), [macro(n_macros+1)].

@@ -38,6 +38,8 @@ the project version tracks the **schema_version** + roadmap phase.
   observation views.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
+- Task action configs now expose `n_macro_actions` so Python action spaces,
+  policy heads, and scripts share the same macro/action-mask width.
 - Mask-aware random policy for local smoke tests and scripted baseline plumbing.
 - HKRLEnv construction now wires task-driven Gymnasium spaces and idempotent
   transport close behavior.

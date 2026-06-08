@@ -23,6 +23,11 @@ duration   : Discrete(4)   # index into {1, 2, 4, 8} ticks
 macro      : Discrete(M+1) # 0=none, 1..M = macro action (optional, see §5)
 ```
 
+`M` defaults to `11` (`hkrl.spaces.DEFAULT_N_MACROS`) and is exposed as
+`action.n_macro_actions` in task YAML. It must match the mod-side
+`ActionMasker.DefaultMacroCount` / `MacroActionScheduler` set for the current
+mod build; otherwise the flat action-mask length will drift.
+
 On the wire these pack into `Action{movement_x, aim_y, buttons(bitmask),
 duration_idx, macro_id}`. The model has one head per component
 ([`model_architecture.md`](./model_architecture.md)).
