@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 import torch
 
+from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
 from hkrl.learner.checkpoint_registry import CheckpointMeta
 
 
@@ -89,9 +90,9 @@ class CheckpointClient:
                     f"expected {meta.sha256}, got {actual_hash}"
                 )
 
-        state = torch.load(BytesIO(payload), map_location="cpu", weights_only=True)
-        if not isinstance(state, dict):
-            raise ValueError(f"checkpoint version {version} did not contain a state dict")
+        state = validate_checkpoint_payload(
+            torch.load(BytesIO(payload), map_location="cpu", weights_only=True)
+        )
         self._current_version = version
         return state
 

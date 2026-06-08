@@ -14,6 +14,8 @@ from typing import Any
 
 import torch
 
+from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
+
 
 @dataclass
 class CheckpointMeta:
@@ -41,6 +43,7 @@ class CheckpointRegistry:
         Checkpoint versions are registry-local and monotonic; ``policy_version``
         records the learner policy version carried by rollout batches.
         """
+        validate_checkpoint_payload(state)
         version = self._next_version()
         _validate_checkpoint_numbers(version, policy_version, step)
         filename = f"checkpoint_v{version:06d}.pt"

@@ -63,6 +63,31 @@ def test_checkpoint_client_rejects_hash_mismatch(tmp_path: Path) -> None:
         client.pull(meta.version)
 
 
+def test_checkpoint_client_rejects_invalid_checkpoint_payload(tmp_path: Path) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
+    torch.save({"state_dict": {"weight": torch.tensor([1.0])}}, registry.resolve_path(meta))
+    _rewrite_hash(tmp_path / "index.jsonl", registry.resolve_path(meta))
+    client = CheckpointClient(str(tmp_path))
+
+    with pytest.raises(ValueError, match="model_state_dict"):
+        client.pull(meta.version)
+
+
+def test_checkpoint_client_rejects_non_finite_checkpoint_weights(tmp_path: Path) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
+    torch.save(
+        {"model_state_dict": {"weight": torch.tensor([float("inf")])}},
+        registry.resolve_path(meta),
+    )
+    _rewrite_hash(tmp_path / "index.jsonl", registry.resolve_path(meta))
+    client = CheckpointClient(str(tmp_path))
+
+    with pytest.raises(ValueError, match="non-finite"):
+        client.pull(meta.version)
+
+
 def test_checkpoint_client_rejects_unknown_version(tmp_path: Path) -> None:
     client = CheckpointClient(str(tmp_path))
 
@@ -167,3 +192,18 @@ def _serve_directory(root: Path) -> Iterator[str]:
 class _QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, message_format: str, *args: object) -> None:
         return
+
+
+def _rewrite_hash(index_path: Path, checkpoint_path: Path) -> None:
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["sha256"] = _sha256(checkpoint_path)
+    index_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        digest.update(fh.read())
+    return digest.hexdigest()

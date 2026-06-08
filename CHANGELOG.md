@@ -181,6 +181,8 @@ the project version tracks the **schema_version** + roadmap phase.
   negative policy/step metadata, and malformed sha256 hashes in index entries.
 - Checkpoint registry publishing now rejects negative policy/step metadata
   before writing checkpoint files or index entries.
+- Checkpoint publishing and worker pulls now reject malformed payloads and
+  non-finite model-state tensors before weights can be loaded.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,
