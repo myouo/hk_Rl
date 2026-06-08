@@ -84,3 +84,33 @@ def test_tcp_transport_recv_timeout() -> None:
 
     transport.close()
     thread.join(timeout=1.0)
+
+
+def test_tcp_transport_optionally_sends_auth_token_before_frames() -> None:
+    received: list[bytes] = []
+
+    def handler(conn: socket.socket) -> None:
+        for _ in range(2):
+            header = _recv_exact(conn, 4)
+            (length,) = struct.unpack("<I", header)
+            received.append(_recv_exact(conn, length))
+        response = b"ok"
+        conn.sendall(struct.pack("<I", len(response)) + response)
+
+    host, port, thread = _start_server(handler)
+    transport = TcpTransport(host, port, auth_token="secret")
+
+    transport.connect(timeout_s=1.0)
+    transport.send(b"step-request")
+
+    assert transport.recv(timeout_s=1.0) == b"ok"
+    assert received == [b"HKRL_AUTH\0secret", b"step-request"]
+
+    transport.close()
+    thread.join(timeout=1.0)
+    assert not thread.is_alive()
+
+
+def test_tcp_transport_rejects_empty_auth_token() -> None:
+    with pytest.raises(ValueError, match="auth_token"):
+        TcpTransport(auth_token="")

@@ -23,23 +23,34 @@ class TcpTransport(Transport):
     per docs/protocol.md §5.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 5555) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5555,
+        auth_token: str | None = None,
+    ) -> None:
+        if auth_token == "":
+            raise ValueError("auth_token must not be empty")
+
         self.host = host
         self.port = port
+        self.auth_token = auth_token
         self._sock: socket.socket | None = None
-        # TODO(phase-1): optional token auth handshake.
 
     def connect(self, timeout_s: float = 10.0) -> None:
         self.close()
         self._sock = socket.create_connection((self.host, self.port), timeout=timeout_s)
+        if self.auth_token is not None:
+            try:
+                self._send_frame(self._sock, b"HKRL_AUTH\0" + self.auth_token.encode("utf-8"))
+            except OSError as exc:
+                self.close()
+                raise ConnectionError("failed to send TCP auth token") from exc
 
     def send(self, frame: bytes) -> None:
-        if len(frame) > 0xFFFFFFFF:
-            raise ValueError("frame too large for uint32 length prefix")
-
         sock = self._require_socket()
         try:
-            sock.sendall(struct.pack("<I", len(frame)) + frame)
+            self._send_frame(sock, frame)
         except OSError as exc:
             self.close()
             raise ConnectionError("failed to send TCP frame") from exc
@@ -77,6 +88,12 @@ class TcpTransport(Transport):
         if self._sock is None:
             raise ConnectionError("TCP transport is not connected")
         return self._sock
+
+    @staticmethod
+    def _send_frame(sock: socket.socket, frame: bytes) -> None:
+        if len(frame) > 0xFFFFFFFF:
+            raise ValueError("frame too large for uint32 length prefix")
+        sock.sendall(struct.pack("<I", len(frame)) + frame)
 
     def _recv_exact(self, size: int) -> bytes:
         sock = self._require_socket()
