@@ -22,6 +22,8 @@ the project version tracks the **schema_version** + roadmap phase.
   logging, and distributed extras.
 - Python training foundations: config `defaults` composition, default reward
   composition, deterministic seeding, running metrics, and GAE.
+- Python TCP transport client with uint32-LE length-prefixed framing,
+  timeout/disconnect handling, and localhost framing tests.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

@@ -26,11 +26,11 @@ class Transport(Protocol):
         ...
 
     def send(self, frame: bytes) -> None:
-        """Send one already-encoded, length-prefixed StepRequest frame."""
+        """Send one encoded StepRequest payload; transport adds its framing."""
         ...
 
     def recv(self, timeout_s: float | None = None) -> bytes:
-        """Receive one StepResponse frame. Raises on timeout/disconnect."""
+        """Receive one StepResponse payload. Raises on timeout/disconnect."""
         ...
 
     def is_connected(self) -> bool:
