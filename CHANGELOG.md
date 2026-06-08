@@ -44,6 +44,8 @@ the project version tracks the **schema_version** + roadmap phase.
   normalized observations, random policy actions, and JSONL metrics.
 - Flat RolloutBuffer now stores fixed-capacity multi-env PPO transitions,
   computes GAE returns, exports RolloutBatch copies, and supports clear/reuse.
+- Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
+  training action tensors for the MLP/PPO baseline path.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

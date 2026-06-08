@@ -27,6 +27,17 @@ On the wire these pack into `Action{movement_x, aim_y, buttons(bitmask),
 duration_idx, macro_id}`. The model has one head per component
 ([`model_architecture.md`](./model_architecture.md)).
 
+The PyTorch training path packs sampled actions into an integer tensor with this
+fixed order:
+
+```text
+[movement_x, aim_y, button[0], ..., button[8], duration, macro?]
+```
+
+`macro` is present only when the policy has macro actions enabled. Keep this
+order aligned with `hkrl.models.heads.CompositeActionDistribution` and rollout
+buffer action storage.
+
 ### Button bit layout (mirror in `hkrl/spaces.py` and mod `InputInjector`)
 
 ```text
