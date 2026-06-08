@@ -144,6 +144,14 @@ python scripts/run_learner.py \
   --intake-count 1 \
   --checkpoint-dir checkpoints
 
+# 长跑 learner 使用 --serve-forever 持续接收 rollout，并在 accepted batch 后更新/发布 checkpoint
+python scripts/run_learner.py \
+  --config configs/train/remote_learner.yaml \
+  --tasks configs/tasks/gruz_mother.yaml \
+  --bind 127.0.0.1:5600 \
+  --serve-forever \
+  --checkpoint-dir checkpoints
+
 # worker 在本地推理/采样，rollout 满后上传到 learner；也可同时写 --batch-dir 作为本地 spool
 # checkpoint registry 可用只读 HTTP(S) 暴露；本地 smoke 可先运行：
 python -m http.server 8000 --directory checkpoints

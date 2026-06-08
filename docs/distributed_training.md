@@ -60,6 +60,9 @@ length-prefixed NPZ rollout uploads on `learner.bind` (or `--bind`) before the
 same update cycle, and `scripts/run_worker.py --learner HOST:PORT` sends each
 completed rollout to that intake endpoint. The TCP batch channel is asynchronous
 and carries only completed rollouts, never action-loop inference.
+For long-running training, `scripts/run_learner.py --serve-forever` keeps the
+same authenticated intake socket open and calls the learner update/publish path
+after each accepted batch until interrupted.
 `scripts/run_learner.py --tasks ...` can infer the learner model's
 `max_entities`, observation tier, macro enablement, and macro count from task
 YAML, and rejects task groups whose model/action layout would not fit a single

@@ -99,6 +99,79 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     assert summary["submitted_batches"] == 1
 
 
+def test_run_learner_rejects_serve_forever_with_intake_count(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "appo_mlp.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        bind="127.0.0.1:0",
+        batch_dir=None,
+        intake_count=1,
+        intake_timeout_s=1.0,
+        serve_forever=True,
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    with pytest.raises(ValueError, match="serve-forever"):
+        module.run_from_args(args)
+
+
+def test_run_learner_serve_forever_updates_after_accepted_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    accepted_values = [False, True]
+    fake_server = _FakeServer()
+
+    class FakeIntake:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeIntake:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def serve_once(self) -> _FakeResult:
+            if not accepted_values:
+                raise KeyboardInterrupt
+            return _FakeResult(accepted=accepted_values.pop(0))
+
+    monkeypatch.setattr(module, "BatchIntakeServer", FakeIntake)
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+
+    submitted, accepted = module._serve_network_forever(
+        fake_server,
+        "127.0.0.1:0",
+        cfg,
+        timeout_s=1.0,
+    )
+
+    assert submitted == 2
+    assert accepted == 1
+    assert fake_server.serve_calls == 1
+
+
 def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
     module = _load_script("run_learner.py")
     config = tmp_path / "remote.yaml"
@@ -249,6 +322,19 @@ def _load_script(name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class _FakeResult:
+    def __init__(self, *, accepted: bool) -> None:
+        self.accepted = accepted
+
+
+class _FakeServer:
+    def __init__(self) -> None:
+        self.serve_calls = 0
+
+    def serve(self) -> None:
+        self.serve_calls += 1
 
 
 def _learner_batch() -> RolloutBatch:

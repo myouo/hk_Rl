@@ -96,6 +96,8 @@ the project version tracks the **schema_version** + roadmap phase.
   evaluation debugging.
 - `run_coordinator.py` can now ingest evaluator metrics JSON and apply per-task
   win rates to TaskSampler weights/mastered-task tracking.
+- `run_learner.py` now supports `--serve-forever` for long-running authenticated
+  TCP rollout intake with update/publish after each accepted batch.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

@@ -7,7 +7,9 @@ Usage:
 Builds the learner core and checkpoint registry. For filesystem smoke tests,
 ``--batch-dir`` ingests NPZ RolloutBatch files through ``LearnerServer.submit``;
 ``--intake-count`` accepts that many authenticated TCP RolloutBatch uploads
-through the same server method before running one update cycle.
+through the same server method before running one update cycle. ``--serve-forever``
+keeps accepting TCP RolloutBatch uploads and updates after each accepted batch
+until interrupted.
 """
 
 from __future__ import annotations
@@ -50,6 +52,11 @@ def build_argparser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="number of TCP RolloutBatch uploads to accept before updating",
+    )
+    p.add_argument(
+        "--serve-forever",
+        action="store_true",
+        help="keep accepting TCP rollout batches and updating until interrupted",
     )
     p.add_argument("--intake-timeout-s", type=float, default=10.0)
     p.add_argument(
@@ -116,13 +123,25 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         publish_every_updates=publish_every_updates,
     )
     submitted_batches = _submit_batch_dir(server, args.batch_dir)
-    network_batches, network_accepted = _serve_network_intake(
-        server,
-        bind,
-        cfg,
-        intake_count=int(getattr(args, "intake_count", 0) or 0),
-        timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
-    )
+    intake_count = int(getattr(args, "intake_count", 0) or 0)
+    serve_forever = bool(getattr(args, "serve_forever", False))
+    if serve_forever and intake_count:
+        raise ValueError("--serve-forever cannot be combined with --intake-count")
+    if serve_forever:
+        network_batches, network_accepted = _serve_network_forever(
+            server,
+            bind,
+            cfg,
+            timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
+        )
+    else:
+        network_batches, network_accepted = _serve_network_intake(
+            server,
+            bind,
+            cfg,
+            intake_count=intake_count,
+            timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
+        )
     server.serve()
     latest = registry.latest()
     return {
@@ -143,6 +162,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
         "rejected_batches": server.rejected_batches,
+        "serve_forever": serve_forever,
         "submitted_batches": submitted_batches,
         "task_ids": [task.task_id for task in tasks],
         "tier": layout["tier"],
@@ -217,6 +237,31 @@ def _serve_network_intake(
             result = intake.serve_once()
             accepted += int(result.accepted)
     return intake_count, accepted
+
+
+def _serve_network_forever(
+    server: LearnerServer,
+    bind: str,
+    cfg: Any,
+    *,
+    timeout_s: float,
+) -> tuple[int, int]:
+    auth_token = resolve_auth_token(cfg)
+    submitted = 0
+    accepted = 0
+    with BatchIntakeServer(
+        server, bind, auth_token=auth_token, timeout_s=timeout_s
+    ) as intake:
+        while True:
+            try:
+                result = intake.serve_once()
+            except KeyboardInterrupt:
+                break
+            submitted += 1
+            if result.accepted:
+                accepted += 1
+                server.serve()
+    return submitted, accepted
 
 
 def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
