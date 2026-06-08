@@ -13,6 +13,7 @@ from hkrl.learner.batch_intake import (
     BatchIntakeClient,
     BatchIntakeResult,
     BatchIntakeServer,
+    _accepted_from_ack,
     _validate_header,
 )
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
@@ -64,6 +65,14 @@ def test_batch_intake_client_submits_to_learner_server(tmp_path: Path) -> None:
 def test_batch_intake_rejects_invalid_auth_token() -> None:
     with pytest.raises(PermissionError, match="auth token"):
         _validate_header({"type": BATCH_INTAKE_TYPE, "token": "wrong"}, "secret")
+
+
+def test_batch_intake_ack_requires_accepted_boolean() -> None:
+    assert _accepted_from_ack({"ok": True, "accepted": False}) is False
+    with pytest.raises(ValueError, match="accepted boolean"):
+        _accepted_from_ack({"ok": True})
+    with pytest.raises(RuntimeError, match="stale"):
+        _accepted_from_ack({"ok": False, "error": "stale"})
 
 
 def _serve_once(

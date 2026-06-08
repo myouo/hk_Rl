@@ -163,9 +163,7 @@ class BatchIntakeClient:
             )
             _send_frame(sock, serialize_rollout_batch(batch))
             ack = _decode_json_frame(_recv_frame(sock))
-        if not ack.get("ok"):
-            raise RuntimeError(str(ack.get("error", "batch intake failed")))
-        return bool(ack.get("accepted"))
+        return _accepted_from_ack(ack)
 
 
 def split_endpoint(endpoint: str) -> tuple[str, int]:
@@ -199,6 +197,15 @@ def _validate_header(header: dict[str, Any], auth_token: str | None) -> None:
         return
     if token != auth_token:
         raise PermissionError("invalid batch intake auth token")
+
+
+def _accepted_from_ack(ack: dict[str, Any]) -> bool:
+    if not ack.get("ok"):
+        raise RuntimeError(str(ack.get("error", "batch intake failed")))
+    accepted = ack.get("accepted")
+    if not isinstance(accepted, bool):
+        raise ValueError("batch intake ACK must include accepted boolean")
+    return accepted
 
 
 def _send_json_frame(sock: socket.socket, payload: dict[str, Any]) -> None:

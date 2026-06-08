@@ -143,6 +143,8 @@ the project version tracks the **schema_version** + roadmap phase.
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,
   accepted, and rejected counts.
+- BatchIntakeClient now rejects malformed success ACKs that omit the explicit
+  `accepted` boolean instead of treating them as stale rejections.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
