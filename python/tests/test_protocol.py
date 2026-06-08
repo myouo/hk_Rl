@@ -186,6 +186,18 @@ def test_mod_step_response_mask_uses_player_state() -> None:
     assert "canAttack: player.CanAttack" in controller
 
 
+def test_mod_player_observer_reads_playerdata_with_fallbacks() -> None:
+    root = Path(__file__).parents[2]
+    observer = (root / "mod/HKRLEnvMod/Observation/PlayerObserver.cs").read_text(encoding="utf-8")
+
+    assert 'FindSingleton("PlayerData", "instance")' in observer
+    assert '"health"' in observer
+    assert '"maxHealth"' in observer
+    assert '"MPCharge"' in observer
+    assert '"maxMP"' in observer
+    assert "TryReadGetInt" in observer
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,

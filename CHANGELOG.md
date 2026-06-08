@@ -124,6 +124,8 @@ the project version tracks the **schema_version** + roadmap phase.
   out-of-range action components before applying safe clamped input.
 - Mod StepResponse action masks now use the observed player readiness fields
   instead of always returning the all-valid fallback mask.
+- Mod PlayerObserver now reads hp/soul from PlayerData via reflection with safe
+  fallbacks for minor game/API field-name drift.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
