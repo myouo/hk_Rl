@@ -289,6 +289,10 @@ class HKRLEnv(gym.Env):
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))
+        if response.env_id != self._env_id:
+            raise EnvProtocolError(
+                f"env_id mismatch: sent={self._env_id}, received={response.env_id}"
+            )
         if response.tick_id != tick_id:
             raise EnvProtocolError(f"tick_id mismatch: sent={tick_id}, received={response.tick_id}")
         return response

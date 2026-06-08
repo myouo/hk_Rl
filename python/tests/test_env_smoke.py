@@ -335,6 +335,44 @@ def test_env_reset_surfaces_status_code() -> None:
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
+def test_env_rejects_mismatched_response_env_id() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                response_env_id=req.EnvId() + 1,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="env_id mismatch"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
+def test_env_rejects_mismatched_response_tick_id() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                response_tick_id=req.TickId() + 1,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="tick_id mismatch"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
 def test_env_rejects_mismatched_entity_mask() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 
@@ -451,6 +489,8 @@ def _build_response(
     entity_pos_x: float = 0.0,
     server_tick: int | None = None,
     action_mask_len: int = 31,
+    response_env_id: int | None = None,
+    response_tick_id: int | None = None,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
@@ -473,8 +513,12 @@ def _build_response(
 
     FbStepResponse.StepResponseStart(builder)
     FbStepResponse.StepResponseAddSchemaVersion(builder, protocol.SCHEMA_VERSION)
-    FbStepResponse.StepResponseAddEnvId(builder, request.EnvId())
-    FbStepResponse.StepResponseAddTickId(builder, request.TickId())
+    FbStepResponse.StepResponseAddEnvId(
+        builder, request.EnvId() if response_env_id is None else response_env_id
+    )
+    FbStepResponse.StepResponseAddTickId(
+        builder, request.TickId() if response_tick_id is None else response_tick_id
+    )
     FbStepResponse.StepResponseAddServerTick(
         builder, request.TickId() + 100 if server_tick is None else server_tick
     )
