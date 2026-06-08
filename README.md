@@ -90,6 +90,10 @@ python scripts/train.py \
   --checkpoint-dir checkpoints
 ```
 
+`--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与
+`checkpoint_v*.pt`，包含 `policy_version`、step、sha256 等元数据，可被 worker
+侧 checkpoint client 验证加载。
+
 ## CI
 
 GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用

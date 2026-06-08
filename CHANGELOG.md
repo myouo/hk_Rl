@@ -102,6 +102,8 @@ the project version tracks the **schema_version** + roadmap phase.
   checkpoint policies and emits JSON metrics/regression output.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
+- Local MLP+PPO checkpoints are now published through `CheckpointRegistry` with
+  `policy_version`, step metadata, index records, and sha256 verification data.
 - CheckpointRegistry now persists versioned torch checkpoints with sha256 hashes
   and reloadable JSONL metadata for worker verification.
 - CheckpointClient now pulls local/file registry checkpoints with sha256

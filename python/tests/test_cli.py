@@ -7,7 +7,9 @@ from typing import Any
 
 import numpy as np
 import pytest
+import torch
 from hkrl.cli import build_argparser, run_ppo_training_loop, run_random_policy_smoke
+from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.utils.logging import JsonlSink
 
 
@@ -99,6 +101,8 @@ def test_run_ppo_training_loop_collects_updates_and_logs() -> None:
         "total_steps": 6,
         "last_metrics": {"policy_loss": -2.0, "value_loss": 0.5},
         "last_checkpoint": None,
+        "last_checkpoint_version": None,
+        "policy_version": 2,
     }
     assert sink.scalars == [
         ("policy_loss", -1.0, 1),
@@ -113,6 +117,35 @@ def test_run_ppo_training_loop_collects_updates_and_logs() -> None:
 def test_run_ppo_training_loop_rejects_non_positive_updates() -> None:
     with pytest.raises(ValueError, match="updates"):
         run_ppo_training_loop(worker=FakeWorker(), algo=FakeAlgo(), sink=MemorySink(), updates=0)
+
+
+def test_run_ppo_training_loop_publishes_registry_checkpoint(tmp_path: Path) -> None:
+    model = torch.nn.Linear(1, 1)
+    summary = run_ppo_training_loop(
+        worker=FakeWorker(),
+        algo=FakeAlgo(),
+        sink=MemorySink(),
+        updates=1,
+        checkpoint_dir=tmp_path,
+        model=model,
+    )
+
+    assert summary["policy_version"] == 1
+    assert summary["last_checkpoint_version"] == 1
+    assert summary["last_checkpoint"] is not None
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.latest()
+    assert meta is not None
+    assert meta.version == 1
+    assert meta.policy_version == 1
+    assert meta.created_step == 3
+
+    checkpoint = torch.load(summary["last_checkpoint"], map_location="cpu", weights_only=True)
+    assert checkpoint["policy_version"] == 1
+    assert checkpoint["update"] == 1
+    assert checkpoint["step"] == 3
+    assert checkpoint["metrics"] == {"policy_loss": -1.0, "value_loss": 0.5}
+    assert "model_state_dict" in checkpoint
 
 
 class FakeBatch:

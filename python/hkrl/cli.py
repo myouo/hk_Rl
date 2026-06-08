@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from hkrl.eval.scripted_policies import RandomPolicy
+from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.training.ppo import PPO
 from hkrl.utils.config import load_task_config, load_train_config
@@ -189,7 +189,13 @@ def run_ppo_training_loop(
 
     last_metrics: dict[str, float] = {}
     last_checkpoint: str | None = None
+    last_checkpoint_version: int | None = None
     total_steps = 0
+    registry = (
+        CheckpointRegistry(str(checkpoint_dir))
+        if checkpoint_dir is not None and model is not None
+        else None
+    )
     for update in range(1, updates + 1):
         batch = worker.collect_rollout()
         metrics = algo.update(worker.buffer)
@@ -208,18 +214,21 @@ def run_ppo_training_loop(
             }
         )
 
-        if checkpoint_dir is not None and model is not None:
-            checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            path = checkpoint_dir / f"ppo_update_{update:06d}.pt"
-            torch.save(
+        if registry is not None:
+            assert model is not None
+            meta = registry.publish(
                 {
                     "model_state_dict": model.state_dict(),
+                    "policy_version": update,
                     "update": update,
+                    "step": total_steps,
                     "metrics": last_metrics,
                 },
-                path,
+                policy_version=update,
+                step=total_steps,
             )
-            last_checkpoint = str(path)
+            last_checkpoint = meta.path
+            last_checkpoint_version = meta.version
 
     sink.flush()
     return {
@@ -227,4 +236,6 @@ def run_ppo_training_loop(
         "total_steps": total_steps,
         "last_metrics": last_metrics,
         "last_checkpoint": last_checkpoint,
+        "last_checkpoint_version": last_checkpoint_version,
+        "policy_version": updates,
     }
