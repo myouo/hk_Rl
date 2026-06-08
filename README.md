@@ -126,6 +126,7 @@ python scripts/train.py \
 python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+  --eval-metrics runs/eval.json \
   --heartbeat-jsonl runs/worker-heartbeats.jsonl \
   --dry-run
 

@@ -7,6 +7,8 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def test_run_coordinator_builds_assignment_summary() -> None:
     module = _load_script("run_coordinator.py")
@@ -19,6 +21,7 @@ def test_run_coordinator_builds_assignment_summary() -> None:
         worker_ids=None,
         heartbeat_timeout_s=9.0,
         heartbeat_jsonl=None,
+        eval_metrics=None,
         seed=123,
         dry_run=True,
     )
@@ -31,9 +34,13 @@ def test_run_coordinator_builds_assignment_summary() -> None:
     }
     assert summary["bind"] == "0.0.0.0:5610"
     assert summary["dry_run"] is True
+    assert summary["eval_metrics"] is None
+    assert summary["eval_winrates"] == {}
     assert summary["heartbeat_timeout_s"] == 9.0
     assert summary["ingested_heartbeats"] == 0
     assert summary["num_workers"] == 2
+    assert summary["sampler_mastered_tasks"] == []
+    assert summary["sampler_weights"] == {"gruz_mother": 1.0}
     assert summary["task_ids"] == ["gruz_mother"]
     assert summary["task_wire_ids"] == {"gruz_mother": 0}
     assert summary["metrics"] == {
@@ -72,6 +79,7 @@ def test_run_coordinator_ingests_heartbeat_jsonl(tmp_path: Path) -> None:
         worker_ids=["game-pc-1"],
         heartbeat_timeout_s=None,
         heartbeat_jsonl=str(heartbeat_jsonl),
+        eval_metrics=None,
         seed=0,
         dry_run=True,
     )
@@ -92,6 +100,46 @@ def test_run_coordinator_ingests_heartbeat_jsonl(tmp_path: Path) -> None:
     assert summary["workers"]["extra"]["info"]["source"] == "heartbeat"
 
 
+def test_run_coordinator_applies_eval_metrics_to_sampler(tmp_path: Path) -> None:
+    module = _load_script("run_coordinator.py")
+    root = Path(__file__).parents[2]
+    eval_metrics = tmp_path / "eval.json"
+    eval_metrics.write_text(
+        (
+            '{"metrics":{'
+            '"gruz_mother":{"win_rate":0.9},'
+            '"hornet_protector_attuned":{"win_rate":0.2}'
+            "}}\n"
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        tasks=[
+            str(root / "configs/tasks/gruz_mother.yaml"),
+            str(root / "configs/tasks/hornet_protector.yaml"),
+        ],
+        bind="127.0.0.1:0",
+        num_workers=2,
+        worker_ids=None,
+        heartbeat_timeout_s=None,
+        heartbeat_jsonl=None,
+        eval_metrics=str(eval_metrics),
+        seed=0,
+        dry_run=True,
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["eval_winrates"] == {
+        "gruz_mother": 0.9,
+        "hornet_protector_attuned": 0.2,
+    }
+    assert summary["sampler_mastered_tasks"] == ["gruz_mother"]
+    assert summary["sampler_weights"]["gruz_mother"] == pytest.approx(0.1)
+    assert summary["sampler_weights"]["hornet_protector_attuned"] == pytest.approx(0.8)
+
+
 def test_run_coordinator_rejects_duplicate_worker_ids() -> None:
     module = _load_script("run_coordinator.py")
     root = Path(__file__).parents[2]
@@ -103,6 +151,7 @@ def test_run_coordinator_rejects_duplicate_worker_ids() -> None:
         worker_ids=["same", "same"],
         heartbeat_timeout_s=None,
         heartbeat_jsonl=None,
+        eval_metrics=None,
         seed=None,
         dry_run=True,
     )
@@ -138,6 +187,7 @@ def test_run_coordinator_rejects_wildcard_bind_for_localhost_scope(tmp_path: Pat
         worker_ids=None,
         heartbeat_timeout_s=None,
         heartbeat_jsonl=None,
+        eval_metrics=None,
         seed=None,
         dry_run=True,
     )

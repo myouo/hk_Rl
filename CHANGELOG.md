@@ -94,6 +94,8 @@ the project version tracks the **schema_version** + roadmap phase.
   offline/fallback monitoring snapshots.
 - Evaluator and `run_eval.py` can now emit per-step replay JSONL for fixed-seed
   evaluation debugging.
+- `run_coordinator.py` can now ingest evaluator metrics JSON and apply per-task
+  win rates to TaskSampler weights/mastered-task tracking.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

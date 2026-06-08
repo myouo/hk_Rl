@@ -66,7 +66,8 @@ YAML, and rejects task groups whose model/action layout would not fit a single
 policy.
 `scripts/run_coordinator.py --dry-run` validates the coordinator side of the same
 run: it loads task YAMLs, creates expected worker assignments, ingests optional
-heartbeat JSONL, and prints a JSON monitoring snapshot.
+heartbeat JSONL, applies optional evaluator win-rate metrics to task-sampler
+weights, and prints a JSON monitoring snapshot.
 
 ## 4. On-policy staleness (PRD §9.5)
 
@@ -157,6 +158,10 @@ The `scripts/run_coordinator.py --heartbeat-jsonl FILE` entry point accepts one
 JSON object per line, either `{ "worker_id": "...", "payload": {...} }` or a flat
 object with `worker_id` plus heartbeat fields, and emits the same aggregate plus
 per-worker records.
+`scripts/run_coordinator.py --eval-metrics FILE` reads evaluator output
+(`{"metrics": {"task_id": {"win_rate": ...}}}` or the raw metrics object),
+updates `TaskSampler` weights toward weaker tasks, and exposes the resulting
+weights/mastered-task set in the JSON summary.
 
 ## 9. PyTorch + CUDA note
 
