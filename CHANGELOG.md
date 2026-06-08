@@ -61,6 +61,8 @@ the project version tracks the **schema_version** + roadmap phase.
   aggregates shaping-free metrics, and reports win-rate regression deltas.
 - `scripts/run_eval.py` now runs fixed-seed evaluator jobs for scripted or MLP
   checkpoint policies and emits JSON metrics/regression output.
+- `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
+  GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

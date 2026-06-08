@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 import torch
 
-from hkrl.env import HKRLEnv
 from hkrl.models.base import ActorCritic
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
 from hkrl.spaces import N_BUTTONS, action_mask_layout
@@ -30,7 +29,7 @@ class GameWorker:
 
     def __init__(
         self,
-        env: HKRLEnv,
+        env: Any,
         model: ActorCritic,
         config: TrainConfig,
         checkpoint_client: CheckpointClient | None = None,

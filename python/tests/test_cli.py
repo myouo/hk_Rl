@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from hkrl.cli import build_argparser, run_random_policy_smoke
+from hkrl.cli import build_argparser, run_ppo_training_loop, run_random_policy_smoke
 from hkrl.utils.logging import JsonlSink
 
 
@@ -83,3 +83,77 @@ def test_run_random_policy_smoke_rejects_non_positive_steps(tmp_path: Path) -> N
             task_id="gruz_mother",
             max_steps=0,
         )
+
+
+def test_run_ppo_training_loop_collects_updates_and_logs() -> None:
+    worker = FakeWorker()
+    algo = FakeAlgo()
+    sink = MemorySink()
+
+    summary = run_ppo_training_loop(worker=worker, algo=algo, sink=sink, updates=2)
+
+    assert worker.collect_calls == 2
+    assert algo.buffers == [worker.buffer, worker.buffer]
+    assert summary == {
+        "updates": 2,
+        "total_steps": 6,
+        "last_metrics": {"policy_loss": -2.0, "value_loss": 0.5},
+        "last_checkpoint": None,
+    }
+    assert sink.scalars == [
+        ("policy_loss", -1.0, 1),
+        ("value_loss", 0.5, 1),
+        ("policy_loss", -2.0, 2),
+        ("value_loss", 0.5, 2),
+    ]
+    assert len(sink.episodes) == 2
+    assert sink.flushed
+
+
+def test_run_ppo_training_loop_rejects_non_positive_updates() -> None:
+    with pytest.raises(ValueError, match="updates"):
+        run_ppo_training_loop(worker=FakeWorker(), algo=FakeAlgo(), sink=MemorySink(), updates=0)
+
+
+class FakeBatch:
+    def __init__(self) -> None:
+        self.rewards = np.ones((3, 1), dtype=np.float32)
+        self.policy_version = 7
+
+
+class FakeWorker:
+    def __init__(self) -> None:
+        self.buffer = object()
+        self.collect_calls = 0
+
+    def collect_rollout(self) -> FakeBatch:
+        self.collect_calls += 1
+        return FakeBatch()
+
+
+class FakeAlgo:
+    def __init__(self) -> None:
+        self.buffers: list[object] = []
+
+    def update(self, buffer: object) -> dict[str, float]:
+        self.buffers.append(buffer)
+        return {"policy_loss": -float(len(self.buffers)), "value_loss": 0.5}
+
+
+class MemorySink:
+    def __init__(self) -> None:
+        self.scalars: list[tuple[str, float, int]] = []
+        self.episodes: list[dict[str, Any]] = []
+        self.flushed = False
+
+    def log_scalar(self, key: str, value: float, step: int) -> None:
+        self.scalars.append((key, value, step))
+
+    def log_episode(self, record: dict[str, Any]) -> None:
+        self.episodes.append(record)
+
+    def flush(self) -> None:
+        self.flushed = True
+
+    def close(self) -> None:
+        pass

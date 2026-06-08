@@ -7,9 +7,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import torch
+
 from hkrl.eval.scripted_policies import RandomPolicy
+from hkrl.models.mlp import MlpActorCritic
+from hkrl.training.ppo import PPO
 from hkrl.utils.config import load_task_config, load_train_config
 from hkrl.utils.logging import MetricSink, make_sink
+from hkrl.worker.game_worker import GameWorker
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -22,6 +28,12 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--smoke", action="store_true", help="random-policy wiring check")
     parser.add_argument("--steps", type=int, default=None, help="override total smoke steps")
+    parser.add_argument("--updates", type=int, default=1, help="number of PPO updates to run")
+    parser.add_argument(
+        "--checkpoint-dir",
+        default="checkpoints",
+        help="directory for PPO checkpoints",
+    )
     parser.add_argument(
         "--metrics",
         default="runs/smoke.jsonl",
@@ -40,12 +52,57 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_argparser()
     args = parser.parse_args(argv)
 
-    if not args.smoke:
-        parser.error("full PPO training lands in phase 3; pass --smoke for a wiring check")
-
-    summary = run_smoke_from_args(args)
+    summary = run_smoke_from_args(args) if args.smoke else run_training_from_args(args)
     print(json.dumps(summary, sort_keys=True))
     return 0
+
+
+def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    cfg = load_train_config(args.config)
+    task = load_task_config(args.task)
+
+    if cfg.algorithm != "ppo":
+        raise ValueError(f"training CLI currently supports ppo, got {cfg.algorithm!r}")
+    if cfg.model.name != "mlp":
+        raise ValueError(f"training CLI currently supports mlp model, got {cfg.model.name!r}")
+    if cfg.transport.name != "tcp":
+        raise ValueError(
+            f"training CLI currently supports tcp transport, got {cfg.transport.name!r}"
+        )
+
+    from hkrl.env import HKRLEnv
+    from hkrl.transport.tcp import TcpTransport
+    from hkrl.wrappers import NormalizeObservation
+
+    transport = TcpTransport(host=cfg.transport.host, port=cfg.transport.port)
+    env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
+    observation_space: Any = env.observation_space
+    model = MlpActorCritic(
+        {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+        },
+        hidden=cfg.model.rnn_hidden or 256,
+        enable_macro=task.action.enable_macro_actions,
+    )
+    worker = GameWorker(env=env, model=model, config=cfg)
+    algo = PPO(model=model, config=cfg)
+    sink = make_sink("jsonl", path=Path(args.metrics))
+
+    try:
+        return run_ppo_training_loop(
+            worker=worker,
+            algo=algo,
+            sink=sink,
+            updates=int(args.updates),
+            checkpoint_dir=Path(args.checkpoint_dir),
+            model=model,
+        )
+    finally:
+        sink.close()
+        env.close()
 
 
 def run_smoke_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -116,3 +173,58 @@ def run_random_policy_smoke(
     sink.log_episode(record)
     sink.flush()
     return record
+
+
+def run_ppo_training_loop(
+    *,
+    worker: Any,
+    algo: Any,
+    sink: MetricSink,
+    updates: int,
+    checkpoint_dir: Path | None = None,
+    model: Any | None = None,
+) -> dict[str, Any]:
+    if updates <= 0:
+        raise ValueError("updates must be positive")
+
+    last_metrics: dict[str, float] = {}
+    last_checkpoint: str | None = None
+    total_steps = 0
+    for update in range(1, updates + 1):
+        batch = worker.collect_rollout()
+        metrics = algo.update(worker.buffer)
+        last_metrics = {key: float(value) for key, value in metrics.items()}
+        total_steps += int(np.asarray(batch.rewards).size)
+
+        for key, value in last_metrics.items():
+            sink.log_scalar(key, value, step=update)
+        rollout_reward = float(np.asarray(batch.rewards, dtype=np.float32).sum())
+        sink.log_episode(
+            {
+                "update": update,
+                "rollout_steps": int(np.asarray(batch.rewards).size),
+                "rollout_reward": rollout_reward,
+                "policy_version": int(getattr(batch, "policy_version", 0)),
+            }
+        )
+
+        if checkpoint_dir is not None and model is not None:
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            path = checkpoint_dir / f"ppo_update_{update:06d}.pt"
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "update": update,
+                    "metrics": last_metrics,
+                },
+                path,
+            )
+            last_checkpoint = str(path)
+
+    sink.flush()
+    return {
+        "updates": updates,
+        "total_steps": total_steps,
+        "last_metrics": last_metrics,
+        "last_checkpoint": last_checkpoint,
+    }

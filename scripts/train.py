@@ -2,7 +2,7 @@
 """Single-process training entry point (PRD Phase 2/3).
 
 Use ``--smoke`` to run a short random-policy episode loop for wiring checks
-(no learning). Full PPO training lands with the phase-3 baseline.
+(no learning). Without ``--smoke`` this runs local MLP+PPO updates.
 
 Usage:
     python scripts/train.py --config configs/train/ppo_mlp.yaml \
