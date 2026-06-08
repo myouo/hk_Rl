@@ -132,6 +132,8 @@ the project version tracks the **schema_version** + roadmap phase.
   directory by selecting the latest indexed checkpoint.
 - `scripts/run_eval.py` can now write evaluator metrics/regression JSON to an
   output path while still printing the summary to stdout.
+- `scripts/run_eval.py` output now includes reproducibility metadata for policy,
+  tasks, seeds, train config, transport, and checkpoint selection.
 - `scripts/run_eval.py --baseline` now accepts either raw per-task metrics or a
   previous evaluator output object containing a top-level `metrics` field.
 - `scripts/run_eval.py --policy model` now evaluates registry-configured

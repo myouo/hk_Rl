@@ -86,13 +86,38 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_steps_per_episode=args.max_steps,
     )
     metrics = evaluator.evaluate(episodes_per_task=args.episodes)
-    output: dict[str, Any] = {"metrics": metrics}
+    output: dict[str, Any] = {
+        "metadata": _build_metadata(args, tasks, train_cfg),
+        "metrics": metrics,
+    }
 
     if args.baseline:
         baseline = _load_baseline_metrics(Path(args.baseline))
         output["regression"] = evaluator.regression_report(baseline, metrics)
 
     return output
+
+
+def _build_metadata(
+    args: argparse.Namespace,
+    tasks: list[TaskConfig],
+    train_cfg: TrainConfig,
+) -> dict[str, Any]:
+    return {
+        "algorithm": train_cfg.algorithm,
+        "checkpoint": getattr(args, "checkpoint", None),
+        "checkpoint_dir": getattr(args, "checkpoint_dir", None),
+        "episodes": int(args.episodes),
+        "max_steps": int(args.max_steps),
+        "model": train_cfg.model.name,
+        "normalize": not bool(args.no_normalize),
+        "policy": args.policy,
+        "seeds": [int(seed) for seed in args.seeds],
+        "task_ids": [task.task_id for task in tasks],
+        "task_wire_ids": {task.task_id: task.wire_id for task in tasks},
+        "train_config": args.train_config,
+        "transport": train_cfg.transport.name,
+    }
 
 
 def _build_policy(

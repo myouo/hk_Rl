@@ -143,6 +143,40 @@ def test_run_eval_writes_output_json(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8").endswith("\n")
 
 
+def test_run_eval_builds_reproducibility_metadata() -> None:
+    module = _load_script("run_eval.py")
+    task = TaskConfig(task_id="gruz_mother", wire_id=3, scene="GG_Gruz_Mother")
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+    args = argparse.Namespace(
+        checkpoint="checkpoint.pt",
+        checkpoint_dir=None,
+        episodes=7,
+        max_steps=123,
+        no_normalize=False,
+        policy="mlp",
+        seeds=[4, 5],
+        train_config="configs/train/ppo_mlp.yaml",
+    )
+
+    metadata = module._build_metadata(args, [task], cfg)
+
+    assert metadata == {
+        "algorithm": "ppo",
+        "checkpoint": "checkpoint.pt",
+        "checkpoint_dir": None,
+        "episodes": 7,
+        "max_steps": 123,
+        "model": "mlp",
+        "normalize": True,
+        "policy": "mlp",
+        "seeds": [4, 5],
+        "task_ids": ["gruz_mother"],
+        "task_wire_ids": {"gruz_mother": 3},
+        "train_config": "configs/train/ppo_mlp.yaml",
+        "transport": "tcp",
+    }
+
+
 def test_run_eval_loads_wrapped_or_raw_baseline_metrics(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     raw = tmp_path / "raw.json"
