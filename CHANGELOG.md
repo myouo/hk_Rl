@@ -146,6 +146,8 @@ the project version tracks the **schema_version** + roadmap phase.
   terminal responses do not overcharge time penalties.
 - HKRLEnv now rejects action masks whose length does not match the current task's
   canonical action-mask layout.
+- HKRLEnv now rejects action masks with empty categorical groups and STEP
+  responses that leave the RUNNING/terminal lifecycle states.
 - Python action-mask layout construction now rejects negative macro counts
   instead of silently producing a malformed mask width.
 - Mod STEP dispatch now emits `InvalidAction` reward events for wire-level

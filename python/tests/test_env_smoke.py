@@ -397,6 +397,26 @@ def test_env_surfaces_unbound_error_response_before_tick_mismatch() -> None:
         env.step(env.action_space.sample())
 
 
+def test_env_rejects_non_running_step_lifecycle() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.WAIT_BOSS_READY,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    with pytest.raises(EnvProtocolError, match="WAIT_BOSS_READY"):
+        env.step(env.action_space.sample())
+
+
 def test_env_rejects_mismatched_entity_mask() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 
@@ -432,6 +452,27 @@ def test_env_rejects_mismatched_action_mask() -> None:
     env = HKRLEnv(transport=transport, task=task)
 
     with pytest.raises(EnvProtocolError, match="action_mask length"):
+        env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+
+def test_env_rejects_empty_action_mask_groups() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    action_mask = [True] * 31
+    action_mask[:3] = [False, False, False]
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                action_mask_values=action_mask,
+            )
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+
+    with pytest.raises(EnvProtocolError, match="no valid movement_x"):
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
@@ -513,12 +554,15 @@ def _build_response(
     entity_pos_x: float = 0.0,
     server_tick: int | None = None,
     action_mask_len: int = 31,
+    action_mask_values: list[bool] | None = None,
     response_env_id: int | None = None,
     response_tick_id: int | None = None,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
-        builder, FbStepResponse.StepResponseStartActionMaskVector, [True] * action_mask_len
+        builder,
+        FbStepResponse.StepResponseStartActionMaskVector,
+        [True] * action_mask_len if action_mask_values is None else action_mask_values,
     )
     observation = _build_observation(
         builder,

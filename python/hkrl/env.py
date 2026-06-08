@@ -19,6 +19,10 @@ from hkrl.reward import DefaultReward
 from hkrl.spaces import (
     ENTITY_FEATURE_DIMS,
     GLOBAL_FEATURE_DIM,
+    N_AIM_Y,
+    N_BUTTONS,
+    N_DURATION,
+    N_MOVEMENT_X,
     PLAYER_FEATURE_DIMS,
     action_mask_layout,
     make_action_space,
@@ -125,6 +129,7 @@ class HKRLEnv(gym.Env):
             timeout_s=self._step_timeout_s,
         )
         self._raise_for_error(response, context="step")
+        self._validate_step_lifecycle(response.lifecycle_state)
 
         if response.observation is None:
             raise EnvProtocolError("step response did not include an observation")
@@ -366,6 +371,34 @@ class HKRLEnv(gym.Env):
         )
         if mask.shape != (expected,):
             raise EnvProtocolError(f"action_mask length {mask.size} != expected {expected}")
+        offset = 0
+        self._validate_mask_group(mask, offset, N_MOVEMENT_X, "movement_x")
+        offset += N_MOVEMENT_X
+        self._validate_mask_group(mask, offset, N_AIM_Y, "aim_y")
+        offset += N_AIM_Y + N_BUTTONS
+        self._validate_mask_group(mask, offset, N_DURATION, "duration")
+        offset += N_DURATION
+        if self.task.action.enable_macro_actions:
+            self._validate_mask_group(
+                mask,
+                offset,
+                self.task.action.n_macro_actions + 1,
+                "macro",
+            )
+
+    @staticmethod
+    def _validate_mask_group(mask: np.ndarray, offset: int, size: int, name: str) -> None:
+        if not bool(mask[offset : offset + size].any()):
+            raise EnvProtocolError(f"action_mask has no valid {name} action")
+
+    @staticmethod
+    def _validate_step_lifecycle(lifecycle: protocol.LifecycleState) -> None:
+        if lifecycle not in (
+            protocol.LifecycleState.RUNNING,
+            protocol.LifecycleState.TERMINATING,
+            protocol.LifecycleState.REPORT_DONE,
+        ):
+            raise EnvProtocolError(f"step returned non-running lifecycle {lifecycle.name}")
 
     def _next_tick_id(self) -> int:
         tick_id = self._tick_id
