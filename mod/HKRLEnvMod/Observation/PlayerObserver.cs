@@ -61,6 +61,9 @@ namespace HKRLEnvMod.Observation
     /// </summary>
     public sealed class PlayerObserver
     {
+        private static Type? _playerDataType;
+        private static bool _playerDataTypeSearched;
+
         public PlayerObservation Read()
         {
             global::HeroController hero = global::HeroController.instance;
@@ -111,28 +114,56 @@ namespace HKRLEnvMod.Observation
 
         private static object? FindSingleton(string typeName, string memberName)
         {
+            var type = FindType(typeName);
+            if (type == null)
+            {
+                return null;
+            }
+
+            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            var field = type.GetField(memberName, flags);
+            if (field != null)
+            {
+                return field.GetValue(null);
+            }
+
+            var property = type.GetProperty(memberName, flags);
+            if (property != null)
+            {
+                return property.GetValue(null, null);
+            }
+
+            return null;
+        }
+
+        private static Type? FindType(string typeName)
+        {
+            if (typeName == "PlayerData" && _playerDataTypeSearched)
+            {
+                return _playerDataType;
+            }
+
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 foreach (var type in SafeGetTypes(assembly))
                 {
-                    if (type.Name != typeName && type.FullName != typeName)
+                    if (type.Name == typeName || type.FullName == typeName)
                     {
-                        continue;
-                    }
+                        if (typeName == "PlayerData")
+                        {
+                            _playerDataType = type;
+                            _playerDataTypeSearched = true;
+                        }
 
-                    var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-                    var field = type.GetField(memberName, flags);
-                    if (field != null)
-                    {
-                        return field.GetValue(null);
-                    }
-
-                    var property = type.GetProperty(memberName, flags);
-                    if (property != null)
-                    {
-                        return property.GetValue(null, null);
+                        return type;
                     }
                 }
+            }
+
+            if (typeName == "PlayerData")
+            {
+                _playerDataType = null;
+                _playerDataTypeSearched = true;
             }
 
             return null;

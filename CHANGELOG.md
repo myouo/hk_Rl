@@ -126,6 +126,8 @@ the project version tracks the **schema_version** + roadmap phase.
   instead of always returning the all-valid fallback mask.
 - Mod PlayerObserver now reads hp/soul from PlayerData via reflection with safe
   fallbacks for minor game/API field-name drift.
+- Mod PlayerObserver caches PlayerData type lookup so per-tick observation reads
+  do not repeatedly scan loaded assemblies.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

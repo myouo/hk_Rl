@@ -195,6 +195,7 @@ def test_mod_player_observer_reads_playerdata_with_fallbacks() -> None:
     assert '"maxHealth"' in observer
     assert '"MPCharge"' in observer
     assert '"maxMP"' in observer
+    assert "_playerDataTypeSearched" in observer
     assert "TryReadGetInt" in observer
 
 
