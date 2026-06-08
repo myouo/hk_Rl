@@ -26,6 +26,9 @@ the project version tracks the **schema_version** + roadmap phase.
   composition, deterministic seeding, running metrics, and GAE.
 - Python TCP transport client with uint32-LE length-prefixed framing,
   timeout/disconnect handling, and localhost framing tests.
+- Python FlatBuffers StepRequest/StepResponse encode/decode helpers with schema
+  version checks, action payload conversion, reward events, masks, and decoded
+  observation views.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
 - Mask-aware random policy for local smoke tests and scripted baseline plumbing.

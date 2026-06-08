@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import flatbuffers
 
 if TYPE_CHECKING:
     import numpy as np
@@ -125,24 +127,299 @@ class DecodedObservation:
     entity_mask: np.ndarray  # (max_entities,) bool
 
 
-def encode_step_request(*args: object, **kwargs: object) -> bytes:
-    """Encode a StepRequest into a length-prefixed FlatBuffers frame.
+@dataclass(slots=True)
+class DecodedStepResponse:
+    """Decoded StepResponse view used by env/worker code."""
 
-    Wraps the generated ``hkrl.schema`` builders. Framing per docs/protocol.md §1.
+    schema_version: int
+    env_id: int
+    tick_id: int
+    server_tick: int
+    observation: DecodedObservation | None
+    reward_events: list[RewardEvent]
+    action_mask: np.ndarray
+    terminated: bool
+    truncated: bool
+    lifecycle_state: LifecycleState
+    error_code: StatusCode
+    info: str | None = None
 
-    TODO(phase-1): implement using generated FlatBuffers bindings + struct length
-    prefix (uint32 LE).
+
+def encode_step_request(
+    *,
+    command: Command = Command.STEP,
+    action: dict[str, Any] | None = None,
+    env_id: int = 0,
+    tick_id: int = 0,
+    action_repeat: int = 1,
+    policy_version: int = 0,
+    client_time: float = 0.0,
+    task_id: int = 0,
+    time_scale: float = 0.0,
+) -> bytes:
+    """Encode a StepRequest FlatBuffers payload.
+
+    Framing is handled by ``Transport`` implementations; this function returns
+    only the FlatBuffers payload carrying file_identifier ``HKRL``.
     """
-    raise NotImplementedError
+    if not 1 <= action_repeat <= 255:
+        raise ValueError("action_repeat must be in [1, 255]")
+    if tick_id < 0:
+        raise ValueError("tick_id must be non-negative")
+
+    action_fields = _action_fields(action)
+    builder = flatbuffers.Builder(256)
+
+    action_offset = _build_action(builder, action_fields)
+
+    fb = _generated("StepRequest")
+    fb.StepRequestStart(builder)
+    fb.StepRequestAddSchemaVersion(builder, SCHEMA_VERSION)
+    fb.StepRequestAddEnvId(builder, int(env_id))
+    fb.StepRequestAddTickId(builder, int(tick_id))
+    fb.StepRequestAddCommand(builder, int(command))
+    fb.StepRequestAddAction(builder, action_offset)
+    fb.StepRequestAddActionRepeat(builder, int(action_repeat))
+    fb.StepRequestAddPolicyVersion(builder, int(policy_version))
+    fb.StepRequestAddClientTime(builder, float(client_time))
+    fb.StepRequestAddTaskId(builder, int(task_id))
+    fb.StepRequestAddTimeScale(builder, float(time_scale))
+    root = fb.StepRequestEnd(builder)
+    builder.Finish(root, file_identifier=FILE_IDENTIFIER)
+    return bytes(builder.Output())
 
 
-def decode_step_response(frame: bytes) -> object:
-    """Decode a length-prefixed StepResponse frame (zero-copy).
+def decode_step_response(frame: bytes) -> DecodedStepResponse:
+    """Decode a StepResponse FlatBuffers payload.
 
     Verifies ``file_identifier`` and ``schema_version`` before reading; raises on
     ``StatusCode.SCHEMA_MISMATCH`` divergence.
-
-    TODO(phase-1): implement using generated bindings; return a typed view
-    (DecodedObservation + RewardEvent[] + flags).
     """
-    raise NotImplementedError
+    import numpy as np
+
+    fb = _generated("StepResponse")
+    if not fb.StepResponse.StepResponseBufferHasIdentifier(frame, 0):
+        raise ValueError("StepResponse missing HKRL file identifier")
+
+    response = fb.StepResponse.GetRootAs(frame, 0)
+    schema_version = int(response.SchemaVersion())
+    error_code = StatusCode(int(response.ErrorCode()))
+    if schema_version != SCHEMA_VERSION or error_code == StatusCode.SCHEMA_MISMATCH:
+        raise ValueError(
+            f"schema mismatch: local={SCHEMA_VERSION}, remote={schema_version}, "
+            f"error_code={error_code.name}"
+        )
+
+    reward_events = [
+        _decode_reward_event(response.RewardEvents(i)) for i in range(response.RewardEventsLength())
+    ]
+    action_mask = np.array(
+        [bool(response.ActionMask(i)) for i in range(response.ActionMaskLength())],
+        dtype=bool,
+    )
+
+    info = response.Info()
+    return DecodedStepResponse(
+        schema_version=schema_version,
+        env_id=int(response.EnvId()),
+        tick_id=int(response.TickId()),
+        server_tick=int(response.ServerTick()),
+        observation=_decode_observation(response.Observation()),
+        reward_events=reward_events,
+        action_mask=action_mask,
+        terminated=bool(response.Terminated()),
+        truncated=bool(response.Truncated()),
+        lifecycle_state=LifecycleState(int(response.LifecycleState())),
+        error_code=error_code,
+        info=None if info is None else info.decode("utf-8"),
+    )
+
+
+def _generated(module_name: str) -> Any:
+    try:
+        import hkrl.schema  # noqa: F401  # registers the top-level HKRL alias
+
+        return __import__(f"hkrl.schema.HKRL.{module_name}", fromlist=[module_name])
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("FlatBuffers bindings missing; run `make gen-schema`") from exc
+
+
+def _build_action(builder: flatbuffers.Builder, fields: dict[str, int]) -> int:
+    fb = _generated("Action")
+    fb.ActionStart(builder)
+    fb.ActionAddMovementX(builder, fields["movement_x"])
+    fb.ActionAddAimY(builder, fields["aim_y"])
+    fb.ActionAddButtons(builder, fields["buttons"])
+    fb.ActionAddDurationIdx(builder, fields["duration_idx"])
+    fb.ActionAddMacroId(builder, fields["macro_id"])
+    return int(fb.ActionEnd(builder))
+
+
+def _action_fields(action: dict[str, Any] | None) -> dict[str, int]:
+    action = action or {}
+    movement_x = int(action.get("movement_x", 1))
+    aim_y = int(action.get("aim_y", 1))
+    duration_idx = int(action.get("duration_idx", action.get("duration", 0)))
+    macro_id = int(action["macro_id"]) if "macro_id" in action else int(action.get("macro", 0)) - 1
+    buttons = _buttons_to_mask(action.get("buttons", 0))
+
+    if not 0 <= movement_x <= 2:
+        raise ValueError("movement_x must be in [0, 2]")
+    if not 0 <= aim_y <= 2:
+        raise ValueError("aim_y must be in [0, 2]")
+    if not 0 <= duration_idx <= 3:
+        raise ValueError("duration index must be in [0, 3]")
+    if not -(2**15) <= macro_id < 2**15:
+        raise ValueError("macro_id must fit int16")
+
+    return {
+        "movement_x": movement_x,
+        "aim_y": aim_y,
+        "buttons": buttons,
+        "duration_idx": duration_idx,
+        "macro_id": macro_id,
+    }
+
+
+def _buttons_to_mask(buttons: Any) -> int:
+    from hkrl.spaces import BUTTON_BITS, N_BUTTONS
+
+    if isinstance(buttons, int):
+        if not 0 <= buttons < (1 << N_BUTTONS):
+            raise ValueError("buttons bitmask has bits outside BUTTON_BITS")
+        return buttons
+
+    if isinstance(buttons, dict):
+        mask = 0
+        for name, enabled in buttons.items():
+            if name not in BUTTON_BITS:
+                raise ValueError(f"unknown button name: {name}")
+            if enabled:
+                mask |= 1 << BUTTON_BITS[name]
+        return mask
+
+    try:
+        values = list(buttons)
+    except TypeError as exc:
+        raise ValueError("buttons must be an int bitmask, mapping, or sequence") from exc
+
+    if len(values) != N_BUTTONS:
+        raise ValueError(f"buttons sequence must have length {N_BUTTONS}")
+
+    mask = 0
+    for idx, enabled in enumerate(values):
+        if enabled:
+            mask |= 1 << idx
+    return mask
+
+
+def _decode_reward_event(event: Any) -> RewardEvent:
+    return RewardEvent(
+        kind=RewardEventKind(int(event.Kind())),
+        entity_id=int(event.EntityId()),
+        amount=float(event.Amount()),
+        aux_int=int(event.AuxInt()),
+        aux_int2=int(event.AuxInt2()),
+    )
+
+
+def _decode_observation(observation: Any | None) -> DecodedObservation | None:
+    if observation is None:
+        return None
+
+    import numpy as np
+
+    global_state = observation.Global()
+    player_state = observation.Player()
+    if global_state is None or player_state is None:
+        return None
+
+    entities = []
+    for idx in range(observation.EntitiesLength()):
+        entity = observation.Entities(idx)
+        if entity is not None:
+            entities.append(_entity_features(entity))
+
+    entity_mask = np.array(
+        [bool(observation.EntityMask(i)) for i in range(observation.EntityMaskLength())],
+        dtype=bool,
+    )
+    return DecodedObservation(
+        global_state=np.array(_global_features(global_state), dtype=np.float32),
+        player_state=np.array(_player_features(player_state), dtype=np.float32),
+        entities=np.array(entities, dtype=np.float32),
+        entity_mask=entity_mask,
+    )
+
+
+def _global_features(global_state: Any) -> list[float]:
+    return [
+        float(global_state.SceneHash()),
+        float(global_state.ArenaId()),
+        float(global_state.TaskId()),
+        float(global_state.Difficulty()),
+        float(global_state.TimeInEpisode()),
+        float(global_state.TimeScale()),
+        float(global_state.FixedDeltaTime()),
+        float(global_state.StageIndex()),
+        float(global_state.EpisodeId()),
+    ]
+
+
+def _player_features(player_state: Any) -> list[float]:
+    return [
+        float(player_state.PosX()),
+        float(player_state.PosY()),
+        float(player_state.VelX()),
+        float(player_state.VelY()),
+        float(player_state.Hp()),
+        float(player_state.MaxHp()),
+        float(player_state.Soul()),
+        float(player_state.MaxSoul()),
+        float(player_state.Facing()),
+        float(player_state.OnGround()),
+        float(player_state.WallSliding()),
+        float(player_state.Jumping()),
+        float(player_state.Falling()),
+        float(player_state.Dashing()),
+        float(player_state.ShadowDashing()),
+        float(player_state.Invulnerable()),
+        float(player_state.InvulnTimer()),
+        float(player_state.AttackLockTimer()),
+        float(player_state.CastLockTimer()),
+        float(player_state.FocusState()),
+        float(player_state.DashCooldown()),
+        float(player_state.DoubleJumpAvailable()),
+        float(player_state.CanAttack()),
+        float(player_state.CanCast()),
+        float(player_state.CanFocus()),
+    ]
+
+
+def _entity_features(entity: Any) -> list[float]:
+    return [
+        float(entity.EntityId()),
+        float(entity.EntityType()),
+        float(entity.Team()),
+        float(entity.PrefabHash()),
+        float(entity.FsmNameHash()),
+        float(entity.FsmStateHash()),
+        float(entity.PosX()),
+        float(entity.PosY()),
+        float(entity.RelX()),
+        float(entity.RelY()),
+        float(entity.VelX()),
+        float(entity.VelY()),
+        float(entity.Hp()),
+        float(entity.MaxHp()),
+        float(entity.HurtboxCenterX()),
+        float(entity.HurtboxCenterY()),
+        float(entity.HurtboxSizeX()),
+        float(entity.HurtboxSizeY()),
+        float(entity.HitboxActive()),
+        float(entity.Damage()),
+        float(entity.Ttl()),
+        float(entity.Phase()),
+        float(entity.ThreatScore()),
+        float(entity.Flags()),
+    ]
