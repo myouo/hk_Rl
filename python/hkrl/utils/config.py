@@ -7,6 +7,7 @@ a train run references a task config and a model config.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -93,15 +94,48 @@ class TrainConfig(BaseModel):
 def load_yaml(path: str | Path) -> dict[str, Any]:
     """Load a YAML file into a dict (supports an optional top-level ``defaults``
     list for simple composition; deep-merge order = defaults then overrides).
-
-    TODO(phase-2): implement ``defaults:`` composition (Hydra-lite). For now this
-    returns the raw mapping.
     """
+    return _load_yaml(Path(path).expanduser().resolve(), stack=())
+
+
+def _load_yaml(path: Path, stack: tuple[Path, ...]) -> dict[str, Any]:
+    if path in stack:
+        cycle = " -> ".join(str(p) for p in (*stack, path))
+        raise ValueError(f"cyclic config defaults: {cycle}")
+
     with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError(f"config root must be a mapping: {path}")
-    return data
+
+    defaults = data.pop("defaults", [])
+    if defaults is None:
+        defaults = []
+    if not isinstance(defaults, list):
+        raise ValueError(f"config defaults must be a list: {path}")
+
+    merged: dict[str, Any] = {}
+    for entry in defaults:
+        if not isinstance(entry, str):
+            raise ValueError(f"config default entries must be paths: {path}")
+
+        default_path = (path.parent / entry).resolve()
+        merged = _deep_merge(merged, _load_yaml(default_path, (*stack, path)))
+
+    return _deep_merge(merged, data)
+
+
+def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+
+    for key, value in override.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, Mapping) and isinstance(value, Mapping):
+            merged[key] = _deep_merge(base_value, value)
+        else:
+            merged[key] = value
+
+    return merged
 
 
 def load_train_config(path: str | Path) -> TrainConfig:
