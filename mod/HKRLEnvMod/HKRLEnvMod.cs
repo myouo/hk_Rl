@@ -102,6 +102,7 @@ namespace HKRLEnvMod
                     _server,
                     new ActionApplier(),
                     rewards,
+                    new ObservationRewardTracker(),
                     new EpisodeLifecycle(),
                     new ResetManager(),
                     new SimControl(),

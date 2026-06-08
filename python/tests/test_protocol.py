@@ -356,6 +356,27 @@ def test_mod_observation_collector_logs_read_failures() -> None:
     assert "DefaultPlayer()" in source
 
 
+def test_mod_observation_reward_tracker_is_wired_before_drain() -> None:
+    root = Path(__file__).parents[2]
+    tracker = (root / "mod/HKRLEnvMod/Rewards/ObservationRewardTracker.cs").read_text(
+        encoding="utf-8"
+    )
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    mod = (root / "mod/HKRLEnvMod/HKRLEnvMod.cs").read_text(encoding="utf-8")
+
+    assert "DamageDealt" in tracker
+    assert "DamageTaken" in tracker
+    assert "SoulGained" in tracker
+    assert "BossKilled" in tracker
+    assert "PlayerDeath" in tracker
+
+    update_idx = controller.index("_rewardTracker.Update(observation, _rewards);")
+    drain_idx = controller.index("var rewardEvents = _rewards.Drain();")
+    assert update_idx < drain_idx
+    assert "_rewardTracker.Reset();" in controller
+    assert "new ObservationRewardTracker()" in mod
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,

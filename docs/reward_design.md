@@ -9,6 +9,9 @@ The mod **never** computes a final scalar reward. It reports typed **events**;
 Python composes the scalar. This keeps reward shaping out of the mod, lets us run
 multiple reward functions over the same trajectory, and makes shaping-free
 evaluation trivial.
+Core events may come from direct game hooks or from conservative observation
+deltas (player hp/soul and entity hp changes). Both paths write the same
+`RewardEvent` records; scalar shaping stays Python-side.
 
 ```text
 mod  ──RewardEvent[]──▶  hkrl/reward.py  ──scalar──▶  rollout buffer

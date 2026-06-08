@@ -177,6 +177,8 @@ the project version tracks the **schema_version** + roadmap phase.
   enabled, preserving the LAN/localhost + token-auth runtime boundary.
 - Mod reward hooks now wrap event recording in try/catch and log failures through
   `Debug.Logger`, protecting the Unity main thread from hook exceptions.
+- Mod reward events now have an observation-delta fallback tracker for damage,
+  heal, soul gain, boss kill, and player death events.
 - Mod observation collection now catches player/entity/global read failures,
   logs them, and returns a conservative fallback snapshot instead of unwinding
   `FixedUpdate`.

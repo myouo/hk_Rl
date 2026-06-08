@@ -32,7 +32,8 @@ namespace HKRLEnvMod.Rewards
     /// Collects typed reward EVENTS (not scalar reward) during a tick; the Python
     /// reward function composes the scalar (docs/reward_design.md, PRD §5.6/§9.4).
     /// Cleared on reset and after `done` to prevent cross-episode contamination
-    /// (PRD §9.3). Written by hooks (any thread? — hooks fire on the main thread).
+    /// (PRD §9.3). Written by hooks and observation-delta trackers on the main
+    /// thread.
     /// </summary>
     public sealed class RewardEventBuffer
     {
@@ -40,7 +41,7 @@ namespace HKRLEnvMod.Rewards
 
         public int Count => _events.Count;
 
-        /// <summary>Append an event (called from Damage/Heal/Death/Scene hooks).</summary>
+        /// <summary>Append an event (called from hooks or observation deltas).</summary>
         public void Add(
             HKRL.RewardEventKind kind,
             int entityId = 0,

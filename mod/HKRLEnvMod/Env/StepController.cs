@@ -17,6 +17,7 @@ namespace HKRLEnvMod.Env
         private readonly TcpServer _server;
         private readonly ActionApplier _actions;
         private readonly RewardEventBuffer _rewards;
+        private readonly ObservationRewardTracker _rewardTracker;
         private readonly EpisodeLifecycle _lifecycle;
         private readonly ResetManager _resetManager;
         private readonly SimControl _simControl;
@@ -32,6 +33,7 @@ namespace HKRLEnvMod.Env
                 server,
                 new ActionApplier(),
                 new RewardEventBuffer(),
+                new ObservationRewardTracker(),
                 new EpisodeLifecycle(),
                 new ResetManager(),
                 new SimControl(),
@@ -45,6 +47,7 @@ namespace HKRLEnvMod.Env
             TcpServer server,
             ActionApplier actions,
             RewardEventBuffer rewards,
+            ObservationRewardTracker rewardTracker,
             EpisodeLifecycle lifecycle,
             ResetManager resetManager,
             SimControl simControl,
@@ -55,6 +58,7 @@ namespace HKRLEnvMod.Env
             _server = server;
             _actions = actions;
             _rewards = rewards;
+            _rewardTracker = rewardTracker;
             _lifecycle = lifecycle;
             _resetManager = resetManager;
             _simControl = simControl;
@@ -126,6 +130,13 @@ namespace HKRLEnvMod.Env
             if (state == HKRL.LifecycleState.ClearEvents)
             {
                 _rewards.Clear();
+                _rewardTracker.Reset();
+            }
+
+            var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
+            if (_lifecycle.IsRunning)
+            {
+                _rewardTracker.Update(observation, _rewards);
             }
 
             var rewardEvents = _rewards.Drain();
@@ -143,7 +154,6 @@ namespace HKRLEnvMod.Env
             var errorCode = commandError == HKRL.StatusCode.Ok
                 ? _lifecycle.ErrorCode
                 : commandError;
-            var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
             var actionMask = _masker.Compute(ToPlayerActionState(observation.Player));
             var response = MessageCodec.EncodeStepResponse(
                 request,
@@ -229,6 +239,7 @@ namespace HKRLEnvMod.Env
                         CancelRepeatedStep();
                         _actions.Clear();
                         _rewards.Clear();
+                        _rewardTracker.Reset();
                         _resetManager.BeginReset(request.TaskId);
                         _lifecycle.RequestReset();
                         break;
