@@ -55,7 +55,10 @@ bit 6 dream_nail  bit 7 nail_art_hold  bit 8 nail_art_release
 
 The mod computes a mask each tick from current state; the policy sets masked
 logits to `-inf` before sampling (per-head). Invalid attempts that slip through
-are reported as `InvalidAction` reward events.
+are reported as `InvalidAction` reward events. The mod always records wire-level
+invalid actions (out-of-range movement/aim/duration/macro ids or button bits
+outside the 9-bit layout) before clamping/ignoring them for safe input
+injection.
 
 ```text
 dash_cooldown > 0                  -> mask dash

@@ -29,6 +29,11 @@ mod  ──RewardEvent[]──▶  hkrl/reward.py  ──scalar──▶  rollou
 | `InvalidAction` | `aux_int` (action_id), `aux_int2` (reason) |
 | `Stagger` | `entity_id` |
 
+For `InvalidAction`, `aux_int` identifies the invalid component
+(`0=movement_x`, `1=aim_y`, `2=buttons`, `3=duration`, `4=macro`) and
+`aux_int2=1` means out-of-range while `aux_int2=2` means button bits outside the
+canonical 9-bit layout.
+
 ## 3. Default reward function (PRD §5.6)
 
 ```text

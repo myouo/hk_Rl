@@ -120,6 +120,8 @@ the project version tracks the **schema_version** + roadmap phase.
   terminal responses do not overcharge time penalties.
 - HKRLEnv now rejects action masks whose length does not match the current task's
   canonical action-mask layout.
+- Mod STEP dispatch now emits `InvalidAction` reward events for wire-level
+  out-of-range action components before applying safe clamped input.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

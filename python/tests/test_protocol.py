@@ -167,6 +167,16 @@ def test_mod_step_controller_honors_action_repeat_contract() -> None:
     assert "BufferedTerminalEvent" in controller
 
 
+def test_mod_step_controller_reports_wire_invalid_actions() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "ReportInvalidAction(request.Action)" in controller
+    assert "HKRL.RewardEventKind.InvalidAction" in controller
+    assert "PrimitiveInput.ButtonMask" in controller
+    assert "action.DurationIdx > 3" in controller
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,

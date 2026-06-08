@@ -220,6 +220,7 @@ namespace HKRLEnvMod.Env
                     case HKRL.Command.Step:
                         if (_lifecycle.IsRunning)
                         {
+                            ReportInvalidAction(request.Action);
                             _actions.Apply(request.Action);
                         }
                         break;
@@ -270,6 +271,38 @@ namespace HKRLEnvMod.Env
                     exception);
                 return HKRL.StatusCode.InternalError;
             }
+        }
+
+        private void ReportInvalidAction(DecodedAction action)
+        {
+            if (action.MovementX > 2)
+            {
+                AddInvalidActionEvent(actionId: 0, reason: 1);
+            }
+            if (action.AimY > 2)
+            {
+                AddInvalidActionEvent(actionId: 1, reason: 1);
+            }
+            if ((action.Buttons & ~PrimitiveInput.ButtonMask) != 0)
+            {
+                AddInvalidActionEvent(actionId: 2, reason: 2);
+            }
+            if (action.DurationIdx > 3)
+            {
+                AddInvalidActionEvent(actionId: 3, reason: 1);
+            }
+            if (action.MacroId < -1 || action.MacroId >= ActionMasker.DefaultMacroCount)
+            {
+                AddInvalidActionEvent(actionId: 4, reason: 1);
+            }
+        }
+
+        private void AddInvalidActionEvent(int actionId, int reason)
+        {
+            _rewards.Add(
+                HKRL.RewardEventKind.InvalidAction,
+                auxInt: actionId,
+                auxInt2: reason);
         }
 
         private HKRL.LifecycleState AdvanceLifecycle()
