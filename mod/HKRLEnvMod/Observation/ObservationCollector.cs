@@ -117,13 +117,80 @@ namespace HKRLEnvMod.Observation
         /// <summary>Collect a snapshot; returns data for MessageCodec to encode.</summary>
         public ObservationSnapshot Collect(int taskId = 0, ulong episodeId = 0)
         {
-            var player = _player.Read();
-            var entities = _entities.Collect(player);
+            var player = ReadPlayerSafe();
+            var entities = ReadEntitiesSafe(player);
             return new ObservationSnapshot(
-                _global.Read(taskId, episodeId),
+                ReadGlobalSafe(taskId, episodeId),
                 player,
                 entities,
                 BuildEntityMask(entities.Count));
+        }
+
+        private PlayerObservation ReadPlayerSafe()
+        {
+            try
+            {
+                return _player.Read();
+            }
+            catch (Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to read player observation", exception);
+                return DefaultPlayer();
+            }
+        }
+
+        private IReadOnlyList<EntityObservation> ReadEntitiesSafe(PlayerObservation player)
+        {
+            try
+            {
+                return _entities.Collect(player);
+            }
+            catch (Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to read entity observations", exception);
+                return Array.Empty<EntityObservation>();
+            }
+        }
+
+        private GlobalObservation ReadGlobalSafe(int taskId, ulong episodeId)
+        {
+            try
+            {
+                return _global.Read(taskId, episodeId);
+            }
+            catch (Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to read global observation", exception);
+                return new GlobalObservation(
+                    sceneHash: 0,
+                    arenaId: 0,
+                    taskId: taskId,
+                    difficulty: 0,
+                    timeInEpisode: 0.0f,
+                    timeScale: 0.0f,
+                    fixedDeltaTime: 0.0f,
+                    stageIndex: 0,
+                    episodeId: episodeId);
+            }
+        }
+
+        private static PlayerObservation DefaultPlayer()
+        {
+            return new PlayerObservation(
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
+                hp: 1,
+                maxHp: 1,
+                soul: 0,
+                maxSoul: 99,
+                facing: 1,
+                onGround: false,
+                doubleJumpAvailable: false,
+                canAttack: false,
+                canCast: false,
+                canFocus: false);
         }
 
         private static IReadOnlyList<bool> BuildEntityMask(int count)

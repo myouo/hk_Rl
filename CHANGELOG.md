@@ -153,6 +153,9 @@ the project version tracks the **schema_version** + roadmap phase.
   scene names, model names, bind addresses, and checkpoint directories.
 - Mod reward hooks now wrap event recording in try/catch and log failures through
   `Debug.Logger`, protecting the Unity main thread from hook exceptions.
+- Mod observation collection now catches player/entity/global read failures,
+  logs them, and returns a conservative fallback snapshot instead of unwinding
+  `FixedUpdate`.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

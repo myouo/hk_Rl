@@ -213,6 +213,21 @@ def test_mod_reward_hooks_log_exceptions() -> None:
         assert "global::HKRLEnvMod.Debug.Logger.Error" in source
 
 
+def test_mod_observation_collector_logs_read_failures() -> None:
+    root = Path(__file__).parents[2]
+    source = (root / "mod/HKRLEnvMod/Observation/ObservationCollector.cs").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ReadPlayerSafe" in source
+    assert "ReadEntitiesSafe" in source
+    assert "ReadGlobalSafe" in source
+    assert "Failed to read player observation" in source
+    assert "Failed to read entity observations" in source
+    assert "Failed to read global observation" in source
+    assert "DefaultPlayer()" in source
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,
