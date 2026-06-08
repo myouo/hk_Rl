@@ -7,6 +7,7 @@ same env can be evaluated at different information levels (PRD §9.8).
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Any
 
 import gymnasium as gym
@@ -55,19 +56,31 @@ class ObservationTier(gym.ObservationWrapper):
 class FrameStack(gym.Wrapper):
     """Optional short-history stacking. Note: NOT a substitute for the recurrent
     memory (docs/troubleshooting.md §9.1) — use sparingly for the MLP baseline.
-
-    TODO(phase-3): implement deque-based stacking of the flat feature vectors.
     """
 
     def __init__(self, env: gym.Env, k: int = 4) -> None:
+        if k <= 0:
+            raise ValueError("k must be positive")
+
         super().__init__(env)
         self.k = k
+        self._frames: deque[Any] = deque(maxlen=k)
+        self.observation_space = _stack_observation_space(env.observation_space, k)
 
     def reset(self, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
-        raise NotImplementedError  # TODO(phase-3)
+        obs, info = self.env.reset(**kwargs)
+        self._frames.clear()
+        for _ in range(self.k):
+            self._frames.append(_copy_observation(obs))
+        return self._stack_frames(), info
 
     def step(self, action: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
-        raise NotImplementedError  # TODO(phase-3)
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self._frames.append(_copy_observation(obs))
+        return self._stack_frames(), float(reward), terminated, truncated, info
+
+    def _stack_frames(self) -> Any:
+        return _stack_observations(list(self._frames))
 
 
 def _normalize_player(player: np.ndarray) -> None:
@@ -119,3 +132,54 @@ def _normalize_current_and_max(values: np.ndarray, *, current_idx: int, max_idx:
 
 def _clamped_timer(value: float) -> float:
     return float(np.clip(value / spaces.T_MAX, 0.0, 1.0))
+
+
+def _stack_observation_space(observation_space: gym.Space, k: int) -> gym.Space:
+    from gymnasium import spaces as gym_spaces
+
+    if not isinstance(observation_space, gym_spaces.Dict):
+        return observation_space
+
+    stacked_spaces = dict(observation_space.spaces)
+    for key in ("global", "player", "entities"):
+        space = stacked_spaces.get(key)
+        if isinstance(space, gym_spaces.Box):
+            stacked_spaces[key] = _stack_box_space(space, k)
+    return gym_spaces.Dict(stacked_spaces)
+
+
+def _stack_box_space(space: gym.spaces.Box, k: int) -> gym.spaces.Box:
+    from gymnasium import spaces as gym_spaces
+
+    low = np.concatenate([np.asarray(space.low)] * k, axis=-1)
+    high = np.concatenate([np.asarray(space.high)] * k, axis=-1)
+    return gym_spaces.Box(low=low, high=high, dtype=np.dtype(space.dtype).type)  # type: ignore[arg-type]
+
+
+def _copy_observation(observation: Any) -> Any:
+    if not isinstance(observation, dict):
+        return np.asarray(observation).copy()
+    return {
+        key: np.asarray(value).copy() if isinstance(value, (np.ndarray, list, tuple)) else value
+        for key, value in observation.items()
+    }
+
+
+def _stack_observations(frames: list[Any]) -> Any:
+    if not frames:
+        raise RuntimeError("FrameStack has no frames; call reset() first")
+
+    if not isinstance(frames[-1], dict):
+        return np.concatenate([np.asarray(frame) for frame in frames], axis=-1)
+
+    stacked: dict[str, Any] = {}
+    keys = frames[-1].keys()
+    for key in keys:
+        if key == "entity_mask":
+            stacked[key] = np.asarray(frames[-1][key]).copy()
+        elif key in {"global", "player", "entities"}:
+            stacked[key] = np.concatenate([np.asarray(frame[key]) for frame in frames], axis=-1)
+        else:
+            value = frames[-1][key]
+            stacked[key] = np.asarray(value).copy() if isinstance(value, np.ndarray) else value
+    return stacked

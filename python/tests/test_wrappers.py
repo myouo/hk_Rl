@@ -6,7 +6,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 from hkrl import spaces
-from hkrl.wrappers import NormalizeObservation
+from hkrl.wrappers import FrameStack, NormalizeObservation
 
 
 class DummyEnv(gym.Env):
@@ -82,3 +82,74 @@ def test_normalize_observation_rejects_mismatched_entity_mask() -> None:
 
     with pytest.raises(ValueError, match="entity_mask length"):
         wrapper.observation(observation)
+
+
+def test_frame_stack_stacks_feature_axes_and_updates_space() -> None:
+    env = CountingEnv()
+    wrapper = FrameStack(env, k=3)
+
+    assert wrapper.observation_space["global"].shape == (6,)
+    assert wrapper.observation_space["player"].shape == (9,)
+    assert wrapper.observation_space["entities"].shape == (2, 3)
+    assert wrapper.observation_space["entity_mask"].n == 2
+
+    obs, _ = wrapper.reset()
+    np.testing.assert_array_equal(obs["global"], np.array([0, 1, 0, 1, 0, 1], dtype=np.float32))
+    np.testing.assert_array_equal(
+        obs["entities"], np.array([[0, 0, 0], [1, 1, 1]], dtype=np.float32)
+    )
+    np.testing.assert_array_equal(obs["entity_mask"], np.array([1, 0], dtype=np.int8))
+
+    obs, reward, terminated, truncated, _ = wrapper.step(0)
+
+    assert reward == 1.0
+    assert not terminated
+    assert not truncated
+    np.testing.assert_array_equal(obs["global"], np.array([0, 1, 0, 1, 1, 2], dtype=np.float32))
+    np.testing.assert_array_equal(
+        obs["player"], np.array([0, 0, 0, 0, 0, 0, 1, 1, 1], dtype=np.float32)
+    )
+
+
+def test_frame_stack_rejects_non_positive_k() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        FrameStack(CountingEnv(), k=0)
+
+
+class CountingEnv(gym.Env):
+    observation_space = gym.spaces.Dict(
+        {
+            "global": gym.spaces.Box(low=-10, high=10, shape=(2,), dtype=np.float32),
+            "player": gym.spaces.Box(low=-10, high=10, shape=(3,), dtype=np.float32),
+            "entities": gym.spaces.Box(low=-10, high=10, shape=(2, 1), dtype=np.float32),
+            "entity_mask": gym.spaces.MultiBinary(2),
+        }
+    )
+    action_space = gym.spaces.Discrete(1)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.t = 0
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, object] | None = None
+    ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
+        del options
+        super().reset(seed=seed)
+        self.t = 0
+        return self._obs(), {}
+
+    def step(
+        self, action: object
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, object]]:
+        del action
+        self.t += 1
+        return self._obs(), 1.0, False, False, {}
+
+    def _obs(self) -> dict[str, np.ndarray]:
+        return {
+            "global": np.array([self.t, self.t + 1], dtype=np.float32),
+            "player": np.full((3,), self.t, dtype=np.float32),
+            "entities": np.array([[self.t], [self.t + 1]], dtype=np.float32),
+            "entity_mask": np.array([1, 0], dtype=np.int8),
+        }

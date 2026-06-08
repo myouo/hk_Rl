@@ -53,6 +53,8 @@ the project version tracks the **schema_version** + roadmap phase.
   RolloutBatch.
 - GameWorker can now collect local single-env rollouts with model inference,
   action-mask handling, tensor-to-env action conversion, and GAE bootstrap.
+- FrameStack wrapper now stacks dict observation feature axes and updates the
+  Gym observation space for short-history MLP baselines.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
