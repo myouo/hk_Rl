@@ -53,6 +53,13 @@ namespace HKRLEnvMod.Env
                 return HKRL.StatusCode.Ok;
             }
 
+            if (!_scene.HasValidTarget)
+            {
+                _active = false;
+                IsComplete = false;
+                return HKRL.StatusCode.SceneLoadFailed;
+            }
+
             _elapsedSeconds += Time.unscaledDeltaTime;
             if (_scene.IsSceneReady() && _scene.IsPlayerReady() && _scene.IsBossReady())
             {

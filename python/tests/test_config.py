@@ -87,6 +87,7 @@ def test_load_task_config_preserves_wire_id() -> None:
 def test_mod_scene_controller_matches_task_wire_ids() -> None:
     root = Path(__file__).parents[2]
     source = (root / "mod/HKRLEnvMod/Env/SceneController.cs").read_text(encoding="utf-8")
+    reset_manager = (root / "mod/HKRLEnvMod/Env/ResetManager.cs").read_text(encoding="utf-8")
     tasks = [
         load_task_config(Path("../configs/tasks/gruz_mother.yaml")),
         load_task_config(Path("../configs/tasks/hornet_protector.yaml")),
@@ -97,6 +98,9 @@ def test_mod_scene_controller_matches_task_wire_ids() -> None:
         assert f'{task.wire_id} => "{task.scene}"' in source
     assert "_ => string.Empty" in source
     assert "Unknown HKRL task id" in source
+    assert "HasValidTarget" in source
+    assert "!_scene.HasValidTarget" in reset_manager
+    assert "HKRL.StatusCode.SceneLoadFailed" in reset_manager
 
 
 def test_load_train_config_preserves_distributed_runtime_settings() -> None:

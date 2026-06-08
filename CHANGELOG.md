@@ -128,6 +128,8 @@ the project version tracks the **schema_version** + roadmap phase.
   inputs cannot bleed into the next episode.
 - Mod scene reset now rejects unknown numeric task ids instead of silently
   falling back to Gruz Mother.
+- Mod reset readiness now fails immediately for invalid task-scene targets
+  instead of waiting for the scene-load timeout.
 - Schema version 2 adds `StatusCode.NotRunning`, and the mod now rejects
   non-poll STEP requests before the lifecycle reaches `RUNNING`.
 - HKRLEnv now computes step reward `dt` from `server_tick` deltas so early

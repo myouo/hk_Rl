@@ -13,13 +13,14 @@ namespace HKRLEnvMod.Env
 
         public int CurrentTaskId { get; private set; }
         public string TargetSceneName => _targetSceneName;
+        public bool HasValidTarget => !string.IsNullOrEmpty(_targetSceneName);
 
         /// <summary>Request loading the scene/arena for a task id.</summary>
         public void LoadTaskScene(int taskId)
         {
             CurrentTaskId = taskId;
             _targetSceneName = ResolveSceneName(taskId);
-            if (string.IsNullOrEmpty(_targetSceneName))
+            if (!HasValidTarget)
             {
                 global::HKRLEnvMod.Debug.Logger.Error(
                     $"Unknown HKRL task id {taskId}; reset will fail scene readiness.");
@@ -36,7 +37,7 @@ namespace HKRLEnvMod.Env
 
         public bool IsSceneReady()
         {
-            if (string.IsNullOrEmpty(_targetSceneName))
+            if (!HasValidTarget)
             {
                 return false;
             }
