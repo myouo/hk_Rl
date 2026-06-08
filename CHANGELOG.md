@@ -37,6 +37,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - HKRLEnv reset/step now drive the Transport protocol, poll the clean lifecycle
   until `RUNNING`, compose reward events, enforce tick echoes, and adapt decoded
   observations to Gymnasium spaces.
+- NormalizeObservation wrapper now scales player/entity positions, velocities,
+  hp/soul, hitboxes, and timers using the shared space constants.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
