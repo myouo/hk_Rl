@@ -39,6 +39,8 @@ the project version tracks the **schema_version** + roadmap phase.
   observations to Gymnasium spaces.
 - NormalizeObservation wrapper now scales player/entity positions, velocities,
   hp/soul, hitboxes, and timers using the shared space constants.
+- ObservationTier wrapper now slices privileged observations down to reduced or
+  human-visible feature sets and updates Gym observation spaces for ablations.
 - JSONL metric sink for scalar and per-episode training/evaluation records.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.

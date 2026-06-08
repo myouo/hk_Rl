@@ -46,11 +46,33 @@ class ObservationTier(gym.ObservationWrapper):
 
     def __init__(self, env: gym.Env, tier: str = "privileged") -> None:
         super().__init__(env)
+        if tier not in spaces.PLAYER_FEATURE_DIMS:
+            known = ", ".join(sorted(spaces.PLAYER_FEATURE_DIMS))
+            raise ValueError(f"unknown observation tier {tier!r}; expected one of: {known}")
+
         self.tier = tier
-        # TODO(phase-5): adjust observation_space + drop fields per tier.
+        self.observation_space = _tier_observation_space(env.observation_space, tier)
 
     def observation(self, observation: Any) -> Any:
-        raise NotImplementedError  # TODO(phase-5)
+        if not isinstance(observation, dict):
+            return observation
+
+        tiered = dict(observation)
+        player_dim = spaces.PLAYER_FEATURE_DIMS[self.tier]
+        entity_dim = spaces.ENTITY_FEATURE_DIMS[self.tier]
+        if "player" in observation:
+            player = np.asarray(observation["player"], dtype=np.float32)
+            if player.shape[-1] < player_dim:
+                raise ValueError(f"player feature dim {player.shape[-1]} < target {player_dim}")
+            tiered["player"] = player[..., :player_dim].copy()
+        if "entities" in observation:
+            entities = np.asarray(observation["entities"], dtype=np.float32)
+            if entities.shape[-1] < entity_dim:
+                raise ValueError(f"entity feature dim {entities.shape[-1]} < target {entity_dim}")
+            tiered["entities"] = entities[..., :entity_dim].copy()
+        if "entity_mask" in observation:
+            tiered["entity_mask"] = np.asarray(observation["entity_mask"]).copy()
+        return tiered
 
 
 class FrameStack(gym.Wrapper):
@@ -146,6 +168,35 @@ def _stack_observation_space(observation_space: gym.Space, k: int) -> gym.Space:
         if isinstance(space, gym_spaces.Box):
             stacked_spaces[key] = _stack_box_space(space, k)
     return gym_spaces.Dict(stacked_spaces)
+
+
+def _tier_observation_space(observation_space: gym.Space, tier: str) -> gym.Space:
+    from gymnasium import spaces as gym_spaces
+
+    if not isinstance(observation_space, gym_spaces.Dict):
+        return observation_space
+
+    tiered_spaces = dict(observation_space.spaces)
+    player_dim = spaces.PLAYER_FEATURE_DIMS[tier]
+    entity_dim = spaces.ENTITY_FEATURE_DIMS[tier]
+    if "player" in tiered_spaces:
+        tiered_spaces["player"] = gym_spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(player_dim,),
+            dtype=np.float32,
+        )
+    if "entities" in tiered_spaces:
+        entity_space = tiered_spaces["entities"]
+        entity_shape = getattr(entity_space, "shape", None)
+        max_entities = int(entity_shape[0]) if entity_shape else 0
+        tiered_spaces["entities"] = gym_spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(max_entities, entity_dim),
+            dtype=np.float32,
+        )
+    return gym_spaces.Dict(tiered_spaces)
 
 
 def _stack_box_space(space: gym.spaces.Box, k: int) -> gym.spaces.Box:

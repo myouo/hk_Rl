@@ -6,7 +6,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 from hkrl import spaces
-from hkrl.wrappers import FrameStack, NormalizeObservation
+from hkrl.wrappers import FrameStack, NormalizeObservation, ObservationTier
 
 
 class DummyEnv(gym.Env):
@@ -82,6 +82,35 @@ def test_normalize_observation_rejects_mismatched_entity_mask() -> None:
 
     with pytest.raises(ValueError, match="entity_mask length"):
         wrapper.observation(observation)
+
+
+def test_observation_tier_slices_player_and_entity_features() -> None:
+    wrapper = ObservationTier(DummyEnv(), tier="human_visible")
+    observation = {
+        "global": np.zeros((spaces.GLOBAL_FEATURE_DIM,), dtype=np.float32),
+        "player": np.arange(spaces.PLAYER_FEATURE_DIMS["privileged"], dtype=np.float32),
+        "entities": np.ones((2, spaces.ENTITY_FEATURE_DIMS["privileged"]), dtype=np.float32),
+        "entity_mask": np.array([1, 0], dtype=np.int8),
+    }
+
+    tiered = wrapper.observation(observation)
+
+    assert wrapper.observation_space["player"].shape == (
+        spaces.PLAYER_FEATURE_DIMS["human_visible"],
+    )
+    assert wrapper.observation_space["entities"].shape == (
+        2,
+        spaces.ENTITY_FEATURE_DIMS["human_visible"],
+    )
+    assert tiered["player"].shape == (spaces.PLAYER_FEATURE_DIMS["human_visible"],)
+    assert tiered["entities"].shape == (2, spaces.ENTITY_FEATURE_DIMS["human_visible"])
+    np.testing.assert_array_equal(tiered["entity_mask"], observation["entity_mask"])
+    assert observation["player"].shape == (spaces.PLAYER_FEATURE_DIMS["privileged"],)
+
+
+def test_observation_tier_rejects_unknown_tier() -> None:
+    with pytest.raises(ValueError, match="unknown observation tier"):
+        ObservationTier(DummyEnv(), tier="debug")
 
 
 def test_frame_stack_stacks_feature_axes_and_updates_space() -> None:
