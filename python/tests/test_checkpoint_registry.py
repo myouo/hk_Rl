@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,23 @@ def test_checkpoint_registry_rejects_invalid_index(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="invalid checkpoint index line"):
         CheckpointRegistry(str(tmp_path))
+
+
+def test_checkpoint_registry_rejects_paths_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    root.mkdir()
+    outside = tmp_path / "outside.pt"
+    payload = {
+        "version": 1,
+        "path": str(outside),
+        "sha256": "0" * 64,
+        "policy_version": 1,
+        "created_step": 10,
+    }
+    (root / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="checkpoint path escapes registry root"):
+        CheckpointRegistry(str(root))
 
 
 def _sha256(path: Path) -> str:

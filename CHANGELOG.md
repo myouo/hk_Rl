@@ -138,6 +138,8 @@ the project version tracks the **schema_version** + roadmap phase.
   `policy_version`, step metadata, index records, and sha256 verification data.
 - CheckpointRegistry now persists versioned torch checkpoints with sha256 hashes
   and reloadable JSONL metadata for worker verification.
+- CheckpointRegistry now rejects index entries whose checkpoint paths escape the
+  registry root.
 - CheckpointClient now pulls local/file registry checkpoints with sha256
   verification before loading weights for hot-swaps.
 - CheckpointClient now rejects registry entries whose checkpoint paths escape the

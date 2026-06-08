@@ -80,6 +80,7 @@ class CheckpointRegistry:
                     meta = _meta_from_payload(payload)
                 except (TypeError, ValueError, KeyError) as exc:
                     raise ValueError(f"invalid checkpoint index line {line_no}") from exc
+                _checkpoint_path(self._root_path, meta.path)
                 if meta.version in self._metas:
                     raise ValueError(f"duplicate checkpoint version {meta.version}")
                 self._metas[meta.version] = meta
@@ -101,6 +102,19 @@ def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
         policy_version=int(payload["policy_version"]),
         created_step=int(payload["created_step"]),
     )
+
+
+def _checkpoint_path(root: Path, path: str) -> Path:
+    checkpoint_path = Path(path)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = root / checkpoint_path
+    resolved_root = root.resolve()
+    resolved_checkpoint = checkpoint_path.expanduser().resolve()
+    try:
+        resolved_checkpoint.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("checkpoint path escapes registry root") from exc
+    return resolved_checkpoint
 
 
 def _sha256_file(path: Path) -> str:
