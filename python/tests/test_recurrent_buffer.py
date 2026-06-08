@@ -38,6 +38,7 @@ def test_recurrent_buffer_chunks_by_episode_and_burn_in() -> None:
             done=np.array([step == 2]),
             truncated=np.array([False]),
             action_mask=np.array([True, True, False, True, False, True]),
+            prev_reward=np.array([float(step)], dtype=np.float32),
             rnn_state=np.full((1, 1, 3), step, dtype=np.float32),
             episode_id=np.array([1 if step <= 2 else 2], dtype=np.uint64),
             task_id=np.array([7], dtype=np.int64),
@@ -64,6 +65,9 @@ def test_recurrent_buffer_chunks_by_episode_and_burn_in() -> None:
     np.testing.assert_array_equal(batch.obs["global"][:, :, 0], [[0, 1, 0], [1, 2, 0], [3, 4, 0]])
     np.testing.assert_allclose(
         batch.advantages, [[3.0, 2.0, 0.0], [2.0, 1.0, 0.0], [2.0, 1.0, 0.0]]
+    )
+    np.testing.assert_allclose(
+        batch.prev_rewards, [[0.0, 1.0, 0.0], [1.0, 2.0, 0.0], [3.0, 4.0, 0.0]]
     )
     np.testing.assert_allclose(buffer.advantages[:, 0], [3.0, 2.0, 1.0, 2.0, 1.0])
     assert batch.rnn_state.shape == (1, 3, 3)
@@ -177,6 +181,7 @@ def _transition(step: int) -> dict[str, object]:
         "log_prob": np.array([0.0], dtype=np.float32),
         "value": np.array([0.0], dtype=np.float32),
         "reward": np.array([0.0], dtype=np.float32),
+        "prev_reward": np.array([float(step)], dtype=np.float32),
         "done": np.array([False]),
         "truncated": np.array([False]),
         "action_mask": np.array([True]),

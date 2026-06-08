@@ -55,6 +55,9 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     assert batch.action_masks.shape == (4, 1, 19)
     assert batch.returns.shape == (4, 1)
     assert batch.policy_version == 0
+    np.testing.assert_array_equal(batch.prev_actions[0, 0], np.zeros((12,), dtype=np.int64))
+    np.testing.assert_array_equal(batch.prev_actions[1, 0], batch.actions[0, 0])
+    np.testing.assert_allclose(batch.prev_rewards[:, 0], [0.0, 1.0, 1.0, 0.0])
     assert env.reset_count == 2
     assert len(env.actions) == 4
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}

@@ -194,6 +194,10 @@ def _tensor_batch(batches: list[RolloutBatch], device: torch.device) -> _TensorB
             _concat(batches, "obs_entities"), device, dtype=torch.float32
         ),
         "entity_mask": _flatten_time_env(_concat(batches, "entity_mask"), device, dtype=torch.bool),
+        "prev_action": _flatten_time_env(
+            _concat(batches, "prev_actions"), device, dtype=torch.float32
+        ),
+        "prev_reward": _flat_vector(_concat(batches, "prev_rewards"), device),
     }
     action_masks = None
     action_mask_array = _concat(batches, "action_masks")

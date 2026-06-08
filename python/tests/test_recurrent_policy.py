@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
@@ -69,6 +70,34 @@ def test_recurrent_policy_sequence_forward_and_evaluate() -> None:
     assert log_prob.shape == (2, 3)
     assert entropy.shape == (2, 3)
     torch.testing.assert_close(eval_value, value)
+
+
+def test_recurrent_policy_accepts_prev_action_and_reward_context() -> None:
+    model = EntityAttentionRecurrentAC(
+        _obs_dims(), entity_hidden=8, rnn_hidden=16, enable_macro=False
+    )
+    obs = _obs(batch_size=2, seq_len=3)
+    obs["prev_action"] = torch.zeros((2, 3, 12), dtype=torch.float32)
+    obs["prev_action"][:, :, 0] = 2
+    obs["prev_reward"] = torch.ones((2, 3), dtype=torch.float32)
+
+    dist, value, next_state = model(obs)
+
+    assert model.rnn.input_size == 8 * 4 + 1
+    assert dist.sample().shape == (2, 3, 12)
+    assert value.shape == (2, 3)
+    assert next_state.shape == (1, 2, 16)
+
+
+def test_recurrent_policy_rejects_bad_prev_action_shape() -> None:
+    model = EntityAttentionRecurrentAC(
+        _obs_dims(), entity_hidden=8, rnn_hidden=16, enable_macro=False
+    )
+    obs = _obs(batch_size=2)
+    obs["prev_action"] = torch.zeros((2, 11), dtype=torch.float32)
+
+    with pytest.raises(ValueError, match="prev_action"):
+        model(obs)
 
 
 def _obs_dims() -> dict[str, tuple[int, ...]]:

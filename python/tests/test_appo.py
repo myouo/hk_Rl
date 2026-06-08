@@ -80,6 +80,8 @@ def test_appo_passes_rollout_rnn_states_to_model() -> None:
     assert metrics["samples"] == 4.0
     assert (1, 2, 3) in model.seen_rnn_shapes
     assert model.seen_rnn_shapes[-1] == (1, 4, 3)
+    assert (2, 12) in model.seen_prev_action_shapes
+    assert (4,) in model.seen_prev_reward_shapes
 
 
 class _RnnAwareActorCritic(ActorCritic):
@@ -87,6 +89,8 @@ class _RnnAwareActorCritic(ActorCritic):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.zeros(()))
         self.seen_rnn_shapes: list[tuple[int, ...] | None] = []
+        self.seen_prev_action_shapes: list[tuple[int, ...]] = []
+        self.seen_prev_reward_shapes: list[tuple[int, ...]] = []
 
     def initial_state(
         self,
@@ -127,6 +131,8 @@ class _RnnAwareActorCritic(ActorCritic):
         action_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         self.seen_rnn_shapes.append(None if rnn_state is None else tuple(rnn_state.shape))
+        self.seen_prev_action_shapes.append(tuple(obs["prev_action"].shape))
+        self.seen_prev_reward_shapes.append(tuple(obs["prev_reward"].shape))
         batch_size = actions.shape[0]
         value = self.weight.expand(batch_size)
         log_prob = self.weight.expand(batch_size)
@@ -184,6 +190,7 @@ def _rnn_batch(policy_version: int) -> RolloutBatch:
         truncateds=np.zeros((4, 1), dtype=bool),
         action_masks=np.ones((4, 1, _mask_dim()), dtype=bool),
         prev_actions=np.zeros((4, 1, 12), dtype=np.int64),
+        prev_rewards=np.arange(4, dtype=np.float32).reshape(4, 1),
         rnn_states=np.arange(12, dtype=np.float32).reshape(4, 1, 1, 3),
         episode_ids=np.ones((4, 1), dtype=np.uint64),
         task_ids=np.zeros((4, 1), dtype=np.int64),
@@ -208,6 +215,7 @@ def _empty_batch(policy_version: int) -> RolloutBatch:
         truncateds=np.zeros((0, 1), dtype=bool),
         action_masks=np.zeros((0, 1, _mask_dim()), dtype=bool),
         prev_actions=np.zeros((0, 1, 12), dtype=np.int64),
+        prev_rewards=np.zeros((0, 1), dtype=np.float32),
         rnn_states=None,
         episode_ids=np.zeros((0, 1), dtype=np.uint64),
         task_ids=np.zeros((0, 1), dtype=np.int64),

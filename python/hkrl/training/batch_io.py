@@ -15,7 +15,7 @@ import numpy as np
 
 from hkrl.training.rollout_buffer import RolloutBatch
 
-BATCH_FORMAT_VERSION = 1
+BATCH_FORMAT_VERSION = 2
 
 _ARRAY_FIELDS: tuple[str, ...] = (
     "obs_global",
@@ -32,6 +32,7 @@ _ARRAY_FIELDS: tuple[str, ...] = (
     "truncateds",
     "action_masks",
     "prev_actions",
+    "prev_rewards",
     "episode_ids",
     "task_ids",
 )
@@ -108,6 +109,7 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
         truncateds=arrays["truncateds"],
         action_masks=arrays["action_masks"],
         prev_actions=arrays["prev_actions"],
+        prev_rewards=arrays["prev_rewards"],
         rnn_states=rnn_states,
         episode_ids=arrays["episode_ids"],
         task_ids=arrays["task_ids"],

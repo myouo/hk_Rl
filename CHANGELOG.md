@@ -134,6 +134,9 @@ the project version tracks the **schema_version** + roadmap phase.
   `(time, env)` prefixes before they reach learner updates.
 - RolloutBatch NPZ deserialization now enforces 4D recurrent-state payloads
   shaped `(time, layers, envs, hidden)`.
+- RolloutBatch NPZ format v2 now carries explicit `prev_rewards`; recurrent
+  policy training/evaluation receives both `prev_action` and `prev_reward`
+  memory context.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

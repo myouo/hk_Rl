@@ -32,6 +32,7 @@ class RolloutBatch:
     truncateds: np.ndarray
     action_masks: np.ndarray
     prev_actions: np.ndarray
+    prev_rewards: np.ndarray
     rnn_states: np.ndarray | None
     episode_ids: np.ndarray
     task_ids: np.ndarray
@@ -72,6 +73,7 @@ class RolloutBuffer:
         self.truncateds = np.zeros(env_prefix, dtype=bool)
         self.action_masks = np.zeros(env_prefix + action_mask_shape, dtype=bool)
         self.prev_actions = np.zeros(env_prefix + action_shape, dtype=np.int64)
+        self.prev_rewards = np.zeros(env_prefix, dtype=np.float32)
         self.advantages = np.zeros(env_prefix, dtype=np.float32)
         self.returns = np.zeros(env_prefix, dtype=np.float32)
         self.episode_ids = np.zeros(env_prefix, dtype=np.uint64)
@@ -104,6 +106,10 @@ class RolloutBuffer:
         self.action_masks[idx] = _env_array(transition["action_mask"], self.num_envs).astype(bool)
         self.prev_actions[idx] = _env_array(
             transition.get("prev_action", np.zeros_like(self.actions[idx])),
+            self.num_envs,
+        )
+        self.prev_rewards[idx] = _flat_env_array(
+            transition.get("prev_reward", np.zeros((self.num_envs,), dtype=np.float32)),
             self.num_envs,
         )
         self.episode_ids[idx] = _flat_env_array(
@@ -150,6 +156,7 @@ class RolloutBuffer:
             truncateds=self.truncateds[:length].copy(),
             action_masks=self.action_masks[:length].copy(),
             prev_actions=self.prev_actions[:length].copy(),
+            prev_rewards=self.prev_rewards[:length].copy(),
             rnn_states=None,
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),

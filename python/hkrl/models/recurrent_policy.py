@@ -17,7 +17,12 @@ from torch import Tensor, nn
 from hkrl.models.base import ActorCritic, RnnState
 from hkrl.models.encoders import EntityEncoder, GlobalEncoder, PlayerEncoder
 from hkrl.models.entity_attention import EntityTransformerEncoder
-from hkrl.models.heads import CompositeActionDistribution, HybridPolicyHead, ValueHead
+from hkrl.models.heads import (
+    ACTION_TENSOR_DIM_NO_MACRO,
+    CompositeActionDistribution,
+    HybridPolicyHead,
+    ValueHead,
+)
 from hkrl.spaces import DEFAULT_N_MACROS
 from hkrl.utils.registry import register_model
 
@@ -49,6 +54,7 @@ class EntityAttentionRecurrentAC(ActorCritic):
             raise ValueError("rnn_type must be 'gru' or 'lstm'")
         self.rnn_type = rnn_type
         self.rnn_hidden = rnn_hidden
+        self.action_dim = ACTION_TENSOR_DIM_NO_MACRO + (1 if enable_macro else 0)
         global_dim = _flat_dim(obs_dims, "global")
         player_dim = _flat_dim(obs_dims, "player")
         entity_shape = _shape(obs_dims, "entities")
@@ -62,7 +68,18 @@ class EntityAttentionRecurrentAC(ActorCritic):
             layers=attention_layers,
             heads=attention_heads,
         )
-        memory_input_dim = entity_hidden * 3
+        self.prev_action_encoder = nn.Sequential(
+            nn.Linear(self.action_dim, entity_hidden),
+            nn.Tanh(),
+        )
+        scale = torch.ones((self.action_dim,), dtype=torch.float32)
+        scale[0] = 2.0
+        scale[1] = 2.0
+        scale[ACTION_TENSOR_DIM_NO_MACRO - 1] = 3.0
+        if enable_macro:
+            scale[-1] = float(max(n_macros, 1))
+        self.register_buffer("_prev_action_scale", scale)
+        memory_input_dim = entity_hidden * 4 + 1
         rnn_cls = nn.GRU if rnn_type == "gru" else nn.LSTM
         self.rnn = rnn_cls(memory_input_dim, rnn_hidden, batch_first=True)
         self.policy = HybridPolicyHead(
@@ -156,7 +173,33 @@ class EntityAttentionRecurrentAC(ActorCritic):
         entity_embs = self.entity_encoder(entities, entity_type=entity_type, entity_id=entity_id)
         entity_context = self.entity_attention(entity_embs, entity_mask)
 
-        memory_input = torch.cat([global_emb, player_emb, entity_context], dim=-1)
+        prev_action = _optional_sequence_feature(
+            obs,
+            "prev_action",
+            batch_size=batch_size,
+            seq_len=seq_len,
+            feature_dim=self.action_dim,
+            device=global_seq.device,
+            dtype=global_seq.dtype,
+        )
+        prev_reward = _optional_sequence_feature(
+            obs,
+            "prev_reward",
+            batch_size=batch_size,
+            seq_len=seq_len,
+            feature_dim=1,
+            device=global_seq.device,
+            dtype=global_seq.dtype,
+        )
+        scale = self._prev_action_scale.to(device=prev_action.device, dtype=prev_action.dtype)
+        prev_action = prev_action / scale.clamp_min(1.0)
+        prev_action_emb = self.prev_action_encoder(prev_action.reshape(batch_size * seq_len, -1))
+        prev_reward = prev_reward.reshape(batch_size * seq_len, 1)
+
+        memory_input = torch.cat(
+            [global_emb, player_emb, entity_context, prev_action_emb, prev_reward],
+            dim=-1,
+        )
         return memory_input.reshape(batch_size, seq_len, -1), is_sequence
 
 
@@ -176,3 +219,34 @@ def _flat_dim(obs_dims: dict[str, Any], key: str) -> int:
     if not shape:
         raise ValueError(f"obs_dims[{key!r}] must have at least one dimension")
     return math.prod(shape)
+
+
+def _optional_sequence_feature(
+    obs: dict[str, Tensor],
+    key: str,
+    *,
+    batch_size: int,
+    seq_len: int,
+    feature_dim: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Tensor:
+    shape = (batch_size, seq_len, feature_dim)
+    value = obs.get(key)
+    if value is None:
+        return torch.zeros(shape, dtype=dtype, device=device)
+
+    tensor = value.to(device=device, dtype=dtype)
+    if feature_dim == 1:
+        if tensor.shape == (batch_size,):
+            tensor = tensor.reshape(batch_size, 1, 1)
+        elif tensor.shape == (batch_size, seq_len):
+            tensor = tensor.unsqueeze(-1)
+        elif tensor.shape == (batch_size, 1) and seq_len == 1:
+            tensor = tensor.reshape(batch_size, 1, 1)
+    elif tensor.shape == (batch_size, feature_dim) and seq_len == 1:
+        tensor = tensor.unsqueeze(1)
+
+    if tensor.shape != shape:
+        raise ValueError(f"obs[{key!r}] must have shape {shape}, got {tuple(tensor.shape)}")
+    return tensor

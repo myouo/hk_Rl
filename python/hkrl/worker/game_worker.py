@@ -90,6 +90,8 @@ class GameWorker:
         self._obs: Any | None = None
         self._info: dict[str, Any] = {}
         self._rnn_state = model.initial_state(batch_size=1, device=self.device)
+        self._prev_action: np.ndarray = np.zeros((1, self.action_dim), dtype=np.int64)
+        self._prev_reward: np.ndarray = np.zeros((1,), dtype=np.float32)
         self.last_batch: RolloutBatch | None = None
         self.worker_crash_count = 0
         self.consecutive_failures = 0
@@ -138,24 +140,37 @@ class GameWorker:
                 dtype=torch.bool,
                 device=self.device,
             )
+            obs_tensor["prev_action"] = torch.as_tensor(
+                self._prev_action,
+                dtype=torch.float32,
+                device=self.device,
+            )
+            obs_tensor["prev_reward"] = torch.as_tensor(
+                self._prev_reward,
+                dtype=torch.float32,
+                device=self.device,
+            )
             rnn_state = self._rnn_state
             action, log_prob, value, next_rnn_state = self.model.act(
                 obs_tensor,
                 rnn_state=rnn_state,
                 action_mask=action_mask_tensor,
             )
+            action_array = action.detach().cpu().numpy()
             env_action = action_tensor_to_env_action(action[0], enable_macro=self.enable_macro)
             next_obs, reward, terminated, truncated, next_info = self.env.step(env_action)
 
             self.buffer.add(
                 obs=obs,
-                action=action.detach().cpu().numpy(),
+                action=action_array,
                 log_prob=log_prob.detach().cpu().numpy(),
                 value=value.detach().cpu().numpy(),
                 reward=np.array([reward], dtype=np.float32),
                 done=np.array([terminated], dtype=bool),
                 truncated=np.array([truncated], dtype=bool),
                 action_mask=action_mask,
+                prev_action=self._prev_action,
+                prev_reward=self._prev_reward,
                 rnn_state=rnn_state,
                 episode_id=np.array([int(info.get("episode_id", 0))], dtype=np.uint64),
                 task_id=np.array([int(info.get("task_id", 0))], dtype=np.int64),
@@ -164,8 +179,11 @@ class GameWorker:
             self._obs = next_obs
             self._info = next_info
             self._rnn_state = next_rnn_state
+            self._prev_action = action_array.astype(np.int64, copy=True)
+            self._prev_reward = np.array([reward], dtype=np.float32)
             if terminated or truncated:
                 self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+                self._clear_memory_context()
                 if self.buffer.is_full():
                     self._obs = None
                     self._info = {}
@@ -221,6 +239,7 @@ class GameWorker:
 
         self._obs, self._info = set_task(task)
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        self._clear_memory_context()
         return True
 
     def _upload_batch(self, batch: RolloutBatch) -> None:
@@ -272,6 +291,7 @@ class GameWorker:
         self._obs = None
         self._info = {}
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        self._clear_memory_context()
 
         reconnect = _find_reconnect(self.env)
         if reconnect is not None:
@@ -284,6 +304,7 @@ class GameWorker:
     def _reset(self) -> None:
         self._obs, self._info = self.env.reset()
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        self._clear_memory_context()
 
     def _action_mask(self, info: dict[str, Any]) -> np.ndarray:
         action_mask = info.get("action_mask")
@@ -303,7 +324,12 @@ class GameWorker:
 
         with torch.no_grad():
             _, value, _ = self.model.forward(
-                _obs_to_tensor(self._obs, self.device),
+                _obs_to_tensor(
+                    self._obs,
+                    self.device,
+                    prev_action=self._prev_action,
+                    prev_reward=self._prev_reward,
+                ),
                 rnn_state=self._rnn_state,
                 action_mask=torch.as_tensor(
                     self._action_mask(self._info)[None, :],
@@ -312,6 +338,10 @@ class GameWorker:
                 ),
             )
         return value.detach().cpu().numpy().reshape(1).astype(np.float32)
+
+    def _clear_memory_context(self) -> None:
+        self._prev_action = np.zeros((1, self.action_dim), dtype=np.int64)
+        self._prev_reward = np.zeros((1,), dtype=np.float32)
 
 
 def action_tensor_to_env_action(
@@ -344,8 +374,14 @@ def action_tensor_to_env_action(
     return env_action
 
 
-def _obs_to_tensor(obs: Any, device: torch.device) -> dict[str, torch.Tensor]:
-    return {
+def _obs_to_tensor(
+    obs: Any,
+    device: torch.device,
+    *,
+    prev_action: np.ndarray | None = None,
+    prev_reward: np.ndarray | None = None,
+) -> dict[str, torch.Tensor]:
+    tensors = {
         "global": torch.as_tensor(obs["global"][None, :], dtype=torch.float32, device=device),
         "player": torch.as_tensor(obs["player"][None, :], dtype=torch.float32, device=device),
         "entities": torch.as_tensor(
@@ -355,6 +391,11 @@ def _obs_to_tensor(obs: Any, device: torch.device) -> dict[str, torch.Tensor]:
             obs["entity_mask"][None, :], dtype=torch.bool, device=device
         ),
     }
+    if prev_action is not None:
+        tensors["prev_action"] = torch.as_tensor(prev_action, dtype=torch.float32, device=device)
+    if prev_reward is not None:
+        tensors["prev_reward"] = torch.as_tensor(prev_reward, dtype=torch.float32, device=device)
+    return tensors
 
 
 def _model_device(model: ActorCritic) -> torch.device:

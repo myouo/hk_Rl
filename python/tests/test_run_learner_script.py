@@ -366,6 +366,7 @@ def _learner_batch() -> RolloutBatch:
         truncateds=np.zeros((time_steps, 1), dtype=bool),
         action_masks=np.ones((time_steps, 1, mask_dim), dtype=bool),
         prev_actions=np.zeros((time_steps, 1, action_dim), dtype=np.int64),
+        prev_rewards=np.zeros((time_steps, 1), dtype=np.float32),
         rnn_states=None,
         episode_ids=np.ones((time_steps, 1), dtype=np.uint64),
         task_ids=np.ones((time_steps, 1), dtype=np.int64),

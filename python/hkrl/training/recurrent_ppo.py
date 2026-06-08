@@ -189,6 +189,8 @@ def _tensor_sequence(sequence: RecurrentSequenceBatch, device: torch.device) -> 
         "entity_mask": torch.as_tensor(
             sequence.obs["entity_mask"], dtype=torch.bool, device=device
         ),
+        "prev_action": torch.as_tensor(sequence.prev_actions, dtype=torch.float32, device=device),
+        "prev_reward": torch.as_tensor(sequence.prev_rewards, dtype=torch.float32, device=device),
     }
     action_masks = None
     if sequence.action_masks.ndim > 2:

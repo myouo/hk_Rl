@@ -37,6 +37,7 @@ class RecurrentSequenceBatch:
     truncateds: np.ndarray
     action_masks: np.ndarray
     prev_actions: np.ndarray
+    prev_rewards: np.ndarray
     rnn_state: Any
     loss_mask: np.ndarray
     episode_ids: np.ndarray
@@ -97,6 +98,7 @@ class RecurrentRolloutBuffer:
         self.truncateds = np.zeros(env_prefix, dtype=bool)
         self.action_masks = np.zeros(env_prefix + action_mask_shape, dtype=bool)
         self.prev_actions = np.zeros(env_prefix + action_shape, dtype=np.int64)
+        self.prev_rewards = np.zeros(env_prefix, dtype=np.float32)
         self.advantages = np.zeros(env_prefix, dtype=np.float32)
         self.returns = np.zeros(env_prefix, dtype=np.float32)
         self.episode_ids = np.zeros(env_prefix, dtype=np.uint64)
@@ -130,6 +132,10 @@ class RecurrentRolloutBuffer:
         self.action_masks[idx] = _env_array(transition["action_mask"], self.num_envs).astype(bool)
         self.prev_actions[idx] = _env_array(
             transition.get("prev_action", np.zeros_like(self.actions[idx])),
+            self.num_envs,
+        )
+        self.prev_rewards[idx] = _flat_env_array(
+            transition.get("prev_reward", np.zeros((self.num_envs,), dtype=np.float32)),
             self.num_envs,
         )
         self.episode_ids[idx] = _flat_env_array(
@@ -178,6 +184,7 @@ class RecurrentRolloutBuffer:
             truncateds=self.truncateds[:length].copy(),
             action_masks=self.action_masks[:length].copy(),
             prev_actions=self.prev_actions[:length].copy(),
+            prev_rewards=self.prev_rewards[:length].copy(),
             rnn_states=_time_rnn_states(self.rnn_states[:length]),
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
@@ -278,6 +285,7 @@ class RecurrentRolloutBuffer:
             dtype=bool,
         )
         prev_actions = np.zeros((batch_size, max_len, *self.prev_actions.shape[2:]), dtype=np.int64)
+        prev_rewards = np.zeros((batch_size, max_len), dtype=np.float32)
         loss_mask = np.zeros((batch_size, max_len), dtype=bool)
         episode_ids = np.zeros((batch_size, max_len), dtype=np.uint64)
         task_ids = np.zeros((batch_size, max_len), dtype=np.int64)
@@ -302,6 +310,7 @@ class RecurrentRolloutBuffer:
             truncateds[batch_idx, target] = self.truncateds[source, env_idx]
             action_masks[batch_idx, target] = self.action_masks[source, env_idx]
             prev_actions[batch_idx, target] = self.prev_actions[source, env_idx]
+            prev_rewards[batch_idx, target] = self.prev_rewards[source, env_idx]
             episode_ids[batch_idx, target] = self.episode_ids[source, env_idx]
             task_ids[batch_idx, target] = self.task_ids[source, env_idx]
             loss_mask[batch_idx, loss_offset : loss_offset + loss_len] = True
@@ -321,6 +330,7 @@ class RecurrentRolloutBuffer:
             truncateds=truncateds,
             action_masks=action_masks,
             prev_actions=prev_actions,
+            prev_rewards=prev_rewards,
             rnn_state=_stack_rnn_states(rnn_states),
             loss_mask=loss_mask,
             episode_ids=episode_ids,

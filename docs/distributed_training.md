@@ -31,13 +31,13 @@ batched multi-env inference, which we don't need here.
 ```text
 obs_global, obs_player, obs_entities, entity_mask,
 actions, log_probs, values, advantages, returns,
-rewards, dones, truncateds, action_masks, prev_actions, rnn_states,
+rewards, dones, truncateds, action_masks, prev_actions, prev_rewards, rnn_states,
 episode_ids, task_ids, policy_version
 ```
 
 Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences for
-recurrent training preserve `rnn_states` at sequence boundaries and mask padded
-timesteps.
+recurrent training preserve `prev_actions`, `prev_rewards`, and `rnn_states` at
+sequence boundaries, and mask padded timesteps.
 When a recurrent worker uploads a flat `RolloutBatch`, `rnn_states` is stored as
 `(time, layers, envs, hidden)` and APPO flattens it to per-sample
 `(layers, batch, hidden)` inputs for one-step actor-critic evaluation. Full
@@ -50,8 +50,9 @@ human-readable task names used in evaluator output.
 
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner
-integration tests. Network transports for batches should preserve this field
-contract even if they use a different envelope. Deserialization rejects batches
+integration tests. Format v2 adds explicit `prev_rewards` for recurrent memory
+context. Network transports for batches should preserve this field contract even
+if they use a different envelope. Deserialization rejects batches
 whose fields do not share the same `(time, env)` prefix, and rejects recurrent
 state payloads that are not `(time, layers, envs, hidden)`, so malformed worker
 uploads fail at the intake boundary instead of inside the optimizer.

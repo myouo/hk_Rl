@@ -233,6 +233,7 @@ def _sample_batch(policy_version: int) -> RolloutBatch:
         truncateds=np.zeros((1, 1), dtype=bool),
         action_masks=np.ones((1, 1, 6), dtype=bool),
         prev_actions=np.zeros((1, 1, 2), dtype=np.int64),
+        prev_rewards=np.zeros((1, 1), dtype=np.float32),
         rnn_states=None,
         episode_ids=np.ones((1, 1), dtype=np.uint64),
         task_ids=np.ones((1, 1), dtype=np.int64),
