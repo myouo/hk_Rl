@@ -84,6 +84,21 @@ def test_load_task_config_preserves_wire_id() -> None:
     assert mantis.wire_id == 2
 
 
+def test_mod_scene_controller_matches_task_wire_ids() -> None:
+    root = Path(__file__).parents[2]
+    source = (root / "mod/HKRLEnvMod/Env/SceneController.cs").read_text(encoding="utf-8")
+    tasks = [
+        load_task_config(Path("../configs/tasks/gruz_mother.yaml")),
+        load_task_config(Path("../configs/tasks/hornet_protector.yaml")),
+        load_task_config(Path("../configs/tasks/mantis_lords.yaml")),
+    ]
+
+    for task in tasks:
+        assert f'{task.wire_id} => "{task.scene}"' in source
+    assert "_ => string.Empty" in source
+    assert "Unknown HKRL task id" in source
+
+
 def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     config = load_train_config(Path("../configs/train/remote_learner.yaml"))
 

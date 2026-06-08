@@ -19,6 +19,12 @@ namespace HKRLEnvMod.Env
         {
             CurrentTaskId = taskId;
             _targetSceneName = ResolveSceneName(taskId);
+            if (string.IsNullOrEmpty(_targetSceneName))
+            {
+                global::HKRLEnvMod.Debug.Logger.Error(
+                    $"Unknown HKRL task id {taskId}; reset will fail scene readiness.");
+                return;
+            }
 
             if (SceneManager.GetActiveScene().name == _targetSceneName)
             {
@@ -30,6 +36,11 @@ namespace HKRLEnvMod.Env
 
         public bool IsSceneReady()
         {
+            if (string.IsNullOrEmpty(_targetSceneName))
+            {
+                return false;
+            }
+
             Scene scene = SceneManager.GetActiveScene();
             return scene.isLoaded && scene.name == _targetSceneName;
         }
@@ -56,9 +67,10 @@ namespace HKRLEnvMod.Env
         {
             return taskId switch
             {
+                0 => "GG_Gruz_Mother",
                 1 => "GG_Hornet_1",
                 2 => "GG_Mantis_Lords",
-                _ => "GG_Gruz_Mother"
+                _ => string.Empty
             };
         }
     }
