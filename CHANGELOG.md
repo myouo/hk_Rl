@@ -122,6 +122,8 @@ the project version tracks the **schema_version** + roadmap phase.
   canonical action-mask layout.
 - Mod STEP dispatch now emits `InvalidAction` reward events for wire-level
   out-of-range action components before applying safe clamped input.
+- Mod StepResponse action masks now use the observed player readiness fields
+  instead of always returning the all-valid fallback mask.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

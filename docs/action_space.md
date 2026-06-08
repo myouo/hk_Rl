@@ -73,6 +73,9 @@ aim_y:      up XOR down             (mutually exclusive by construction)
 Mask layout on the wire is a flat `action_mask[]` bool array; the canonical
 index order (movement, aim, each button, duration, macro) is defined as a
 constant in `hkrl/spaces.py` and MUST match the mod's `ActionMasker`.
+StepResponse masks are computed from the same tick's observed player readiness
+where available (`soul`, grounded/double-jump, and can-attack/cast/focus flags),
+with cooldown/lock timers defaulting open until the mod reader exposes them.
 
 ## 4. Duration & action_repeat
 

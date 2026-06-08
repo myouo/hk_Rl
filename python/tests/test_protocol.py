@@ -177,6 +177,15 @@ def test_mod_step_controller_reports_wire_invalid_actions() -> None:
     assert "action.DurationIdx > 3" in controller
 
 
+def test_mod_step_response_mask_uses_player_state() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "ToPlayerActionState(observation.Player)" in controller
+    assert "soul: player.Soul" in controller
+    assert "canAttack: player.CanAttack" in controller
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,

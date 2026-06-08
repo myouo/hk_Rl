@@ -131,13 +131,14 @@ namespace HKRLEnvMod.Env
                 ? _lifecycle.ErrorCode
                 : commandError;
             var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
+            var actionMask = _masker.Compute(ToPlayerActionState(observation.Player));
             var response = MessageCodec.EncodeStepResponse(
                 request,
                 _serverTick,
                 state,
                 errorCode,
                 rewardEvents,
-                _masker.Compute(),
+                actionMask,
                 terminated,
                 truncated: false,
                 episodeId: _lifecycle.EpisodeId,
@@ -303,6 +304,17 @@ namespace HKRLEnvMod.Env
                 HKRL.RewardEventKind.InvalidAction,
                 auxInt: actionId,
                 auxInt2: reason);
+        }
+
+        private static PlayerActionState ToPlayerActionState(PlayerObservation player)
+        {
+            return new PlayerActionState(
+                soul: player.Soul,
+                onGround: player.OnGround,
+                doubleJumpAvailable: player.DoubleJumpAvailable,
+                canAttack: player.CanAttack,
+                canCast: player.CanCast,
+                canFocus: player.CanFocus);
         }
 
         private HKRL.LifecycleState AdvanceLifecycle()
