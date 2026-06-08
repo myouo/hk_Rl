@@ -6,6 +6,9 @@ The action_mask layout MUST stay self-consistent and match the documented order
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import gymnasium as gym
 import pytest
 from hkrl import spaces
@@ -64,3 +67,52 @@ def test_make_observation_space() -> None:
 def test_make_observation_space_rejects_unknown_tier() -> None:
     with pytest.raises(ValueError, match="unknown observation tier"):
         spaces.make_observation_space(tier="debug")
+
+
+def test_csharp_action_masker_constants_match_python_layout() -> None:
+    constants = _csharp_int_constants(
+        Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/ActionMasker.cs"
+    )
+
+    assert constants["MovementCount"] == spaces.N_MOVEMENT_X
+    assert constants["AimCount"] == spaces.N_AIM_Y
+    assert constants["ButtonCount"] == spaces.N_BUTTONS
+    assert constants["DurationCount"] == spaces.N_DURATION
+    assert constants["DefaultMacroCount"] == spaces.DEFAULT_N_MACROS
+
+    assert constants["MovementOffset"] == 0
+    assert constants["AimOffset"] == spaces.N_MOVEMENT_X
+    assert constants["ButtonOffset"] == spaces.N_MOVEMENT_X + spaces.N_AIM_Y
+    assert constants["DurationOffset"] == (spaces.N_MOVEMENT_X + spaces.N_AIM_Y + spaces.N_BUTTONS)
+    assert constants["MacroOffset"] == len(spaces.action_mask_layout(enable_macro=False))
+
+    assert constants["ButtonJumpTap"] == spaces.BUTTON_BITS["jump_tap"]
+    assert constants["ButtonJumpHold"] == spaces.BUTTON_BITS["jump_hold"]
+    assert constants["ButtonDash"] == spaces.BUTTON_BITS["dash"]
+    assert constants["ButtonAttack"] == spaces.BUTTON_BITS["attack"]
+    assert constants["ButtonCast"] == spaces.BUTTON_BITS["cast"]
+    assert constants["ButtonFocusHold"] == spaces.BUTTON_BITS["focus_hold"]
+    assert constants["ButtonDreamNail"] == spaces.BUTTON_BITS["dream_nail"]
+    assert constants["ButtonNailArtHold"] == spaces.BUTTON_BITS["nail_art_hold"]
+    assert constants["ButtonNailArtRelease"] == spaces.BUTTON_BITS["nail_art_release"]
+
+
+def test_csharp_input_injector_button_mask_matches_python_layout() -> None:
+    text = (Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/InputInjector.cs").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r"ButtonMask\s*=\s*\(1u\s*<<\s*(\d+)\)\s*-\s*1u", text)
+    assert match is not None
+    assert int(match.group(1)) == spaces.N_BUTTONS
+
+
+def _csharp_int_constants(path: Path) -> dict[str, int]:
+    constants: dict[str, int] = {}
+    text = path.read_text(encoding="utf-8")
+    for name, expression in re.findall(r"public const int (\w+) = ([^;]+);", text):
+        parts = [part.strip() for part in expression.split("+")]
+        value = 0
+        for part in parts:
+            value += int(part) if part.isdigit() else constants[part]
+        constants[name] = value
+    return constants
