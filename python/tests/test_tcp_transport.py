@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 
 import pytest
-from hkrl.transport.tcp import TcpTransport
+from hkrl.transport.tcp import MAX_FRAME_BYTES, TcpTransport
 
 
 def _start_server(handler: Callable[[socket.socket], None]) -> tuple[str, int, threading.Thread]:
@@ -83,6 +83,21 @@ def test_tcp_transport_recv_timeout() -> None:
         transport.recv(timeout_s=0.01)
 
     transport.close()
+    thread.join(timeout=1.0)
+
+
+def test_tcp_transport_rejects_oversized_frame_header() -> None:
+    def handler(conn: socket.socket) -> None:
+        conn.sendall(struct.pack("<I", MAX_FRAME_BYTES + 1))
+
+    host, port, thread = _start_server(handler)
+    transport = TcpTransport(host, port)
+
+    transport.connect(timeout_s=1.0)
+    with pytest.raises(ValueError, match="frame too large"):
+        transport.recv(timeout_s=1.0)
+
+    assert not transport.is_connected()
     thread.join(timeout=1.0)
 
 

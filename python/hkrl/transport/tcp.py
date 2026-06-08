@@ -14,6 +14,8 @@ from contextlib import suppress
 from hkrl.transport.base import Transport
 from hkrl.utils.registry import register_transport
 
+MAX_FRAME_BYTES = 64 * 1024 * 1024
+
 
 @register_transport("tcp")
 class TcpTransport(Transport):
@@ -62,6 +64,9 @@ class TcpTransport(Transport):
         try:
             header = self._recv_exact(4)
             (length,) = struct.unpack("<I", header)
+            if length > MAX_FRAME_BYTES:
+                self.close()
+                raise ValueError("TCP frame too large")
             return self._recv_exact(length)
         finally:
             if self._sock is sock:
@@ -91,8 +96,8 @@ class TcpTransport(Transport):
 
     @staticmethod
     def _send_frame(sock: socket.socket, frame: bytes) -> None:
-        if len(frame) > 0xFFFFFFFF:
-            raise ValueError("frame too large for uint32 length prefix")
+        if len(frame) > MAX_FRAME_BYTES:
+            raise ValueError("TCP frame too large")
         sock.sendall(struct.pack("<I", len(frame)) + frame)
 
     def _recv_exact(self, size: int) -> bytes:
