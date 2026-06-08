@@ -175,6 +175,9 @@ the project version tracks the **schema_version** + roadmap phase.
   the submitted batches through learner update/checkpoint publication.
 - `scripts/run_learner.py` can now infer learner model/action layout from task
   YAMLs and rejects multi-task sets with incompatible observation/action widths.
+- `scripts/run_worker.py` and `scripts/run_learner.py` now treat MLP
+  `model.rnn_hidden: 0` as the default hidden width instead of constructing an
+  invalid zero-width network.
 - `scripts/run_worker.py` now builds config/task-driven worker wiring with a
   dry-run mode, optional checkpoint registry probing, NPZ batch spooling, and
   configurable recovery limits.

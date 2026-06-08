@@ -93,6 +93,25 @@ def test_run_worker_rejects_incompatible_task_layouts() -> None:
         raise AssertionError("expected incompatible macro layouts to fail")
 
 
+def test_run_worker_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None:
+    module = _load_script("run_worker.py")
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+    model = module._build_model(
+        cfg,
+        {
+            "global": (2,),
+            "player": (3,),
+            "entities": (4, 5),
+            "entity_mask": (4,),
+        },
+        enable_macro=True,
+        n_macros=11,
+        max_entities=4,
+    )
+
+    assert model.trunk[0].out_features == 256
+
+
 def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:
     module = _load_script("run_worker.py")
     written: list[str] = []

@@ -153,7 +153,7 @@ def _build_model(
     if cfg.model.name == "mlp":
         return model_cls(
             obs_dims,
-            hidden=cfg.model.rnn_hidden,
+            hidden=cfg.model.rnn_hidden or 256,
             enable_macro=enable_macro,
             n_macros=n_macros,
         )

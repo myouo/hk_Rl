@@ -222,6 +222,25 @@ def test_run_learner_rejects_incompatible_task_layouts() -> None:
         module._validate_task_layouts(tasks)
 
 
+def test_run_learner_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None:
+    module = _load_script("run_learner.py")
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+    model = module._build_model(
+        cfg,
+        {
+            "global": (2,),
+            "player": (3,),
+            "entities": (4, 5),
+            "entity_mask": (4,),
+        },
+        max_entities=4,
+        enable_macro=True,
+        n_macros=11,
+    )
+
+    assert model.trunk[0].out_features == 256
+
+
 def _load_script(name: str) -> ModuleType:
     path = Path(__file__).parents[2] / "scripts" / name
     spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)
