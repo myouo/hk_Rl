@@ -6,8 +6,15 @@ import threading
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
-from hkrl.learner.batch_intake import BatchIntakeClient, BatchIntakeResult, BatchIntakeServer
+from hkrl.learner.batch_intake import (
+    BATCH_INTAKE_TYPE,
+    BatchIntakeClient,
+    BatchIntakeResult,
+    BatchIntakeServer,
+    _validate_header,
+)
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.learner.learner_server import LearnerServer
 from hkrl.models.mlp import MlpActorCritic
@@ -52,6 +59,11 @@ def test_batch_intake_client_submits_to_learner_server(tmp_path: Path) -> None:
     assert server.rejected_batches == 0
     assert len(results) == 1
     assert results[0].accepted is True
+
+
+def test_batch_intake_rejects_invalid_auth_token() -> None:
+    with pytest.raises(PermissionError, match="auth token"):
+        _validate_header({"type": BATCH_INTAKE_TYPE, "token": "wrong"}, "secret")
 
 
 def _serve_once(
