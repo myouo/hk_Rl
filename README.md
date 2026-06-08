@@ -73,6 +73,13 @@ python scripts/train.py \
   --smoke \
   --steps 100 \
   --metrics runs/smoke.jsonl
+
+# 4. 固定 seed 评估（同样需要本地 HKRLEnvMod TCP）
+python scripts/run_eval.py \
+  --policy scripted \
+  --tasks configs/tasks/gruz_mother.yaml \
+  --episodes 5 \
+  --seeds 0 1 2
 ```
 
 ## CI

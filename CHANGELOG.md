@@ -59,6 +59,8 @@ the project version tracks the **schema_version** + roadmap phase.
   and attacks the nearest boss/entity from structured observations.
 - Evaluator now runs fixed-seed task episodes through an injected eval env factory,
   aggregates shaping-free metrics, and reports win-rate regression deltas.
+- `scripts/run_eval.py` now runs fixed-seed evaluator jobs for scripted or MLP
+  checkpoint policies and emits JSON metrics/regression output.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
