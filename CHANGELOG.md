@@ -62,6 +62,8 @@ the project version tracks the **schema_version** + roadmap phase.
   FixedUpdate driver, and disposes transport resources on driver destruction.
 - Mod SimControl now applies time scale, pause, and resume through Unity
   `Time.timeScale`/`fixedDeltaTime` on the main thread.
+- Mod SceneController now maps known task ids to Godhome scenes and reports
+  scene/player/boss readiness from Unity main-thread state.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 
