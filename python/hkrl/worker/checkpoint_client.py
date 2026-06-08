@@ -95,6 +95,8 @@ def _load_index(root: Path) -> dict[int, CheckpointMeta]:
                 meta = _meta_from_payload(payload)
             except (TypeError, ValueError, KeyError) as exc:
                 raise ValueError(f"invalid checkpoint index line {line_no}") from exc
+            if meta.version in metas:
+                raise ValueError(f"duplicate checkpoint version {meta.version}")
             metas[meta.version] = meta
     return metas
 

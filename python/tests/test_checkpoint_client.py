@@ -75,6 +75,17 @@ def test_checkpoint_client_rejects_paths_outside_registry_root(tmp_path: Path) -
         client.pull(1)
 
 
+def test_checkpoint_client_rejects_duplicate_index_versions(tmp_path: Path) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
+    with (tmp_path / "index.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({**meta.__dict__, "path": meta.path}) + "\n")
+    client = CheckpointClient(str(tmp_path))
+
+    with pytest.raises(ValueError, match="duplicate checkpoint version"):
+        client.latest_version()
+
+
 def test_checkpoint_client_rejects_unsupported_endpoint() -> None:
     with pytest.raises(ValueError, match="unsupported checkpoint registry endpoint"):
         CheckpointClient("https://example.invalid/checkpoints")
