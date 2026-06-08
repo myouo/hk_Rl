@@ -344,9 +344,13 @@ namespace HKRLEnvMod.Env
         private static PlayerActionState ToPlayerActionState(PlayerObservation player)
         {
             return new PlayerActionState(
+                dashCooldown: player.DashCooldown,
                 soul: player.Soul,
+                attackLockTimer: player.AttackLockTimer,
+                castLockTimer: player.CastLockTimer,
                 onGround: player.OnGround,
                 doubleJumpAvailable: player.DoubleJumpAvailable,
+                focusing: player.FocusState > 0,
                 canAttack: player.CanAttack,
                 canCast: player.CanCast,
                 canFocus: player.CanFocus);

@@ -139,6 +139,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod StepResponse action masks now also mask macro actions whose primitive
   sequences require currently unavailable jump, dash, attack, cast, or focus
   inputs.
+- Mod PlayerObserver now carries player cooldown, lock, focus, movement-state,
+  and invulnerability fields through PlayerState encoding and action-mask
+  readiness.
 - Mod PlayerObserver now reads hp/soul from PlayerData via reflection with safe
   fallbacks for minor game/API field-name drift.
 - Mod PlayerObserver caches PlayerData type lookup so per-tick observation reads

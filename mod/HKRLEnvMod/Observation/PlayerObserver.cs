@@ -20,7 +20,18 @@ namespace HKRLEnvMod.Observation
             bool doubleJumpAvailable,
             bool canAttack,
             bool canCast,
-            bool canFocus)
+            bool canFocus,
+            bool wallSliding = false,
+            bool jumping = false,
+            bool falling = false,
+            bool dashing = false,
+            bool shadowDashing = false,
+            bool invulnerable = false,
+            float invulnTimer = 0.0f,
+            float attackLockTimer = 0.0f,
+            float castLockTimer = 0.0f,
+            byte focusState = 0,
+            float dashCooldown = 0.0f)
         {
             PosX = posX;
             PosY = posY;
@@ -36,6 +47,17 @@ namespace HKRLEnvMod.Observation
             CanAttack = canAttack;
             CanCast = canCast;
             CanFocus = canFocus;
+            WallSliding = wallSliding;
+            Jumping = jumping;
+            Falling = falling;
+            Dashing = dashing;
+            ShadowDashing = shadowDashing;
+            Invulnerable = invulnerable;
+            InvulnTimer = invulnTimer;
+            AttackLockTimer = attackLockTimer;
+            CastLockTimer = castLockTimer;
+            FocusState = focusState;
+            DashCooldown = dashCooldown;
         }
 
         public float PosX { get; }
@@ -52,6 +74,17 @@ namespace HKRLEnvMod.Observation
         public bool CanAttack { get; }
         public bool CanCast { get; }
         public bool CanFocus { get; }
+        public bool WallSliding { get; }
+        public bool Jumping { get; }
+        public bool Falling { get; }
+        public bool Dashing { get; }
+        public bool ShadowDashing { get; }
+        public bool Invulnerable { get; }
+        public float InvulnTimer { get; }
+        public float AttackLockTimer { get; }
+        public float CastLockTimer { get; }
+        public byte FocusState { get; }
+        public float DashCooldown { get; }
     }
 
     /// <summary>
@@ -95,6 +128,7 @@ namespace HKRLEnvMod.Observation
             var maxHp = ReadInt(playerData, 1, "maxHealth", "MaxHealth");
             var soul = ReadInt(playerData, 0, "MPCharge", "soul", "Soul");
             var maxSoul = ReadInt(playerData, 99, "maxMP", "MaxMP", "maxSoul", "MaxSoul");
+            var focusing = ReadBool(hero, false, "cState.focusing", "focusing", "Focusing");
             return new PlayerObservation(
                 position.x,
                 position.y,
@@ -105,11 +139,62 @@ namespace HKRLEnvMod.Observation
                 soul,
                 maxSoul,
                 facing,
-                onGround: true,
-                doubleJumpAvailable: true,
-                canAttack: true,
-                canCast: true,
-                canFocus: true);
+                onGround: ReadBool(hero, true, "cState.onGround", "onGround", "OnGround"),
+                doubleJumpAvailable: ReadBool(
+                    hero,
+                    true,
+                    "cState.doubleJumpAvailable",
+                    "doubleJumpAvailable",
+                    "DoubleJumpAvailable"),
+                canAttack: ReadBool(hero, true, "canAttack", "CanAttack"),
+                canCast: ReadBool(hero, true, "canCast", "CanCast"),
+                canFocus: ReadBool(hero, true, "canFocus", "CanFocus"),
+                wallSliding: ReadBool(
+                    hero,
+                    false,
+                    "cState.wallSliding",
+                    "wallSliding",
+                    "WallSliding"),
+                jumping: ReadBool(hero, false, "cState.jumping", "jumping", "Jumping"),
+                falling: ReadBool(hero, false, "cState.falling", "falling", "Falling"),
+                dashing: ReadBool(hero, false, "cState.dashing", "dashing", "Dashing"),
+                shadowDashing: ReadBool(
+                    hero,
+                    false,
+                    "cState.shadowDashing",
+                    "shadowDashing",
+                    "ShadowDashing"),
+                invulnerable: ReadBool(
+                    hero,
+                    false,
+                    "cState.invulnerable",
+                    "invulnerable",
+                    "Invulnerable"),
+                invulnTimer: ReadFloat(
+                    hero,
+                    0.0f,
+                    "invulnerableTimer",
+                    "invulnTimer",
+                    "invuln_timer"),
+                attackLockTimer: ReadFloat(
+                    hero,
+                    0.0f,
+                    "attackLockTimer",
+                    "attack_cooldown",
+                    "attackCooldownTimer"),
+                castLockTimer: ReadFloat(
+                    hero,
+                    0.0f,
+                    "castLockTimer",
+                    "cast_cooldown",
+                    "spellControl.timer"),
+                focusState: ClampByte(ReadInt(hero, focusing ? 1 : 0, "focusState", "FocusState")),
+                dashCooldown: ReadFloat(
+                    hero,
+                    0.0f,
+                    "dashCooldown",
+                    "dashCooldownTimer",
+                    "dash_cooldown"));
         }
 
         private static object? FindSingleton(string typeName, string memberName)
@@ -205,16 +290,7 @@ namespace HKRLEnvMod.Observation
 
         private static bool TryReadIntMember(object target, string name, out int value)
         {
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            var type = target.GetType();
-            var field = type.GetField(name, flags);
-            if (field != null && TryConvertInt(field.GetValue(target), out value))
-            {
-                return true;
-            }
-
-            var property = type.GetProperty(name, flags);
-            if (property != null && TryConvertInt(property.GetValue(target, null), out value))
+            if (TryReadMemberPath(target, name, out var rawValue) && TryConvertInt(rawValue, out value))
             {
                 return true;
             }
@@ -240,6 +316,120 @@ namespace HKRLEnvMod.Observation
             return false;
         }
 
+        private static bool ReadBool(object? target, bool fallback, params string[] names)
+        {
+            if (target == null)
+            {
+                return fallback;
+            }
+
+            foreach (var name in names)
+            {
+                if (TryReadMemberPath(target, name, out var value) && TryConvertBool(value, out var result))
+                {
+                    return result;
+                }
+            }
+
+            return fallback;
+        }
+
+        private static float ReadFloat(object? target, float fallback, params string[] names)
+        {
+            if (target == null)
+            {
+                return fallback;
+            }
+
+            foreach (var name in names)
+            {
+                if (TryReadMemberPath(target, name, out var value) && TryConvertFloat(value, out var result))
+                {
+                    return result;
+                }
+                if (TryReadGetFloat(target, name, out var getFloatValue))
+                {
+                    return getFloatValue;
+                }
+            }
+
+            return fallback;
+        }
+
+        private static bool TryReadGetFloat(object target, string name, out float value)
+        {
+            var method = target.GetType().GetMethod(
+                "GetFloat",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                types: new[] { typeof(string) },
+                modifiers: null);
+            if (method != null && TryConvertFloat(method.Invoke(target, new object[] { name }), out value))
+            {
+                return true;
+            }
+
+            value = 0.0f;
+            return false;
+        }
+
+        private static bool TryReadMemberPath(object target, string path, out object? value)
+        {
+            value = target;
+            var parts = path.Split('.');
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (value == null || !TryReadRawMember(value, parts[i], out value))
+                {
+                    value = null;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryReadRawMember(object target, string name, out object? value)
+        {
+            var flags = BindingFlags.Public
+                | BindingFlags.NonPublic
+                | BindingFlags.Instance
+                | BindingFlags.Static;
+            var type = target.GetType();
+            var field = type.GetField(name, flags);
+            if (field != null)
+            {
+                try
+                {
+                    value = field.GetValue(target);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    value = null;
+                    return false;
+                }
+            }
+
+            var property = type.GetProperty(name, flags);
+            if (property != null && property.GetIndexParameters().Length == 0)
+            {
+                try
+                {
+                    value = property.GetValue(target, null);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    value = null;
+                    return false;
+                }
+            }
+
+            value = null;
+            return false;
+        }
+
         private static bool TryConvertInt(object? input, out int value)
         {
             switch (input)
@@ -257,6 +447,58 @@ namespace HKRLEnvMod.Observation
                     value = 0;
                     return false;
             }
+        }
+
+        private static bool TryConvertBool(object? input, out bool value)
+        {
+            switch (input)
+            {
+                case bool boolValue:
+                    value = boolValue;
+                    return true;
+                case int intValue:
+                    value = intValue != 0;
+                    return true;
+                case byte byteValue:
+                    value = byteValue != 0;
+                    return true;
+                default:
+                    value = false;
+                    return false;
+            }
+        }
+
+        private static bool TryConvertFloat(object? input, out float value)
+        {
+            switch (input)
+            {
+                case float floatValue:
+                    value = floatValue;
+                    return true;
+                case double doubleValue:
+                    value = (float)doubleValue;
+                    return true;
+                case int intValue:
+                    value = intValue;
+                    return true;
+                default:
+                    value = 0.0f;
+                    return false;
+            }
+        }
+
+        private static byte ClampByte(int value)
+        {
+            if (value < 0)
+            {
+                return 0;
+            }
+            if (value > byte.MaxValue)
+            {
+                return byte.MaxValue;
+            }
+
+            return (byte)value;
         }
     }
 }

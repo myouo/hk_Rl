@@ -74,9 +74,10 @@ Partial observability is mitigated by **explicit state**, not only frame stackin
 cooldowns, lock timers, hitbox-active flags, projectile `ttl`, invuln windows are
 all in the schema. Remaining temporal structure (boss wind-up, trajectory history)
 is handled by the recurrent memory ([`model_architecture.md`](./model_architecture.md)).
-The mod reads player hp/soul from `PlayerData` via reflection with safe fallbacks
-so minor Hollow Knight/Modding API field-name drift degrades to conservative
-defaults instead of crashing the main loop.
+The mod reads player hp/soul plus readiness/timer fields from `PlayerData` and
+`HeroController` via reflection with safe fallbacks, so minor Hollow
+Knight/Modding API field-name drift degrades to conservative defaults instead
+of crashing the main loop.
 
 ## 6. Health checks (PRD §9.9)
 

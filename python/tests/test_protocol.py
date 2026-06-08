@@ -264,7 +264,11 @@ def test_mod_step_response_mask_uses_player_state() -> None:
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
 
     assert "ToPlayerActionState(observation.Player)" in controller
+    assert "dashCooldown: player.DashCooldown" in controller
     assert "soul: player.Soul" in controller
+    assert "attackLockTimer: player.AttackLockTimer" in controller
+    assert "castLockTimer: player.CastLockTimer" in controller
+    assert "focusing: player.FocusState > 0" in controller
     assert "canAttack: player.CanAttack" in controller
 
 
@@ -279,6 +283,48 @@ def test_mod_player_observer_reads_playerdata_with_fallbacks() -> None:
     assert '"maxMP"' in observer
     assert "_playerDataTypeSearched" in observer
     assert "TryReadGetInt" in observer
+    assert "TryReadMemberPath" in observer
+    assert "ReadFloat" in observer
+    assert '"cState.onGround"' in observer
+    assert '"attackLockTimer"' in observer
+    assert '"dashCooldown"' in observer
+
+
+def test_mod_player_observation_carries_markov_timer_fields() -> None:
+    root = Path(__file__).parents[2]
+    observer = (root / "mod/HKRLEnvMod/Observation/PlayerObserver.cs").read_text(encoding="utf-8")
+    codec = (root / "mod/HKRLEnvMod/Transport/MessageCodec.cs").read_text(encoding="utf-8")
+
+    property_types = {
+        "WallSliding": "bool",
+        "Jumping": "bool",
+        "Falling": "bool",
+        "Dashing": "bool",
+        "ShadowDashing": "bool",
+        "Invulnerable": "bool",
+        "InvulnTimer": "float",
+        "AttackLockTimer": "float",
+        "CastLockTimer": "float",
+        "FocusState": "byte",
+        "DashCooldown": "float",
+    }
+    for prop, csharp_type in property_types.items():
+        assert f"public {csharp_type} {prop}" in observer
+
+    for field in (
+        "wall_sliding: player.WallSliding",
+        "jumping: player.Jumping",
+        "falling: player.Falling",
+        "dashing: player.Dashing",
+        "shadow_dashing: player.ShadowDashing",
+        "invulnerable: player.Invulnerable",
+        "invuln_timer: player.InvulnTimer",
+        "attack_lock_timer: player.AttackLockTimer",
+        "cast_lock_timer: player.CastLockTimer",
+        "focus_state: player.FocusState",
+        "dash_cooldown: player.DashCooldown",
+    ):
+        assert field in codec
 
 
 def test_mod_reward_hooks_log_exceptions() -> None:
