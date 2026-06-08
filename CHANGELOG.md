@@ -28,6 +28,9 @@ the project version tracks the **schema_version** + roadmap phase.
   timeout/disconnect handling, and localhost framing tests.
 - TcpTransport now supports an opt-in length-prefixed auth-token handshake frame
   before regular protocol traffic.
+- Python TCP entry points now honor `security.require_token` by reading
+  `security.auth_token_env`, and the mod TCP server consumes/verifies the auth
+  frame before forwarding protocol requests.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with
   connection lifecycle, timeout, reconnect, and capacity handling.
 - Python FlatBuffers StepRequest/StepResponse encode/decode helpers with schema

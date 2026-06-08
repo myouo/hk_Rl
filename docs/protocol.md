@@ -87,5 +87,7 @@ schema append-only (see [`../schema/README.md`](../schema/README.md)).
 ## 8. Security (PRD §9.10)
 
 Bind to `localhost` or LAN only; never expose a public port. Optional token auth
-on connect. Workers execute only whitelisted commands. Checkpoints are
-hash-verified before load.
+uses an initial length-prefixed `HKRL_AUTH\0<token>` frame before any
+FlatBuffers `StepRequest`; the mod consumes that frame on the network thread and
+never forwards it to the StepController. Workers execute only whitelisted
+commands. Checkpoints are hash-verified before load.

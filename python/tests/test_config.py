@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from hkrl.utils.config import load_train_config, load_yaml
+from hkrl.utils.config import load_train_config, load_yaml, resolve_auth_token
 
 
 def _write_yaml(path: Path, data: dict[str, object]) -> None:
@@ -74,3 +74,25 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     assert config.coordinator.num_workers == 4
     assert config.security.bind_scope == "lan"
     assert config.security.require_token is True
+    assert config.security.auth_token_env == "HKRL_AUTH_TOKEN"
+
+
+def test_resolve_auth_token_uses_configured_environment() -> None:
+    config = load_train_config(Path("../configs/train/remote_learner.yaml"))
+
+    assert resolve_auth_token(config, {"HKRL_AUTH_TOKEN": "secret"}) == "secret"
+
+
+def test_resolve_auth_token_requires_non_empty_token() -> None:
+    config = load_train_config(Path("../configs/train/remote_learner.yaml"))
+
+    with pytest.raises(ValueError, match="HKRL_AUTH_TOKEN"):
+        resolve_auth_token(config, {})
+    with pytest.raises(ValueError, match="HKRL_AUTH_TOKEN"):
+        resolve_auth_token(config, {"HKRL_AUTH_TOKEN": ""})
+
+
+def test_resolve_auth_token_returns_none_when_disabled() -> None:
+    config = load_train_config(Path("../configs/train/ppo_mlp.yaml"))
+
+    assert resolve_auth_token(config, {}) is None

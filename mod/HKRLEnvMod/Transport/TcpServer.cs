@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 
 namespace HKRLEnvMod.Transport
@@ -16,9 +17,11 @@ namespace HKRLEnvMod.Transport
     public sealed class TcpServer : IDisposable
     {
         private const int MaxFrameBytes = 16 * 1024 * 1024;
+        private static readonly byte[] AuthPrefix = Encoding.ASCII.GetBytes("HKRL_AUTH\0");
 
         private readonly IPAddress _address;
         private readonly int _port;
+        private readonly string? _authToken;
         private readonly object _gate = new();
 
         private TcpListener? _listener;
@@ -32,10 +35,16 @@ namespace HKRLEnvMod.Transport
         /// <summary>Outbound StepResponse frames, filled by the main thread.</summary>
         public readonly ConcurrentQueue<byte[]> OutboundResponses = new();
 
-        public TcpServer(string host = "127.0.0.1", int port = 5555)
+        public TcpServer(string host = "127.0.0.1", int port = 5555, string? authToken = null)
         {
+            if (authToken == string.Empty)
+            {
+                throw new ArgumentException("authToken must not be empty", nameof(authToken));
+            }
+
             _address = ResolveAddress(host);
             _port = port;
+            _authToken = authToken;
         }
 
         /// <summary>Start the network thread (accept + recv/send loop).</summary>
@@ -124,6 +133,7 @@ namespace HKRLEnvMod.Transport
         private void ServeClient(TcpClient client)
         {
             using var stream = client.GetStream();
+            var authenticated = _authToken == null;
 
             while (_running && client.Connected)
             {
@@ -137,6 +147,21 @@ namespace HKRLEnvMod.Transport
 
                 var payload = ReadFrame(stream);
                 if (payload == null)
+                {
+                    return;
+                }
+
+                if (IsAuthFrame(payload))
+                {
+                    authenticated = ValidateAuthFrame(payload);
+                    if (!authenticated)
+                    {
+                        return;
+                    }
+                    continue;
+                }
+
+                if (!authenticated)
                 {
                     return;
                 }
@@ -174,6 +199,35 @@ namespace HKRLEnvMod.Transport
 
             var payload = new byte[length];
             return ReadExact(stream, payload, payload.Length) ? payload : null;
+        }
+
+        private bool ValidateAuthFrame(byte[] payload)
+        {
+            if (_authToken == null)
+            {
+                return true;
+            }
+
+            var token = Encoding.UTF8.GetString(payload, AuthPrefix.Length, payload.Length - AuthPrefix.Length);
+            return string.Equals(token, _authToken, StringComparison.Ordinal);
+        }
+
+        private static bool IsAuthFrame(byte[] payload)
+        {
+            if (payload.Length < AuthPrefix.Length)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < AuthPrefix.Length; i++)
+            {
+                if (payload[i] != AuthPrefix[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool ReadExact(Stream stream, byte[] buffer, int length)

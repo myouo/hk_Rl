@@ -13,7 +13,8 @@ from hkrl.training.batch_io import load_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
 
 
-def test_run_worker_dry_run_builds_summary(tmp_path: Path) -> None:
+def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.delenv("HKRL_AUTH_TOKEN", raising=False)
     registry = CheckpointRegistry(str(tmp_path / "checkpoints"))
     registry.publish({"model_state_dict": {}, "policy_version": 3}, policy_version=3, step=1)
     module = _load_script("run_worker.py")
@@ -34,6 +35,9 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path) -> None:
 
     assert summary == {
         "algorithm": "appo",
+        "auth_token_configured": False,
+        "auth_token_env": "HKRL_AUTH_TOKEN",
+        "auth_token_required": True,
         "batch_dir": str(tmp_path / "batches"),
         "dry_run": True,
         "learner": "127.0.0.1:5600",

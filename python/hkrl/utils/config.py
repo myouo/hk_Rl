@@ -7,6 +7,7 @@ a train run references a task config and a model config.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,7 @@ class SecurityConfig(BaseModel):
 
     bind_scope: str = "lan"  # lan | localhost
     require_token: bool = False
+    auth_token_env: str = "HKRL_AUTH_TOKEN"
 
 
 class TrainConfig(BaseModel):
@@ -173,3 +175,26 @@ def load_train_config(path: str | Path) -> TrainConfig:
 def load_task_config(path: str | Path) -> TaskConfig:
     """Load and validate a task config."""
     return TaskConfig.model_validate(load_yaml(path))
+
+
+def resolve_auth_token(
+    config: TrainConfig,
+    environ: Mapping[str, str] | None = None,
+) -> str | None:
+    """Resolve the TCP auth token required by a TrainConfig.
+
+    Returns ``None`` when token auth is disabled. When
+    ``security.require_token`` is true, the token must be present in
+    ``security.auth_token_env`` and must not be empty.
+    """
+    if not config.security.require_token:
+        return None
+
+    env = os.environ if environ is None else environ
+    token = env.get(config.security.auth_token_env)
+    if token is None or token == "":
+        raise ValueError(
+            "security.require_token is true but environment variable "
+            f"{config.security.auth_token_env!r} is not set"
+        )
+    return token

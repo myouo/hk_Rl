@@ -86,7 +86,13 @@ namespace HKRLEnvMod
 
             try
             {
-                _server = new TcpServer(host, port);
+                string? authToken = Environment.GetEnvironmentVariable("HKRL_AUTH_TOKEN");
+                if (string.IsNullOrEmpty(authToken))
+                {
+                    authToken = null;
+                }
+
+                _server = new TcpServer(host, port, authToken);
                 RewardEventBuffer rewards = new RewardEventBuffer();
                 DamageHooks.Install(rewards);
                 DeathHooks.Install(rewards);
@@ -103,7 +109,8 @@ namespace HKRLEnvMod
                 _server.Start();
                 _configured = true;
                 global::HKRLEnvMod.Debug.Logger.Info(
-                    $"HKRL TCP environment server listening on {host}:{port}.");
+                    $"HKRL TCP environment server listening on {host}:{port}; "
+                    + $"auth={(authToken == null ? "disabled" : "enabled")}.");
             }
             catch (Exception exception)
             {

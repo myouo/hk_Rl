@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
-from hkrl.utils.config import load_task_config, load_train_config
+from hkrl.utils.config import load_task_config, load_train_config, resolve_auth_token
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
 from hkrl.worker.game_worker import GameWorker
@@ -72,11 +73,15 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     checkpoint_client = CheckpointClient(args.registry) if args.registry else None
 
     if args.dry_run:
+        auth_token_env = cfg.security.auth_token_env
         latest_checkpoint = (
             None if checkpoint_client is None else checkpoint_client.latest_version()
         )
         return {
             "algorithm": cfg.algorithm,
+            "auth_token_configured": bool(os.environ.get(auth_token_env)),
+            "auth_token_env": auth_token_env,
+            "auth_token_required": cfg.security.require_token,
             "dry_run": True,
             "batch_dir": args.batch_dir,
             "learner": args.learner,
@@ -95,7 +100,11 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     from hkrl.transport.tcp import TcpTransport
     from hkrl.wrappers import NormalizeObservation
 
-    transport = TcpTransport(host=cfg.transport.host, port=cfg.transport.port)
+    transport = TcpTransport(
+        host=cfg.transport.host,
+        port=cfg.transport.port,
+        auth_token=resolve_auth_token(cfg),
+    )
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     spooled_batches: list[str] = []
     worker = GameWorker(

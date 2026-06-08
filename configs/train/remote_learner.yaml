@@ -21,3 +21,4 @@ coordinator:
 security:
   bind_scope: lan              # lan | localhost
   require_token: true
+  auth_token_env: HKRL_AUTH_TOKEN
