@@ -134,6 +134,9 @@ the project version tracks the **schema_version** + roadmap phase.
   output path while still printing the summary to stdout.
 - `scripts/run_eval.py --baseline` now accepts either raw per-task metrics or a
   previous evaluator output object containing a top-level `metrics` field.
+- `scripts/run_eval.py --policy model` now evaluates registry-configured
+  ActorCritic checkpoints, including recurrent policies with state carried
+  across episode steps.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
   GameWorker rollouts, JSONL metrics, and optional checkpoint emission.
 - `scripts/train.py`/`hkrl.cli` now run local recurrent PPO training with

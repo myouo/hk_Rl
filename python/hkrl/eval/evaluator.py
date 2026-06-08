@@ -68,6 +68,7 @@ class Evaluator:
 
     def _run_episode(self, env: Any, seed: int) -> _EpisodeResult:
         obs, info = env.reset(seed=seed)
+        rnn_state = self._initial_rnn_state()
         total_reward = 0.0
         damage_taken = 0.0
         damage_dealt = 0.0
@@ -81,7 +82,7 @@ class Evaluator:
         steps = 0
 
         for step in range(self.max_steps_per_episode):
-            action = self._act(env, obs, info)
+            action, rnn_state = self._act(env, obs, info, rnn_state)
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
             steps = step + 1
@@ -114,7 +115,13 @@ class Evaluator:
             truncated=truncated,
         )
 
-    def _act(self, env: Any, obs: Any, info: dict[str, Any]) -> Any:
+    def _initial_rnn_state(self) -> Any:
+        if not isinstance(self.model, ActorCritic):
+            return None
+        device = _model_device(self.model)
+        return self.model.initial_state(batch_size=1, device=device)
+
+    def _act(self, env: Any, obs: Any, info: dict[str, Any], rnn_state: Any) -> tuple[Any, Any]:
         action_mask = info.get("action_mask")
         if isinstance(self.model, ActorCritic):
             device = _model_device(self.model)
@@ -126,14 +133,15 @@ class Evaluator:
                     dtype=torch.bool,
                     device=device,
                 )
-            action, _, _, _ = self.model.act(
+            action, _, _, next_state = self.model.act(
                 obs_tensor,
+                rnn_state=rnn_state,
                 action_mask=mask_tensor,
                 deterministic=True,
             )
             enable_macro = "macro" in env.action_space.spaces
-            return action_tensor_to_env_action(action[0], enable_macro=enable_macro)
-        return self.model.act(obs, action_mask)
+            return action_tensor_to_env_action(action[0], enable_macro=enable_macro), next_state
+        return self.model.act(obs, action_mask), None
 
     def regression_report(
         self, baseline: dict[str, dict[str, float]], current: dict[str, dict[str, float]]

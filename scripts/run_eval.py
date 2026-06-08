@@ -9,6 +9,10 @@ Usage:
     python scripts/run_eval.py --policy mlp --checkpoint checkpoints/v123.pt \
         --tasks configs/tasks/gruz_mother.yaml
 
+    python scripts/run_eval.py --policy model --checkpoint-dir checkpoints_gru \
+        --train-config configs/train/ppo_attention_gru.yaml \
+        --tasks configs/tasks/gruz_mother.yaml
+
 Reports per-boss win rate / damage taken / time-to-kill and (optionally) a
 regression diff vs a baseline.
 """
@@ -27,16 +31,19 @@ from hkrl.env import HKRLEnv
 from hkrl.eval.evaluator import Evaluator
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
+from hkrl.models import mlp as _mlp  # noqa: F401
+from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.transport.base import Transport
 from hkrl.transport.factory import make_transport
 from hkrl.utils.config import TaskConfig, TrainConfig, load_task_config, load_train_config
+from hkrl.utils.registry import get
 from hkrl.wrappers import NormalizeObservation
 
 
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Evaluator")
-    p.add_argument("--policy", choices=("scripted", "mlp"), default="scripted")
+    p.add_argument("--policy", choices=("scripted", "mlp", "model"), default="scripted")
     p.add_argument("--checkpoint", help="checkpoint .pt file or CheckpointRegistry directory")
     p.add_argument("--checkpoint-dir", help="CheckpointRegistry directory; loads latest version")
     p.add_argument("--train-config", default="configs/train/ppo_mlp.yaml")
@@ -98,9 +105,22 @@ def _build_policy(
             )
         )
 
-    checkpoint_path = _resolve_checkpoint_path(args)
-
     train_cfg = train_cfg or load_train_config(args.train_config)
+    checkpoint_path = _resolve_checkpoint_path(args)
+    model = (
+        _build_mlp_policy(task, train_cfg)
+        if args.policy == "mlp"
+        else _build_configured_policy(task, train_cfg)
+    )
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    if isinstance(state, dict):
+        state = state.get("model_state_dict", state.get("state_dict", state))
+    model.load_state_dict(state)
+    model.eval()
+    return model
+
+
+def _build_mlp_policy(task: TaskConfig, train_cfg: TrainConfig) -> MlpActorCritic:
     observation_space = spaces.make_observation_space(
         max_entities=task.observation.max_entities,
         tier=task.observation.tier,
@@ -116,12 +136,39 @@ def _build_policy(
         enable_macro=task.action.enable_macro_actions,
         n_macros=task.action.n_macro_actions,
     )
-    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict):
-        state = state.get("model_state_dict", state.get("state_dict", state))
-    model.load_state_dict(state)
-    model.eval()
     return model
+
+
+def _build_configured_policy(task: TaskConfig, train_cfg: TrainConfig) -> Any:
+    observation_space = spaces.make_observation_space(
+        max_entities=task.observation.max_entities,
+        tier=task.observation.tier,
+    )
+    obs_dims = {
+        "global": observation_space["global"].shape,
+        "player": observation_space["player"].shape,
+        "entities": observation_space["entities"].shape,
+        "entity_mask": observation_space["entity_mask"].shape,
+    }
+    model_cls = get("model", train_cfg.model.name)
+    if train_cfg.model.name == "mlp":
+        return model_cls(
+            obs_dims,
+            hidden=train_cfg.model.rnn_hidden or 256,
+            enable_macro=task.action.enable_macro_actions,
+            n_macros=task.action.n_macro_actions,
+        )
+    return model_cls(
+        obs_dims,
+        entity_hidden=train_cfg.model.entity_hidden,
+        attention_layers=train_cfg.model.attention_layers,
+        attention_heads=train_cfg.model.attention_heads,
+        rnn_type=train_cfg.model.rnn_type,
+        rnn_hidden=train_cfg.model.rnn_hidden,
+        enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
+        max_entities=task.observation.max_entities,
+    )
 
 
 def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> Transport:
@@ -148,7 +195,7 @@ def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
     checkpoint = getattr(args, "checkpoint", None)
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if checkpoint is None and checkpoint_dir is None:
-        raise SystemExit("--checkpoint or --checkpoint-dir is required with --policy mlp")
+        raise SystemExit("--checkpoint or --checkpoint-dir is required with --policy mlp/model")
 
     if checkpoint_dir is not None:
         return _latest_registry_checkpoint(Path(checkpoint_dir))

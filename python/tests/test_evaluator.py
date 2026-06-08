@@ -5,10 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import torch
 from hkrl import protocol, spaces
 from hkrl.eval.evaluator import Evaluator
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
+from hkrl.models.base import ActorCritic, RnnState
 from hkrl.utils.config import TaskConfig
+from torch import Tensor
 
 
 def test_evaluator_runs_fixed_seed_episodes_and_aggregates_metrics() -> None:
@@ -62,6 +65,66 @@ def test_evaluator_regression_report_returns_win_rate_delta() -> None:
     )
 
     assert report == {"a": -0.25, "b": -0.25, "c": 1.0}
+
+
+def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
+    task = TaskConfig(task_id="fake_boss", scene="FakeScene")
+    model = StatefulActorCritic()
+    evaluator = Evaluator(
+        model,
+        tasks=[task],
+        seeds=[0],
+        env_factory=lambda _: FakeEvalEnv(),
+        max_steps_per_episode=2,
+    )
+
+    evaluator.evaluate(episodes_per_task=1)
+
+    assert model.seen_states == [0.0, 1.0]
+
+
+class StatefulActorCritic(ActorCritic):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(()))
+        self.seen_states: list[float] = []
+
+    def initial_state(self, batch_size: int, device: torch.device | None = None) -> RnnState:
+        return torch.zeros((1, batch_size, 1), device=device)
+
+    def forward(
+        self,
+        obs: dict[str, Tensor],
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+    ) -> tuple[object, Tensor, RnnState]:
+        del obs, action_mask
+        return object(), torch.zeros((1,)), rnn_state
+
+    def act(
+        self,
+        obs: dict[str, Tensor],
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[Tensor, Tensor, Tensor, RnnState]:
+        del obs, action_mask, deterministic
+        assert rnn_state is not None
+        self.seen_states.append(float(rnn_state.reshape(-1)[0].detach().cpu()))
+        action = torch.zeros((1, 12), dtype=torch.long)
+        action[:, 0] = 1
+        action[:, 1] = 1
+        return action, torch.zeros((1,)), torch.zeros((1,)), rnn_state + 1
+
+    def evaluate_actions(
+        self,
+        obs: dict[str, Tensor],
+        actions: Tensor,
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        del obs, actions, rnn_state, action_mask
+        return torch.zeros((1,)), torch.zeros((1,)), torch.zeros((1,))
 
 
 class FakeEvalEnv:

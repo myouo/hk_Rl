@@ -11,6 +11,7 @@ from types import ModuleType
 import pytest
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.mlp import MlpActorCritic
+from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
 from hkrl.spaces import make_observation_space
 from hkrl.utils.config import TaskConfig
 
@@ -36,6 +37,46 @@ def test_run_eval_builds_mlp_policy_from_checkpoint_registry(tmp_path: Path) -> 
     policy = module._build_policy(args, task)
 
     assert isinstance(policy, MlpActorCritic)
+
+
+def test_run_eval_builds_configured_recurrent_policy_from_checkpoint_registry(
+    tmp_path: Path,
+) -> None:
+    module = _load_script("run_eval.py")
+    task = TaskConfig(task_id="gruz_mother", scene="GG_Gruz_Mother")
+    model = _recurrent_for_task(task)
+    registry = CheckpointRegistry(str(tmp_path / "checkpoints"))
+    registry.publish(
+        {"model_state_dict": model.state_dict(), "policy_version": 4},
+        policy_version=4,
+        step=20,
+    )
+    config = tmp_path / "recurrent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: recurrent_ppo",
+                "model:",
+                "  name: entity_attention_gru",
+                "  entity_hidden: 8",
+                "  attention_layers: 1",
+                "  attention_heads: 2",
+                "  rnn_type: gru",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        policy="model",
+        checkpoint=None,
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        train_config=str(config),
+    )
+
+    policy = module._build_policy(args, task)
+
+    assert isinstance(policy, EntityAttentionRecurrentAC)
 
 
 def test_run_eval_resolves_checkpoint_directory_argument(tmp_path: Path) -> None:
@@ -127,6 +168,28 @@ def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
         hidden=256,
         enable_macro=task.action.enable_macro_actions,
         n_macros=task.action.n_macro_actions,
+    )
+
+
+def _recurrent_for_task(task: TaskConfig) -> EntityAttentionRecurrentAC:
+    observation_space = make_observation_space(
+        max_entities=task.observation.max_entities,
+        tier=task.observation.tier,
+    )
+    return EntityAttentionRecurrentAC(
+        {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+        },
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_hidden=16,
+        enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
+        max_entities=task.observation.max_entities,
     )
 
 

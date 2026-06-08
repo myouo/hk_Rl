@@ -89,6 +89,14 @@ python scripts/run_eval.py \
   --tasks configs/tasks/gruz_mother.yaml \
   --episodes 5
 
+# 评估 config 注册的模型（如 attention+GRU recurrent checkpoint）
+python scripts/run_eval.py \
+  --policy model \
+  --train-config configs/train/ppo_attention_gru.yaml \
+  --checkpoint-dir checkpoints_gru \
+  --tasks configs/tasks/gruz_mother.yaml \
+  --episodes 5
+
 # 5. 本地 PPO/RecurrentPPO 训练（需要本地 HKRLEnvMod TCP）
 python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \
