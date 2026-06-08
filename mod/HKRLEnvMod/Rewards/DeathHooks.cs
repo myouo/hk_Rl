@@ -1,5 +1,3 @@
-using System;
-
 namespace HKRLEnvMod.Rewards
 {
     /// <summary>
@@ -9,11 +7,21 @@ namespace HKRLEnvMod.Rewards
     /// </summary>
     public static class DeathHooks
     {
+        private static RewardEventBuffer? _buffer;
+
         public static void Install(RewardEventBuffer buffer)
         {
-            // TODO(phase-1): hook HeroController death -> PlayerDeath + RequestTerminate;
-            // hook boss HealthManager death -> BossKilled (+ terminate when last boss).
-            throw new NotImplementedException();
+            _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+        }
+
+        public static void RecordPlayerDeath(int entityId = 0)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.PlayerDeath, entityId);
+        }
+
+        public static void RecordBossKilled(int entityId)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.BossKilled, entityId);
         }
     }
 }

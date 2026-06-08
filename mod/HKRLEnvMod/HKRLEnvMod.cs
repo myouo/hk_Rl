@@ -1,5 +1,7 @@
 using System;
+using HKRLEnvMod.Action;
 using HKRLEnvMod.Env;
+using HKRLEnvMod.Rewards;
 using HKRLEnvMod.Transport;
 using Modding;
 using UnityEngine;
@@ -84,7 +86,18 @@ namespace HKRLEnvMod
             try
             {
                 _server = new TcpServer(host, port);
-                _stepController = new StepController(_server);
+                RewardEventBuffer rewards = new RewardEventBuffer();
+                DamageHooks.Install(rewards);
+                DeathHooks.Install(rewards);
+                HealHooks.Install(rewards);
+                SceneHooks.Install(rewards);
+                _stepController = new StepController(
+                    _server,
+                    new ActionApplier(),
+                    rewards,
+                    new EpisodeLifecycle(),
+                    new ActionMasker(),
+                    new Heartbeat());
                 _server.Start();
                 _configured = true;
                 global::HKRLEnvMod.Debug.Logger.Info(

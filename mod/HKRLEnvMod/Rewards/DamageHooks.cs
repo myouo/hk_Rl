@@ -1,5 +1,3 @@
-using System;
-
 namespace HKRLEnvMod.Rewards
 {
     /// <summary>
@@ -9,12 +7,22 @@ namespace HKRLEnvMod.Rewards
     /// </summary>
     public static class DamageHooks
     {
+        private static RewardEventBuffer? _buffer;
+
         /// <summary>Install the Harmony/MonoMod hooks.</summary>
         public static void Install(RewardEventBuffer buffer)
         {
-            // TODO(phase-1): hook HealthManager.TakeDamage (boss) -> DamageDealt;
-            // hook hero damage -> DamageTaken; resolve source/target entity ids.
-            throw new NotImplementedException();
+            _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+        }
+
+        public static void RecordDamageDealt(int entityId, float amount, int damageType = 0)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.DamageDealt, entityId, amount, damageType);
+        }
+
+        public static void RecordDamageTaken(int entityId, float amount, int damageType = 0)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.DamageTaken, entityId, amount, damageType);
         }
     }
 }

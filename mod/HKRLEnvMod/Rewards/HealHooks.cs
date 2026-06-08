@@ -1,5 +1,3 @@
-using System;
-
 namespace HKRLEnvMod.Rewards
 {
     /// <summary>
@@ -7,10 +5,21 @@ namespace HKRLEnvMod.Rewards
     /// </summary>
     public static class HealHooks
     {
+        private static RewardEventBuffer? _buffer;
+
         public static void Install(RewardEventBuffer buffer)
         {
-            // TODO(phase-1): hook focus completion -> Heal; soul gain -> SoulGained.
-            throw new NotImplementedException();
+            _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+        }
+
+        public static void RecordHeal(int entityId, float amount)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.Heal, entityId, amount);
+        }
+
+        public static void RecordSoulGained(int entityId, float amount)
+        {
+            _buffer?.Add(HKRL.RewardEventKind.SoulGained, entityId, amount);
         }
     }
 }

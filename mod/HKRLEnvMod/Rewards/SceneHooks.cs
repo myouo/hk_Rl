@@ -1,5 +1,3 @@
-using System;
-
 namespace HKRLEnvMod.Rewards
 {
     /// <summary>
@@ -8,10 +6,21 @@ namespace HKRLEnvMod.Rewards
     /// </summary>
     public static class SceneHooks
     {
+        private static RewardEventBuffer? _buffer;
+
         public static void Install(RewardEventBuffer buffer)
         {
-            // TODO(phase-1): hook GameManager scene-change -> SceneChanged(from,to).
-            throw new NotImplementedException();
+            _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+        }
+
+        public static void RecordSceneChanged(int fromSceneHash, int toSceneHash)
+        {
+            _buffer?.Add(
+                HKRL.RewardEventKind.SceneChanged,
+                entityId: 0,
+                amount: 0.0f,
+                auxInt: fromSceneHash,
+                auxInt2: toSceneHash);
         }
     }
 }
