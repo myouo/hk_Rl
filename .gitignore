@@ -17,7 +17,7 @@ htmlcov/
 
 # ---- Generated schema bindings (regenerate via `make gen-schema`) ----
 schema/gen/
-python/hkrl/schema/hkrl/
+python/hkrl/schema/HKRL/
 mod/HKRLEnvMod/Schema/HKRL/
 
 # ---- ML artifacts ----

@@ -31,7 +31,7 @@ install: ## Editable install with dev extras
 install-hooks: ## Configure git to use tracked hooks
 	git config core.hooksPath .githooks
 
-check: format-check lint typecheck test ## Run local quality gates
+check: gen-schema format-check lint typecheck test ## Run local quality gates
 
 lint: ## ruff lint
 	cd $(PKG_DIR) && ruff check .

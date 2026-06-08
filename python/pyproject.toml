@@ -46,6 +46,7 @@ include = ["hkrl*"]
 line-length = 100
 target-version = "py310"
 src = ["python"]
+exclude = ["hkrl/schema/HKRL"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
@@ -62,7 +63,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true   # generated flatbuffers / optional deps
 # Generated schema bindings are excluded from strict typing.
-exclude = "hkrl/schema/hkrl/"
+exclude = "hkrl/schema/HKRL/"
 
 # ----------------------------------------------------------------------------
 [tool.pytest.ini_options]

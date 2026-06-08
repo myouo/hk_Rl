@@ -63,16 +63,10 @@ scripts/   codegen / train / worker / learner / eval 入口
 conda env create -f environment.yml
 conda activate hkrl
 
-# 2. 生成 schema 绑定（需 flatc）
-make gen-schema
+# 2. 生成 schema 绑定并运行本地质量门禁
+make check
 
-# 3. 静态检查与测试
-make format-check
-make lint
-make typecheck
-make test
-
-# 4. 本地 smoke（待 Phase 2 实现）
+# 3. 本地 smoke（待 Phase 2 实现）
 python scripts/train.py --config configs/train/ppo_mlp.yaml
 ```
 
@@ -80,6 +74,7 @@ python scripts/train.py --config configs/train/ppo_mlp.yaml
 
 GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
 [`environment.yml`](./environment.yml) 创建 `hkrl` Conda 环境，并执行：
+`make check`。该目标会先运行 `make gen-schema`，再执行
 `make format-check`、`make lint`、`make typecheck`、`make test`。
 
 云端 CI 当前只覆盖 Python 包。C# mod 构建需要本机 Hollow Knight Managed
@@ -94,9 +89,9 @@ GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
 make install-hooks
 ```
 
-之后每次 `git commit` 前会运行 `make check`，也就是
-`make format-check`、`make lint`、`make typecheck`、`make test`。如果本机有
-`hkrl` Conda 环境，hook 会自动通过 `conda run -n hkrl` 执行检查。
+之后每次 `git commit` 前会运行 `make check`，也就是先生成 FlatBuffers
+bindings，再执行格式检查、lint、typecheck 和 tests。如果本机有 `hkrl` Conda
+环境，hook 会自动通过 `conda run -n hkrl` 执行检查。
 
 > ⚠️ 当前为**接口级占位骨架**：目录、签名、文档与协议已就位，具体实现按 [Roadmap](./AGENTS.md#roadmap) Phase 0→8 推进。
 > Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。

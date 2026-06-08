@@ -20,6 +20,8 @@ the project version tracks the **schema_version** + roadmap phase.
   driver, and periodic scene/player-position snapshot logging.
 - Conda development environment (`environment.yml`) for Python runtime, dev,
   logging, and distributed extras.
+- Local/CI quality gates generate FlatBuffers bindings before running checks,
+  with generated code ignored and excluded from lint/typecheck.
 - Python training foundations: config `defaults` composition, default reward
   composition, deterministic seeding, running metrics, and GAE.
 - Python TCP transport client with uint32-LE length-prefixed framing,

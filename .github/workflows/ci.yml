@@ -39,14 +39,5 @@ jobs:
           python -V
           python -c "import hkrl; print(f'hkrl schema_version={hkrl.SCHEMA_VERSION}')"
 
-      - name: Check formatting
-        run: make format-check
-
-      - name: Lint
-        run: make lint
-
-      - name: Typecheck
-        run: make typecheck
-
-      - name: Test
-        run: make test
+      - name: Run quality gate
+        run: make check
