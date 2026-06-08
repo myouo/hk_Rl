@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if [[ "${HKRL_SKIP_CHECKS:-}" == "1" ]]; then
+  echo "HKRL_SKIP_CHECKS=1 set; skipping pre-commit checks."
+  exit 0
+fi
+
+if command -v conda >/dev/null 2>&1 && conda env list | awk '{print $1}' | grep -qx "hkrl"; then
+  echo "Running pre-commit checks in conda env: hkrl"
+  conda run --no-capture-output -n hkrl make check
+else
+  echo "Running pre-commit checks with current shell environment"
+  make check
+fi

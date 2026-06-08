@@ -9,7 +9,7 @@ PY_SCHEMA := python/hkrl/schema
 CS_SCHEMA := mod/HKRLEnvMod/Schema
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install lint format-check typecheck test fmt clean smoke
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -27,6 +27,11 @@ gen-schema-cs: ## Generate C# FlatBuffers bindings
 # ---- Python dev ------------------------------------------------------------
 install: ## Editable install with dev extras
 	pip install -e "$(PKG_DIR)[dev]"
+
+install-hooks: ## Configure git to use tracked hooks
+	git config core.hooksPath .githooks
+
+check: format-check lint typecheck test ## Run local quality gates
 
 lint: ## ruff lint
 	cd $(PKG_DIR) && ruff check .

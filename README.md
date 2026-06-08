@@ -86,6 +86,18 @@ GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
 程序集与 HK Modding API 路径，按 [`docs/mod_dev.md`](./docs/mod_dev.md) 在
 配置游戏安装的机器上验证。
 
+## Git Hooks
+
+本仓库提供可版本化的 pre-commit hook。首次 clone 后执行：
+
+```bash
+make install-hooks
+```
+
+之后每次 `git commit` 前会运行 `make check`，也就是
+`make format-check`、`make lint`、`make typecheck`、`make test`。如果本机有
+`hkrl` Conda 环境，hook 会自动通过 `conda run -n hkrl` 执行检查。
+
 > ⚠️ 当前为**接口级占位骨架**：目录、签名、文档与协议已就位，具体实现按 [Roadmap](./AGENTS.md#roadmap) Phase 0→8 推进。
 > Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。
 
