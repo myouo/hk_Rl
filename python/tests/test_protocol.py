@@ -157,6 +157,16 @@ def test_mod_step_request_schema_mismatch_maps_to_status_code() -> None:
     assert "HKRL.StatusCode.SchemaMismatch" in controller
 
 
+def test_tcp_frame_limit_matches_mod_server() -> None:
+    from hkrl.transport.tcp import MAX_FRAME_BYTES
+
+    root = Path(__file__).parents[2]
+    server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
+
+    assert MAX_FRAME_BYTES == 16 * 1024 * 1024
+    assert "MaxFrameBytes = 16 * 1024 * 1024" in server
+
+
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")

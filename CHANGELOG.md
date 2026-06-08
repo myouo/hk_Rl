@@ -27,7 +27,7 @@ the project version tracks the **schema_version** + roadmap phase.
 - Python TCP transport client with uint32-LE length-prefixed framing,
   timeout/disconnect handling, and localhost framing tests.
 - Python TCP transport now rejects oversized length-prefixed frames before
-  reading payload bytes, preventing malformed peers from forcing huge reads.
+  reading payload bytes, using the same 16 MiB cap as the mod TCP server.
 - TcpTransport now supports an opt-in length-prefixed auth-token handshake frame
   before regular protocol traffic.
 - Python TCP entry points now honor `security.require_token` by reading

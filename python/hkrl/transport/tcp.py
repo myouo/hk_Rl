@@ -14,7 +14,7 @@ from contextlib import suppress
 from hkrl.transport.base import Transport
 from hkrl.utils.registry import register_transport
 
-MAX_FRAME_BYTES = 64 * 1024 * 1024
+MAX_FRAME_BYTES = 16 * 1024 * 1024
 
 
 @register_transport("tcp")
