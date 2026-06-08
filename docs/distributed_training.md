@@ -50,6 +50,9 @@ For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
 loads all `*.npz` batches through `LearnerServer.submit()` before serving one
 update cycle.
+`scripts/run_coordinator.py --dry-run` validates the coordinator side of the same
+run: it loads task YAMLs, creates expected worker assignments, ingests optional
+heartbeat JSONL, and prints a JSON monitoring snapshot.
 
 ## 4. On-policy staleness (PRD §9.5)
 
@@ -114,6 +117,10 @@ Coordinator ingests raw worker heartbeat payloads, splits numeric metrics from
 status fields, and exposes a `metrics_snapshot()` aggregate for dashboards and
 JSONL logging. Fleet SPS is the sum across active workers; lost workers still
 count toward `worker_crash_count` so crash/restart churn remains visible.
+The `scripts/run_coordinator.py --heartbeat-jsonl FILE` entry point accepts one
+JSON object per line, either `{ "worker_id": "...", "payload": {...} }` or a flat
+object with `worker_id` plus heartbeat fields, and emits the same aggregate plus
+per-worker records.
 
 ## 9. PyTorch + CUDA note
 

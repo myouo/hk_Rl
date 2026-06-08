@@ -95,6 +95,12 @@ python scripts/train.py \
   --updates 1 \
   --metrics runs/train.jsonl \
   --checkpoint-dir checkpoints
+
+# 6. 分布式入口 dry-run（不连接真实游戏，用于验证配置/任务/worker 编排）
+python scripts/run_coordinator.py \
+  --config configs/train/remote_learner.yaml \
+  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+  --dry-run
 ```
 
 `--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与

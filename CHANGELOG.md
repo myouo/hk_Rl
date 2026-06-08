@@ -139,6 +139,9 @@ the project version tracks the **schema_version** + roadmap phase.
   configurable recovery limits.
 - `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
   provider for multi-task rollout smoke/curriculum runs.
+- `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,
+  emits one-shot task assignments, ingests heartbeat JSONL, and reports a JSON
+  monitoring snapshot for Phase 8 smoke checks.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
