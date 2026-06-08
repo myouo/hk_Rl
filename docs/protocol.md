@@ -41,6 +41,10 @@ in the schema. Highlights:
 | `SET_TIMESCALE` | set `time_scale` for SPS tuning |
 | `PING` | heartbeat; response with `server_tick` only |
 
+`PAUSE`, `RESUME`, and `SET_TIMESCALE` are applied by mod `SimControl` on the
+Unity main thread. Invalid command parameters return `StatusCode.InternalError`
+in the response instead of throwing through `FixedUpdate`.
+
 ## 4. Reset handshake (ack)
 
 Task configs use a human-readable string `task_id` for logs/evaluation and a

@@ -158,6 +158,9 @@ the project version tracks the **schema_version** + roadmap phase.
   FixedUpdate driver, and disposes transport resources on driver destruction.
 - Mod SimControl now applies time scale, pause, and resume through Unity
   `Time.timeScale`/`fixedDeltaTime` on the main thread.
+- Mod StepController now dispatches `PAUSE`, `RESUME`, and `SET_TIMESCALE`
+  commands through SimControl and reports command dispatch failures via
+  `StatusCode.InternalError`.
 - Mod SceneController now maps known task ids to Godhome scenes and reports
   scene/player/boss readiness from Unity main-thread state.
 - Mod ResetManager now starts task resets, polls scene/player/boss readiness with

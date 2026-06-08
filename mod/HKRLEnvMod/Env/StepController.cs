@@ -19,6 +19,7 @@ namespace HKRLEnvMod.Env
         private readonly RewardEventBuffer _rewards;
         private readonly EpisodeLifecycle _lifecycle;
         private readonly ResetManager _resetManager;
+        private readonly SimControl _simControl;
         private readonly ActionMasker _masker;
         private readonly Heartbeat _heartbeat;
         private readonly ObservationCollector _observations;
@@ -31,6 +32,7 @@ namespace HKRLEnvMod.Env
                 new RewardEventBuffer(),
                 new EpisodeLifecycle(),
                 new ResetManager(),
+                new SimControl(),
                 new ActionMasker(),
                 new Heartbeat(),
                 new ObservationCollector())
@@ -43,6 +45,7 @@ namespace HKRLEnvMod.Env
             RewardEventBuffer rewards,
             EpisodeLifecycle lifecycle,
             ResetManager resetManager,
+            SimControl simControl,
             ActionMasker masker,
             Heartbeat heartbeat,
             ObservationCollector observations)
@@ -52,6 +55,7 @@ namespace HKRLEnvMod.Env
             _rewards = rewards;
             _lifecycle = lifecycle;
             _resetManager = resetManager;
+            _simControl = simControl;
             _masker = masker;
             _heartbeat = heartbeat;
             _observations = observations;
@@ -67,7 +71,7 @@ namespace HKRLEnvMod.Env
                 return;
             }
 
-            Dispatch(request);
+            var commandError = Dispatch(request);
             var state = AdvanceLifecycle();
             if (state == HKRL.LifecycleState.ClearEvents)
             {
@@ -86,12 +90,15 @@ namespace HKRLEnvMod.Env
             }
 
             var terminated = IsTerminal(state);
+            var errorCode = commandError == HKRL.StatusCode.Ok
+                ? _lifecycle.ErrorCode
+                : commandError;
             var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
             var response = MessageCodec.EncodeStepResponse(
                 request,
                 _serverTick,
                 state,
-                _lifecycle.ErrorCode,
+                errorCode,
                 rewardEvents,
                 _masker.Compute(),
                 terminated,
@@ -127,30 +134,48 @@ namespace HKRLEnvMod.Env
             return latest;
         }
 
-        private void Dispatch(DecodedStepRequest request)
+        private HKRL.StatusCode Dispatch(DecodedStepRequest request)
         {
-            _heartbeat.Touch((float)_serverTick);
-
-            switch (request.Command)
+            try
             {
-                case HKRL.Command.Reset:
-                case HKRL.Command.SetTask:
-                    _actions.Clear();
-                    _rewards.Clear();
-                    _resetManager.BeginReset(request.TaskId);
-                    _lifecycle.RequestReset();
-                    break;
-                case HKRL.Command.Step:
-                    if (_lifecycle.IsRunning)
-                    {
-                        _actions.Apply(request.Action);
-                    }
-                    break;
-                case HKRL.Command.Ping:
-                case HKRL.Command.Pause:
-                case HKRL.Command.Resume:
-                case HKRL.Command.SetTimescale:
-                    break;
+                _heartbeat.Touch((float)_serverTick);
+
+                switch (request.Command)
+                {
+                    case HKRL.Command.Reset:
+                    case HKRL.Command.SetTask:
+                        _actions.Clear();
+                        _rewards.Clear();
+                        _resetManager.BeginReset(request.TaskId);
+                        _lifecycle.RequestReset();
+                        break;
+                    case HKRL.Command.Step:
+                        if (_lifecycle.IsRunning)
+                        {
+                            _actions.Apply(request.Action);
+                        }
+                        break;
+                    case HKRL.Command.Pause:
+                        _simControl.Pause();
+                        break;
+                    case HKRL.Command.Resume:
+                        _simControl.Resume();
+                        break;
+                    case HKRL.Command.SetTimescale:
+                        _simControl.SetTimeScale(request.TimeScale);
+                        break;
+                    case HKRL.Command.Ping:
+                        break;
+                }
+
+                return HKRL.StatusCode.Ok;
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error(
+                    $"Failed to dispatch command {request.Command}",
+                    exception);
+                return HKRL.StatusCode.InternalError;
             }
         }
 

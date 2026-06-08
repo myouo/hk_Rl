@@ -77,4 +77,6 @@ the boundary.
 ## 7. Time control (PRD §9.6)
 
 `SimControl` manages `Time.timeScale` and `Time.fixedDeltaTime` to raise SPS
-without changing physics semantics inappropriately. Pair with `action_repeat`.
+without changing physics semantics inappropriately. `StepController` applies
+`PAUSE`, `RESUME`, and `SET_TIMESCALE` commands through `SimControl` on the main
+thread. Pair with `action_repeat`.

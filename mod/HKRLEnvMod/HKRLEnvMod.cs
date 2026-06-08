@@ -104,6 +104,7 @@ namespace HKRLEnvMod
                     rewards,
                     new EpisodeLifecycle(),
                     new ResetManager(),
+                    new SimControl(),
                     new ActionMasker(),
                     new Heartbeat(),
                     new ObservationCollector());
