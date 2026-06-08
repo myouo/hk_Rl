@@ -55,6 +55,9 @@ the project version tracks the **schema_version** + roadmap phase.
   input state with button-bit clamping and duration hold bookkeeping.
 - Mod episode lifecycle now advances through reset, running, termination, report,
   cleanup, tracks episode ids, and surfaces lifecycle error codes.
+- Mod StepController now drains inbound requests, dispatches reset/step/task/ping
+  commands, advances lifecycle, applies running actions, drains reward events,
+  computes action masks, and enqueues StepResponse frames.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

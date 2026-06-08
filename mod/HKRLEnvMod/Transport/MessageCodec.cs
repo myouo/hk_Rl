@@ -116,7 +116,8 @@ namespace HKRLEnvMod.Transport
             bool[]? actionMask = null,
             bool terminated = false,
             bool truncated = false,
-            string? info = null)
+            string? info = null,
+            ulong episodeId = 0)
         {
             if (request == null)
             {
@@ -133,7 +134,8 @@ namespace HKRLEnvMod.Transport
                 actionMask,
                 terminated,
                 truncated,
-                info);
+                info,
+                episodeId);
         }
 
         public static byte[] EncodeStepResponse(
@@ -146,13 +148,15 @@ namespace HKRLEnvMod.Transport
             bool[]? actionMask = null,
             bool terminated = false,
             bool truncated = false,
-            string? info = null)
+            string? info = null,
+            ulong episodeId = 0)
         {
             var builder = new FlatBufferBuilder(256);
             var rewardEventVector = BuildRewardEvents(builder, rewardEvents);
             var actionMaskVector = HKRL.StepResponse.CreateActionMaskVector(
                 builder,
                 actionMask ?? Array.Empty<bool>());
+            var observationOffset = BuildMinimalObservation(builder, episodeId);
             var infoOffset = string.IsNullOrEmpty(info)
                 ? default(StringOffset)
                 : builder.CreateString(info);
@@ -163,7 +167,7 @@ namespace HKRLEnvMod.Transport
                 envId,
                 tickId,
                 serverTick,
-                default,
+                observationOffset,
                 rewardEventVector,
                 actionMaskVector,
                 terminated,
@@ -173,6 +177,37 @@ namespace HKRLEnvMod.Transport
                 infoOffset);
             HKRL.StepResponse.FinishStepResponseBuffer(builder, response);
             return AddLengthPrefix(builder.SizedByteArray());
+        }
+
+        private static Offset<HKRL.Observation> BuildMinimalObservation(
+            FlatBufferBuilder builder,
+            ulong episodeId)
+        {
+            var globalOffset = HKRL.GlobalState.CreateGlobalState(
+                builder,
+                episode_id: episodeId);
+            var playerOffset = HKRL.PlayerState.CreatePlayerState(
+                builder,
+                hp: 1,
+                max_hp: 1,
+                max_soul: 99,
+                on_ground: true,
+                double_jump_available: true,
+                can_attack: true,
+                can_cast: true,
+                can_focus: true);
+            var entitiesOffset = HKRL.Observation.CreateEntitiesVector(
+                builder,
+                Array.Empty<Offset<HKRL.EntityState>>());
+            var entityMaskOffset = HKRL.Observation.CreateEntityMaskVector(
+                builder,
+                Array.Empty<bool>());
+            return HKRL.Observation.CreateObservation(
+                builder,
+                globalOffset,
+                playerOffset,
+                entitiesOffset,
+                entityMaskOffset);
         }
 
         private static DecodedAction DecodeAction(HKRL.Action? action)

@@ -1,4 +1,6 @@
-using System;
+using HKRLEnvMod.Action;
+using HKRLEnvMod.Rewards;
+using HKRLEnvMod.Transport;
 
 namespace HKRLEnvMod.Env
 {
@@ -10,19 +12,128 @@ namespace HKRLEnvMod.Env
     /// </summary>
     public sealed class StepController
     {
-        // TODO(phase-1): references to TcpServer, ObservationCollector, ActionApplier,
-        // RewardEventBuffer, EpisodeLifecycle, ActionMasker, SimControl.
+        private readonly TcpServer _server;
+        private readonly ActionApplier _actions;
+        private readonly RewardEventBuffer _rewards;
+        private readonly EpisodeLifecycle _lifecycle;
+        private readonly ActionMasker _masker;
+        private readonly Heartbeat _heartbeat;
+        private ulong _serverTick;
+
+        public StepController(TcpServer server)
+            : this(
+                server,
+                new ActionApplier(),
+                new RewardEventBuffer(),
+                new EpisodeLifecycle(),
+                new ActionMasker(),
+                new Heartbeat())
+        {
+        }
+
+        public StepController(
+            TcpServer server,
+            ActionApplier actions,
+            RewardEventBuffer rewards,
+            EpisodeLifecycle lifecycle,
+            ActionMasker masker,
+            Heartbeat heartbeat)
+        {
+            _server = server;
+            _actions = actions;
+            _rewards = rewards;
+            _lifecycle = lifecycle;
+            _masker = masker;
+            _heartbeat = heartbeat;
+        }
 
         /// <summary>Called once per FixedUpdate. Never blocks on the network.</summary>
         public void FixedTick()
         {
-            // TODO(phase-1):
-            //   1. Drain InboundRequests; keep only the latest action for this tick.
-            //   2. Dispatch on command (STEP/RESET/PAUSE/RESUME/SET_TASK/SET_TIMESCALE/PING).
-            //   3. If RUNNING and STEP: apply action (x action_repeat), advance sim.
-            //   4. Collect observation + action mask + drained reward events.
-            //   5. Encode StepResponse -> OutboundResponses.
-            throw new NotImplementedException();
+            _serverTick++;
+            var request = DrainLatestRequest();
+            if (request == null)
+            {
+                return;
+            }
+
+            Dispatch(request);
+            var state = _lifecycle.Tick();
+            if (state == HKRL.LifecycleState.ClearEvents)
+            {
+                _rewards.Clear();
+            }
+
+            var terminated = IsTerminal(state);
+            var response = MessageCodec.EncodeStepResponse(
+                request,
+                _serverTick,
+                state,
+                _lifecycle.ErrorCode,
+                _rewards.Drain(),
+                _masker.Compute(),
+                terminated,
+                truncated: false,
+                episodeId: _lifecycle.EpisodeId);
+            _server.OutboundResponses.Enqueue(response);
+        }
+
+        private DecodedStepRequest? DrainLatestRequest()
+        {
+            DecodedStepRequest? latest = null;
+            while (_server.InboundRequests.TryDequeue(out var payload))
+            {
+                try
+                {
+                    latest = MessageCodec.DecodeStepRequest(payload);
+                }
+                catch (System.Exception exception)
+                {
+                    var response = MessageCodec.EncodeStepResponse(
+                        envId: 0,
+                        tickId: 0,
+                        serverTick: _serverTick,
+                        lifecycleState: _lifecycle.State,
+                        errorCode: HKRL.StatusCode.InternalError,
+                        info: exception.Message,
+                        episodeId: _lifecycle.EpisodeId);
+                    _server.OutboundResponses.Enqueue(response);
+                }
+            }
+
+            return latest;
+        }
+
+        private void Dispatch(DecodedStepRequest request)
+        {
+            _heartbeat.Touch((float)_serverTick);
+
+            switch (request.Command)
+            {
+                case HKRL.Command.Reset:
+                case HKRL.Command.SetTask:
+                    _actions.Clear();
+                    _rewards.Clear();
+                    _lifecycle.RequestReset();
+                    break;
+                case HKRL.Command.Step:
+                    if (_lifecycle.IsRunning)
+                    {
+                        _actions.Apply(request.Action);
+                    }
+                    break;
+                case HKRL.Command.Ping:
+                case HKRL.Command.Pause:
+                case HKRL.Command.Resume:
+                case HKRL.Command.SetTimescale:
+                    break;
+            }
+        }
+
+        private static bool IsTerminal(HKRL.LifecycleState state)
+        {
+            return state == HKRL.LifecycleState.Terminating
+                || state == HKRL.LifecycleState.ReportDone;
         }
     }
 }
