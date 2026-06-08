@@ -75,7 +75,8 @@ constant in `hkrl/spaces.py` and MUST match the mod's `ActionMasker`.
 
 `duration` selects how many ticks a button is held (tap vs hold vs nail-art
 charge). Distinct from `action_repeat` (protocol-level, repeats the *same*
-StepRequest N times to raise SPS). Both exist; don't conflate them.
+StepRequest N FixedUpdate ticks before returning the StepResponse, unless a
+terminal reward event ends the episode early). Both exist; don't conflate them.
 
 ## 5. Macro actions (PRD §6.4)
 

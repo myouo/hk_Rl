@@ -24,6 +24,8 @@ namespace HKRLEnvMod.Env
         private readonly Heartbeat _heartbeat;
         private readonly ObservationCollector _observations;
         private ulong _serverTick;
+        private DecodedStepRequest? _repeatRequest;
+        private int _repeatTicksRemaining;
 
         public StepController(TcpServer server)
             : this(
@@ -65,14 +67,49 @@ namespace HKRLEnvMod.Env
         public void FixedTick()
         {
             _serverTick++;
-            var request = DrainLatestRequest();
-            if (request == null)
-            {
-                return;
-            }
 
-            var commandError = Dispatch(request);
-            var state = AdvanceLifecycle();
+            var request = _repeatRequest;
+            var commandError = HKRL.StatusCode.Ok;
+            HKRL.LifecycleState state;
+            if (request != null)
+            {
+                commandError = ApplyRepeatedStep(request);
+                state = AdvanceLifecycle();
+                if (ShouldContinueRepeat(commandError, state))
+                {
+                    return;
+                }
+
+                _repeatRequest = null;
+                _repeatTicksRemaining = 0;
+                EnqueueStepResponse(request, commandError, state);
+            }
+            else
+            {
+                request = DrainLatestRequest();
+                if (request == null)
+                {
+                    return;
+                }
+
+                commandError = Dispatch(request);
+                state = AdvanceLifecycle();
+                if (ShouldDelayStepResponse(request, commandError, state))
+                {
+                    _repeatRequest = request;
+                    _repeatTicksRemaining = request.ActionRepeat - 1;
+                    return;
+                }
+
+                EnqueueStepResponse(request, commandError, state);
+            }
+        }
+
+        private void EnqueueStepResponse(
+            DecodedStepRequest request,
+            HKRL.StatusCode commandError,
+            HKRL.LifecycleState state)
+        {
             if (state == HKRL.LifecycleState.ClearEvents)
             {
                 _rewards.Clear();
@@ -106,6 +143,28 @@ namespace HKRLEnvMod.Env
                 episodeId: _lifecycle.EpisodeId,
                 observation: observation);
             _server.OutboundResponses.Enqueue(response);
+        }
+
+        private bool ShouldDelayStepResponse(
+            DecodedStepRequest request,
+            HKRL.StatusCode commandError,
+            HKRL.LifecycleState state)
+        {
+            return request.Command == HKRL.Command.Step
+                && commandError == HKRL.StatusCode.Ok
+                && state == HKRL.LifecycleState.Running
+                && request.ActionRepeat > 1
+                && !BufferedTerminalEvent();
+        }
+
+        private bool ShouldContinueRepeat(
+            HKRL.StatusCode commandError,
+            HKRL.LifecycleState state)
+        {
+            return commandError == HKRL.StatusCode.Ok
+                && state == HKRL.LifecycleState.Running
+                && _repeatTicksRemaining > 0
+                && !BufferedTerminalEvent();
         }
 
         private DecodedStepRequest? DrainLatestRequest()
@@ -188,6 +247,31 @@ namespace HKRLEnvMod.Env
             }
         }
 
+        private HKRL.StatusCode ApplyRepeatedStep(DecodedStepRequest request)
+        {
+            try
+            {
+                if (_lifecycle.IsRunning)
+                {
+                    _actions.Apply(request.Action);
+                }
+
+                if (_repeatTicksRemaining > 0)
+                {
+                    _repeatTicksRemaining--;
+                }
+
+                return HKRL.StatusCode.Ok;
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error(
+                    "Failed to apply repeated STEP action",
+                    exception);
+                return HKRL.StatusCode.InternalError;
+            }
+        }
+
         private HKRL.LifecycleState AdvanceLifecycle()
         {
             var resetReady = true;
@@ -213,20 +297,30 @@ namespace HKRLEnvMod.Env
             return state;
         }
 
+        private bool BufferedTerminalEvent()
+        {
+            return _rewards.Contains(IsTerminalEvent);
+        }
+
         private static bool HasTerminalEvent(IReadOnlyList<RewardEventRecord> rewardEvents)
         {
             for (var i = 0; i < rewardEvents.Count; i++)
             {
-                var kind = rewardEvents[i].Kind;
-                if (kind == HKRL.RewardEventKind.BossKilled
-                    || kind == HKRL.RewardEventKind.PlayerDeath
-                    || kind == HKRL.RewardEventKind.SceneChanged)
+                if (IsTerminalEvent(rewardEvents[i]))
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool IsTerminalEvent(RewardEventRecord rewardEvent)
+        {
+            var kind = rewardEvent.Kind;
+            return kind == HKRL.RewardEventKind.BossKilled
+                || kind == HKRL.RewardEventKind.PlayerDeath
+                || kind == HKRL.RewardEventKind.SceneChanged;
         }
 
         private static bool IsTerminal(HKRL.LifecycleState state)

@@ -46,6 +46,8 @@ Unity main thread. Invalid command parameters return `StatusCode.InternalError`
 in the response instead of throwing through `FixedUpdate`.
 Python exposes these through `HKRLEnv.pause()`, `HKRLEnv.resume()`,
 `HKRLEnv.ping()`, and `HKRLEnv.set_timescale(scale)`.
+For `STEP`, the mod delays the `StepResponse` until all repeated FixedUpdate
+ticks have been applied, or until a terminal reward event ends the episode early.
 
 ## 4. Reset handshake (ack)
 

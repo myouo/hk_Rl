@@ -114,6 +114,8 @@ the project version tracks the **schema_version** + roadmap phase.
   catastrophic-forgetting win-rate deltas.
 - Mod StepRequest decode failures now report schema-version drift as
   `StatusCode.SchemaMismatch` instead of a generic internal error.
+- Mod STEP handling now honors `action_repeat` across FixedUpdate ticks and
+  returns early if a terminal reward event occurs during the repeat window.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

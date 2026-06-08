@@ -64,6 +64,19 @@ namespace HKRLEnvMod.Rewards
             return new ReadOnlyCollection<RewardEventRecord>(drained);
         }
 
+        public bool Contains(Func<RewardEventRecord, bool> predicate)
+        {
+            for (var i = 0; i < _events.Count; i++)
+            {
+                if (predicate(_events[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>Clear without emitting (used by lifecycle CLEAR_EVENTS).</summary>
         public void Clear() => _events.Clear();
     }
