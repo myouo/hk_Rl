@@ -25,11 +25,28 @@ class Curriculum:
     index: int = 0
 
     def active_tasks(self) -> list[str]:
-        raise NotImplementedError  # TODO(phase-7)
+        if not self.stages:
+            return []
+        self.index = min(max(self.index, 0), len(self.stages) - 1)
+        return list(self.stages[self.index].task_ids)
 
     def maybe_advance(self, per_task_winrate: dict[str, float], episodes: int) -> bool:
-        """Advance to the next stage if criteria met; return True if advanced.
+        """Advance to the next stage if criteria met; return True if advanced."""
+        if not self.stages or self.index >= len(self.stages) - 1:
+            return False
 
-        TODO(phase-7): check promote_winrate + min_episodes for active stage.
-        """
-        raise NotImplementedError
+        stage = self.stages[self.index]
+        if episodes < stage.min_episodes:
+            return False
+        if not stage.task_ids:
+            return False
+
+        mastered = all(
+            per_task_winrate.get(task_id, 0.0) >= stage.promote_winrate
+            for task_id in stage.task_ids
+        )
+        if not mastered:
+            return False
+
+        self.index += 1
+        return True

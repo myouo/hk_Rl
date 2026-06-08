@@ -78,6 +78,8 @@ the project version tracks the **schema_version** + roadmap phase.
   aggregates shaping-free metrics, and reports win-rate regression deltas.
 - TaskSampler now provides seeded weighted task sampling with mastered-task replay
   and win-rate based reweighting for anti-forgetting curricula.
+- Curriculum now exposes active task stages and advances when all active tasks
+  meet configured win-rate and episode-count gates.
 - `scripts/run_eval.py` now runs fixed-seed evaluator jobs for scripted or MLP
   checkpoint policies and emits JSON metrics/regression output.
 - `scripts/train.py`/`hkrl.cli` now run local MLP+PPO training updates with
