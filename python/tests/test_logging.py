@@ -67,6 +67,29 @@ def test_metric_sinks_write_numpy_episode_values(tmp_path: Path) -> None:
     assert json.loads(stdout.getvalue())["reward"] == 1.5
 
 
+def test_metric_sinks_normalize_non_finite_values(tmp_path: Path) -> None:
+    path = tmp_path / "metrics.jsonl"
+    sink = JsonlSink(path)
+
+    sink.log_episode(
+        {
+            "nan": float("nan"),
+            "pos_inf": float("inf"),
+            "np_nan": np.float32("nan"),
+            "array": np.array([1.0, np.inf], dtype=np.float32),
+        }
+    )
+    sink.close()
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "array": [1.0, None],
+        "nan": None,
+        "np_nan": None,
+        "pos_inf": None,
+        "type": "episode",
+    }
+
+
 def test_csv_sink_writes_scalar_and_episode_records(tmp_path: Path) -> None:
     path = tmp_path / "metrics.csv"
     sink = CsvSink(path)

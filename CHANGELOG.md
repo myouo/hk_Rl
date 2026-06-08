@@ -76,6 +76,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Stdout metric sink for JSON-line scalar and episode records.
 - Metric sinks now JSON-normalize numpy scalar/array episode values before
   writing JSONL, CSV record payloads, or stdout JSON lines.
+- Metric sinks now normalize non-finite float values to JSON null and write
+  strict JSON without NaN/Infinity tokens.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
 - `hkrl`/`scripts/train.py` now expose `--metrics-kind {jsonl,csv}` so smoke and

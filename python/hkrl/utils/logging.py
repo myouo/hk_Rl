@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import sys
 from pathlib import Path
 from typing import IO, Any, Protocol, TextIO
@@ -62,7 +63,15 @@ class JsonlSink:
     def _write(self, payload: dict[str, Any]) -> None:
         if self._fh is None:
             raise RuntimeError("JsonlSink is closed")
-        self._fh.write(json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":")) + "\n")
+        self._fh.write(
+            json.dumps(
+                _jsonable(payload),
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+        )
 
 
 class CsvSink:
@@ -104,7 +113,12 @@ class CsvSink:
         payload = dict(record)
         payload.setdefault("type", "episode")
         row = _jsonable(dict(payload))
-        row["record"] = json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":"))
+        row["record"] = json.dumps(
+            _jsonable(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
         self._write(row)
 
     def flush(self) -> None:
@@ -156,7 +170,13 @@ class StdoutSink:
         if self._closed:
             raise RuntimeError("StdoutSink is closed")
         self._stream.write(
-            json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":")) + "\n"
+            json.dumps(
+                _jsonable(payload),
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
         )
 
 
@@ -194,10 +214,12 @@ def _jsonable(value: Any) -> Any:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     item = getattr(value, "item", None)
     if callable(item):
         try:
-            return item()
+            return _jsonable(item())
         except ValueError:
             pass
     tolist = getattr(value, "tolist", None)
