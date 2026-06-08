@@ -38,6 +38,7 @@ class GameWorker:
         learner_endpoint: str | None = None,
         batch_uploader: Callable[[RolloutBatch], None] | None = None,
         heartbeat_sink: Callable[[dict[str, Any]], None] | None = None,
+        task_provider: Callable[[], Any | None] | None = None,
         max_consecutive_failures: int = 3,
     ) -> None:
         if max_consecutive_failures < 0:
@@ -50,6 +51,7 @@ class GameWorker:
         self.learner_endpoint = learner_endpoint
         self.batch_uploader = batch_uploader
         self.heartbeat_sink = heartbeat_sink
+        self.task_provider = task_provider
         self.max_consecutive_failures = max_consecutive_failures
         self.device = _model_device(model)
         action_space: Any = env.action_space
@@ -110,6 +112,7 @@ class GameWorker:
         """Fill one flat rollout and return a GAE-ready RolloutBatch."""
         self.buffer.clear()
         self._maybe_reload_checkpoint()
+        self._maybe_switch_task()
         self.model.eval()
         self._ensure_reset()
 
@@ -178,6 +181,28 @@ class GameWorker:
         if not isinstance(policy_version, Integral):
             raise ValueError("checkpoint policy_version must be an integer")
         self.policy_version = int(policy_version)
+        self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        return True
+
+    def _maybe_switch_task(self) -> bool:
+        if self.task_provider is None:
+            return False
+
+        task = self.task_provider()
+        if task is None:
+            return False
+
+        current_task = _find_attr(self.env, "task")
+        current_wire_id = getattr(current_task, "wire_id", None)
+        next_wire_id = getattr(task, "wire_id", None)
+        if next_wire_id is not None and current_wire_id == next_wire_id:
+            return False
+
+        set_task = _find_set_task(self.env)
+        if set_task is None:
+            raise RuntimeError("task_provider requires env.set_task(task)")
+
+        self._obs, self._info = set_task(task)
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
         return True
 
@@ -337,5 +362,28 @@ def _find_reconnect(env: Any) -> Callable[[], None] | None:
         if callable(env_reconnect):
             return env_reconnect
 
+        current = getattr(current, "env", None)
+    return None
+
+
+def _find_set_task(env: Any) -> Callable[[Any], tuple[Any, dict[str, Any]]] | None:
+    current = env
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        set_task = getattr(current, "set_task", None)
+        if callable(set_task):
+            return set_task
+        current = getattr(current, "env", None)
+    return None
+
+
+def _find_attr(env: Any, name: str) -> Any | None:
+    current = env
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, name):
+            return getattr(current, name)
         current = getattr(current, "env", None)
     return None

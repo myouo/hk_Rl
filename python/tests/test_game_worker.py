@@ -9,7 +9,7 @@ import pytest
 import torch
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.spaces import make_action_space, make_observation_space
-from hkrl.utils.config import TrainConfig
+from hkrl.utils.config import TaskConfig, TrainConfig
 from hkrl.worker.game_worker import GameWorker, action_tensor_to_env_action
 
 
@@ -209,6 +209,34 @@ def test_game_worker_recovery_reconnects_wrapped_env_transport() -> None:
     assert worker.worker_crash_count == 1
 
 
+def test_game_worker_switches_task_from_provider_through_wrappers() -> None:
+    inner = SwitchableEnv(TaskConfig(task_id="a", wire_id=1, scene="A"))
+    env = EnvWrapper(inner)
+    target_task = TaskConfig(task_id="b", wire_id=2, scene="B")
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+        task_provider=lambda: target_task,
+    )
+
+    batch = worker.collect_rollout()
+
+    assert inner.set_task_wire_ids == [2]
+    assert inner.reset_count == 1
+    assert int(batch.task_ids[0, 0]) == 2
+
+
 def test_game_worker_limits_repeated_runtime_failures() -> None:
     env = AlwaysFailEnv()
     model = MlpActorCritic(
@@ -294,6 +322,23 @@ class AlwaysFailEnv(FakeEnv):
         self, action: dict[str, Any]
     ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         raise TimeoutError("persistent transport timeout")
+
+
+class SwitchableEnv(FakeEnv):
+    def __init__(self, task: TaskConfig) -> None:
+        super().__init__()
+        self.task = task
+        self.set_task_wire_ids: list[int] = []
+
+    def set_task(self, task: TaskConfig) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        self.task = task
+        self.set_task_wire_ids.append(task.wire_id)
+        self.reset_count += 1
+        return self._obs(), {
+            "episode_id": self.reset_count,
+            "task_id": task.wire_id,
+            "action_mask": np.ones((19,), dtype=bool),
+        }
 
 
 class FakeTransport:

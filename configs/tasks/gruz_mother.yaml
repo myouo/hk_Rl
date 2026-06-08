@@ -21,7 +21,7 @@ reward:
   invalid_action: -0.01
 
 observation:
-  max_entities: 32
+  max_entities: 64
   include_fsm_state: true
   include_hitbox: true
   tier: privileged

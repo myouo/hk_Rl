@@ -100,6 +100,11 @@ resets RNN hidden state, emits a heartbeat with `status = recovering` and
 then forces a clean `reset()` before collecting the next batch. Persistent
 failures surface as errors instead of spinning forever.
 
+For curricula, `GameWorker` can accept a `task_provider` callback. Before each
+rollout it asks for the assigned `TaskConfig`; if the task wire id changed, it
+calls the env's `set_task()` through any Gym wrapper chain and starts the rollout
+from the returned clean-reset observation.
+
 ## 8. Monitoring snapshot
 
 Coordinator ingests raw worker heartbeat payloads, splits numeric metrics from

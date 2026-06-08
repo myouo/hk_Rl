@@ -93,6 +93,8 @@ the project version tracks the **schema_version** + roadmap phase.
   callbacks for learner/coordinator integration.
 - GameWorker now recovers from transient env/transport failures with bounded
   retries, reconnect/reset, crash heartbeats, and `worker_crash_count` metrics.
+- GameWorker now supports an injectable task provider and switches tasks through
+  env `set_task()` before rollouts for curriculum/coordinator assignments.
 - GameWorker recovery now finds reconnect hooks through Gym wrapper chains, so
   normalized/wrapped HKRLEnv instances still reconnect their underlying transport.
 - FrameStack wrapper now stacks dict observation feature axes and updates the
