@@ -39,14 +39,14 @@ class RewardWeights(StrictConfigModel):
 
 
 class ObservationConfig(StrictConfigModel):
-    max_entities: int = 64
+    max_entities: int = Field(default=64, ge=1)
     include_fsm_state: bool = True
     include_hitbox: bool = True
     tier: Literal["privileged", "reduced", "human_visible"] = "privileged"
 
 
 class ActionConfig(StrictConfigModel):
-    action_repeat: int = 2
+    action_repeat: int = Field(default=2, ge=1, le=255)
     enable_macro_actions: bool = True
     n_macro_actions: int = Field(default=DEFAULT_N_MACROS, ge=0)
 
@@ -58,7 +58,7 @@ class TaskConfig(StrictConfigModel):
     wire_id: int = Field(default=0, ge=0)
     scene: str
     difficulty: str = "attuned"
-    time_limit_seconds: int = 180
+    time_limit_seconds: int = Field(default=180, ge=1)
     player: dict[str, Any] = Field(default_factory=dict)
     reward: RewardWeights = Field(default_factory=RewardWeights)
     observation: ObservationConfig = Field(default_factory=ObservationConfig)
@@ -69,17 +69,17 @@ class ModelConfig(StrictConfigModel):
     """Selects + configures an ActorCritic (registry name + kwargs). PRD §12.2."""
 
     name: str = "entity_attention_gru"
-    entity_hidden: int = 128
-    attention_layers: int = 2
-    attention_heads: int = 4
+    entity_hidden: int = Field(default=128, ge=1)
+    attention_layers: int = Field(default=2, ge=1)
+    attention_heads: int = Field(default=4, ge=1)
     rnn_type: Literal["gru", "lstm", "none"] = "gru"
-    rnn_hidden: int = 256
+    rnn_hidden: int = Field(default=256, ge=0)
 
 
 class TransportConfig(StrictConfigModel):
     name: Literal["tcp", "shm"] = "tcp"
     host: str = "127.0.0.1"
-    port: int = 5555
+    port: int = Field(default=5555, ge=0, le=65535)
     shm_name: str = "hkrl_env"
     req_slots: int = Field(default=8, ge=1)
     resp_slots: int = Field(default=8, ge=1)
@@ -89,17 +89,17 @@ class LearnerRuntimeConfig(StrictConfigModel):
     """Remote learner runtime settings (docs/distributed_training.md §5)."""
 
     bind: str = "0.0.0.0:5600"
-    max_staleness: int = 4
+    max_staleness: int = Field(default=4, ge=0)
     checkpoint_dir: str = "checkpoints"
-    publish_every_updates: int = 1
+    publish_every_updates: int = Field(default=1, ge=1)
 
 
 class CoordinatorRuntimeConfig(StrictConfigModel):
     """Coordinator runtime settings for worker fleets."""
 
     bind: str = "0.0.0.0:5610"
-    num_workers: int = 1
-    heartbeat_timeout_s: float = 30.0
+    num_workers: int = Field(default=1, ge=1)
+    heartbeat_timeout_s: float = Field(default=30.0, gt=0)
 
 
 class SecurityConfig(StrictConfigModel):
@@ -114,24 +114,24 @@ class TrainConfig(StrictConfigModel):
     """Training hyperparameters (configs/train/*.yaml). Mirrors PRD §12.2."""
 
     algorithm: Literal["ppo", "recurrent_ppo", "appo"] = "recurrent_ppo"
-    gamma: float = 0.995
-    gae_lambda: float = 0.95
-    clip_range: float = 0.2
-    learning_rate: float = 3e-4
-    rollout_steps: int = 2048
-    minibatch_size: int = 256
-    epochs: int = 4
-    sequence_length: int = 32
-    burn_in: int = 0
-    entropy_coef: float = 0.01
-    value_coef: float = 0.5
-    max_grad_norm: float = 0.5
+    gamma: float = Field(default=0.995, ge=0.0, le=1.0)
+    gae_lambda: float = Field(default=0.95, ge=0.0, le=1.0)
+    clip_range: float = Field(default=0.2, gt=0.0)
+    learning_rate: float = Field(default=3e-4, gt=0.0)
+    rollout_steps: int = Field(default=2048, ge=1)
+    minibatch_size: int = Field(default=256, ge=1)
+    epochs: int = Field(default=4, ge=1)
+    sequence_length: int = Field(default=32, ge=1)
+    burn_in: int = Field(default=0, ge=0)
+    entropy_coef: float = Field(default=0.01, ge=0.0)
+    value_coef: float = Field(default=0.5, ge=0.0)
+    max_grad_norm: float = Field(default=0.5, gt=0.0)
     model: ModelConfig = Field(default_factory=ModelConfig)
     transport: TransportConfig = Field(default_factory=TransportConfig)
     learner: LearnerRuntimeConfig = Field(default_factory=LearnerRuntimeConfig)
     coordinator: CoordinatorRuntimeConfig = Field(default_factory=CoordinatorRuntimeConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
-    seed: int = 0
+    seed: int = Field(default=0, ge=0)
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:

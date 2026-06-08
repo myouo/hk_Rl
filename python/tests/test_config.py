@@ -121,6 +121,43 @@ def test_load_train_config_rejects_unknown_enum_values(tmp_path: Path) -> None:
         load_train_config(config)
 
 
+def test_load_train_config_rejects_invalid_numeric_ranges(tmp_path: Path) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(
+        config,
+        {
+            "gamma": 1.5,
+            "rollout_steps": 0,
+            "transport": {"port": 70000},
+            "learner": {"max_staleness": -1},
+            "coordinator": {"heartbeat_timeout_s": 0},
+        },
+    )
+
+    with pytest.raises(ValueError, match=r"less than or equal to 1|greater than or equal to 1"):
+        load_train_config(config)
+
+
+def test_load_task_config_rejects_invalid_action_repeat(tmp_path: Path) -> None:
+    config = tmp_path / "task.yaml"
+    _write_yaml(
+        config,
+        {
+            "task_id": "bad",
+            "scene": "Scene",
+            "time_limit_seconds": 0,
+            "observation": {"max_entities": 0},
+            "action": {"action_repeat": 256},
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"less than or equal to 255|greater than or equal to 1",
+    ):
+        load_task_config(config)
+
+
 def test_resolve_auth_token_uses_configured_environment() -> None:
     config = load_train_config(Path("../configs/train/remote_learner.yaml"))
 
