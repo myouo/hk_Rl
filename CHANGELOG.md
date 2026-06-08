@@ -141,6 +141,8 @@ the project version tracks the **schema_version** + roadmap phase.
   filesystem or HTTP reads.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
+- run_worker summaries now split learner batch uploads into submitted,
+  accepted, and rejected counts.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

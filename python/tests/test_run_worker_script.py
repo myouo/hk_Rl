@@ -207,6 +207,17 @@ def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None
     assert uploaded == [True]
 
 
+def test_run_worker_upload_summary_counts_accepted_and_rejected() -> None:
+    module = _load_script("run_worker.py")
+
+    assert module._upload_summary([True, False, True]) == {
+        "learner_accepted_batches": 2,
+        "learner_rejected_batches": 1,
+        "learner_submitted_batches": 3,
+        "uploaded_batches": 3,
+    }
+
+
 def _load_script(name: str) -> ModuleType:
     path = Path(__file__).parents[2] / "scripts" / name
     spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)

@@ -153,6 +153,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     try:
         worker.run(total_steps=args.steps)
         last_batch = worker.last_batch
+        upload_summary = _upload_summary(uploaded_batches)
         return {
             "algorithm": cfg.algorithm,
             "batch_dir": args.batch_dir,
@@ -162,6 +163,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "heartbeats_written": len(heartbeats),
             "last_error": worker.last_error,
+            **upload_summary,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
             "model": cfg.model.name,
@@ -173,7 +175,6 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "spooled_batches": spooled_batches,
             "task_id": task.task_id,
             "task_ids": [item.task_id for item in tasks],
-            "uploaded_batches": len(uploaded_batches),
             "worker_crash_count": worker.worker_crash_count,
             "worker_id": args.worker_id,
         }
@@ -322,6 +323,17 @@ def _make_batch_uploader(
                 uploaded.append(accepted)
 
     return upload
+
+
+def _upload_summary(uploaded: list[bool]) -> dict[str, int]:
+    accepted = sum(1 for value in uploaded if value)
+    submitted = len(uploaded)
+    return {
+        "learner_accepted_batches": accepted,
+        "learner_rejected_batches": submitted - accepted,
+        "learner_submitted_batches": submitted,
+        "uploaded_batches": submitted,
+    }
 
 
 def _safe_filename_component(value: str) -> str:
