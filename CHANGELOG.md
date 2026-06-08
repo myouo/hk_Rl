@@ -46,6 +46,9 @@ the project version tracks the **schema_version** + roadmap phase.
   observations to Gymnasium spaces.
 - HKRLEnv now exposes `pause()`, `resume()`, `ping()`, and
   `set_timescale(scale)` helpers for protocol-level control commands.
+- HKRLEnv now exposes `set_task(task)` to send `SET_TASK`, rebuild task-driven
+  spaces/default reward weights, and wait for the clean lifecycle to reach
+  `RUNNING`.
 - Task configs now separate human-readable `task_id` from numeric `wire_id`;
   HKRLEnv sends `wire_id` in every StepRequest and exposes it in Gym info for
   rollout task_ids.

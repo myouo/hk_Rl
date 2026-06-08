@@ -50,15 +50,9 @@ class HKRLEnv(gym.Env):
     ) -> None:
         super().__init__()
         self.transport = transport
-        self.task = task
+        self._custom_reward_fn = reward_fn is not None
         self.reward_fn = reward_fn or DefaultReward(task.reward)
-        self.observation_space = make_observation_space(
-            max_entities=task.observation.max_entities,
-            tier=task.observation.tier,
-        )
-        self.action_space = make_action_space(
-            enable_macro=task.action.enable_macro_actions,
-        )
+        self._configure_task(task)
         self._tick_id = 0
         self._episode_id = 0
         self._running = False
@@ -144,6 +138,50 @@ class HKRLEnv(gym.Env):
         """Close the transport. Idempotent."""
         self.transport.close()
 
+    def set_task(
+        self,
+        task: TaskConfig,
+        *,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Switch to a new task, trigger mod reset, and wait until RUNNING."""
+        self._configure_task(task)
+        options = options or {}
+        timeout_s = float(options.get("reset_timeout_s", options.get("timeout_s", 30.0)))
+        recv_timeout_s = float(options.get("recv_timeout_s", self._step_timeout_s))
+
+        if not self.transport.is_connected():
+            self.transport.connect(timeout_s=timeout_s)
+
+        self._running = False
+        response = self._exchange(
+            protocol.Command.SET_TASK,
+            action=None,
+            action_repeat=1,
+            timeout_s=recv_timeout_s,
+        )
+        self._raise_for_error(response, context="set_task")
+
+        if response.lifecycle_state != protocol.LifecycleState.RUNNING:
+            response = self._await_running_response(
+                timeout_s=timeout_s,
+                recv_timeout_s=recv_timeout_s,
+            )
+            self._raise_for_error(response, context="set_task")
+
+        if response.lifecycle_state != protocol.LifecycleState.RUNNING:
+            raise EnvProtocolError(
+                f"set_task did not reach RUNNING: {response.lifecycle_state.name}"
+            )
+        if response.observation is None:
+            raise EnvProtocolError("set_task reached RUNNING without an observation")
+
+        self._running = True
+        self._validate_observation(response.observation)
+        obs = self._to_gym_observation(response.observation)
+        self._episode_id = self._episode_id_from(obs)
+        return obs, self._info_from_response(response)
+
     def pause(self, *, timeout_s: float | None = None) -> dict[str, Any]:
         """Pause the game simulation via the mod's SimControl."""
         return self._control(protocol.Command.PAUSE, timeout_s=timeout_s)
@@ -167,6 +205,18 @@ class HKRLEnv(gym.Env):
         )
 
     # -- helpers --------------------------------------------------------------
+    def _configure_task(self, task: TaskConfig) -> None:
+        self.task = task
+        if not self._custom_reward_fn:
+            self.reward_fn = DefaultReward(task.reward)
+        self.observation_space = make_observation_space(
+            max_entities=task.observation.max_entities,
+            tier=task.observation.tier,
+        )
+        self.action_space = make_action_space(
+            enable_macro=task.action.enable_macro_actions,
+        )
+
     def _await_running(self, timeout_s: float) -> protocol.StatusCode:
         """Poll the mod with no-op STEPs until RUNNING or error/timeout."""
         response = self._await_running_response(

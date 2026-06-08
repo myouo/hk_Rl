@@ -186,6 +186,37 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     assert info["reward_events"][0].kind is protocol.RewardEventKind.DAMAGE_DEALT
 
 
+def test_env_set_task_sends_wire_id_and_rebuilds_spaces() -> None:
+    from hkrl.env import HKRLEnv
+
+    initial_task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    next_task = load_task_config("../configs/tasks/hornet_protector.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.COUNTDOWN),
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=initial_task)
+
+    obs, info = env.set_task(
+        next_task,
+        options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1},
+    )
+
+    assert [protocol.Command(req.Command()) for req in transport.requests] == [
+        protocol.Command.SET_TASK,
+        protocol.Command.STEP,
+    ]
+    assert all(req.TaskId() == next_task.wire_id for req in transport.requests)
+    assert env.task.task_id == "hornet_protector_attuned"
+    assert env.observation_space["entities"].shape[0] == next_task.observation.max_entities
+    assert env.observation_space.contains(obs)
+    assert info["task_id"] == next_task.wire_id
+    assert info["task_name"] == next_task.task_id
+    assert info["lifecycle_state"] is protocol.LifecycleState.RUNNING
+
+
 def test_env_step_requires_completed_reset() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 
