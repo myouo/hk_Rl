@@ -53,6 +53,8 @@ the project version tracks the **schema_version** + roadmap phase.
   buttons.
 - Mod primitive action path now maps decoded wire actions into movement/aim/button
   input state with button-bit clamping and duration hold bookkeeping.
+- Mod episode lifecycle now advances through reset, running, termination, report,
+  cleanup, tracks episode ids, and surfaces lifecycle error codes.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
 

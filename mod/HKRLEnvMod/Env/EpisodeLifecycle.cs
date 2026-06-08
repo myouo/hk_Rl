@@ -14,18 +14,58 @@ namespace HKRLEnvMod.Env
         /// <summary>Unique id for the current episode.</summary>
         public ulong EpisodeId { get; private set; }
 
+        /// <summary>Last lifecycle error, reported in StepResponse.error_code.</summary>
+        public HKRL.StatusCode ErrorCode { get; private set; } = HKRL.StatusCode.Ok;
+
+        public bool IsRunning => State == HKRL.LifecycleState.Running;
+
+        public void RequestReset()
+        {
+            EpisodeId = EpisodeId == ulong.MaxValue ? 1 : EpisodeId + 1;
+            ErrorCode = HKRL.StatusCode.Ok;
+            State = HKRL.LifecycleState.ResetRequested;
+        }
+
         /// <summary>Advance the state machine one tick. Returns the new state.</summary>
         public HKRL.LifecycleState Tick()
         {
-            // TODO(phase-1): drive transitions IDLE -> ... -> RUNNING -> TERMINATING
-            // -> REPORT_DONE -> CLEANUP -> IDLE, honoring ready checks + timeouts.
+            State = State switch
+            {
+                HKRL.LifecycleState.ResetRequested => HKRL.LifecycleState.FreezeInput,
+                HKRL.LifecycleState.FreezeInput => HKRL.LifecycleState.ClearEvents,
+                HKRL.LifecycleState.ClearEvents => HKRL.LifecycleState.LoadScene,
+                HKRL.LifecycleState.LoadScene => HKRL.LifecycleState.WaitSceneReady,
+                HKRL.LifecycleState.WaitSceneReady => HKRL.LifecycleState.WaitPlayerReady,
+                HKRL.LifecycleState.WaitPlayerReady => HKRL.LifecycleState.WaitBossReady,
+                HKRL.LifecycleState.WaitBossReady => HKRL.LifecycleState.RestorePlayerState,
+                HKRL.LifecycleState.RestorePlayerState => HKRL.LifecycleState.ClearProjectiles,
+                HKRL.LifecycleState.ClearProjectiles => HKRL.LifecycleState.Countdown,
+                HKRL.LifecycleState.Countdown => HKRL.LifecycleState.Running,
+                HKRL.LifecycleState.Terminating => HKRL.LifecycleState.ReportDone,
+                HKRL.LifecycleState.ReportDone => HKRL.LifecycleState.Cleanup,
+                HKRL.LifecycleState.Cleanup => HKRL.LifecycleState.Idle,
+                _ => State
+            };
             return State;
+        }
+
+        public void Fail(HKRL.StatusCode errorCode)
+        {
+            ErrorCode = errorCode == HKRL.StatusCode.Ok
+                ? HKRL.StatusCode.InternalError
+                : errorCode;
+            State = HKRL.LifecycleState.ReportDone;
         }
 
         /// <summary>Route death/win/scene-change into TERMINATING.</summary>
         public void RequestTerminate()
         {
-            // TODO(phase-1)
+            if (State == HKRL.LifecycleState.Idle || State == HKRL.LifecycleState.Cleanup)
+            {
+                return;
+            }
+
+            State = HKRL.LifecycleState.Terminating;
         }
     }
 }
