@@ -31,6 +31,8 @@ normalization in one place so privileged/reduced/human-visible ablations
 
 `ARENA_SCALE`, `VEL_SCALE`, `T_MAX` are constants in `hkrl/spaces.py`; document
 any change here.
+`GlobalState.time_in_episode` is measured from the episode's first `RUNNING`
+tick, not from Unity scene load time, so same-scene resets start at zero.
 
 ## 3. Entity list
 

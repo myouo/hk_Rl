@@ -356,6 +356,24 @@ def test_mod_observation_collector_logs_read_failures() -> None:
     assert "DefaultPlayer()" in source
 
 
+def test_mod_global_observation_uses_episode_time_from_step_controller() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    collector = (root / "mod/HKRLEnvMod/Observation/ObservationCollector.cs").read_text(
+        encoding="utf-8"
+    )
+    global_observer = (root / "mod/HKRLEnvMod/Observation/GlobalObserver.cs").read_text(
+        encoding="utf-8"
+    )
+
+    assert "CurrentEpisodeTime(state)" in controller
+    assert "_episodeStartServerTick" in controller
+    assert "_runningEpisodeId" in controller
+    assert "timeInEpisode" in collector
+    assert "timeInEpisode: timeInEpisode" in global_observer
+    assert "timeInEpisode: Time.timeSinceLevelLoad" not in global_observer
+
+
 def test_mod_observation_reward_tracker_is_wired_before_drain() -> None:
     root = Path(__file__).parents[2]
     tracker = (root / "mod/HKRLEnvMod/Rewards/ObservationRewardTracker.cs").read_text(

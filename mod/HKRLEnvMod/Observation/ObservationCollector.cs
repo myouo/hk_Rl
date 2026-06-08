@@ -115,12 +115,15 @@ namespace HKRLEnvMod.Observation
         private readonly EntityObserver _entities = new();
 
         /// <summary>Collect a snapshot; returns data for MessageCodec to encode.</summary>
-        public ObservationSnapshot Collect(int taskId = 0, ulong episodeId = 0)
+        public ObservationSnapshot Collect(
+            int taskId = 0,
+            ulong episodeId = 0,
+            float timeInEpisode = 0.0f)
         {
             var player = ReadPlayerSafe();
             var entities = ReadEntitiesSafe(player);
             return new ObservationSnapshot(
-                ReadGlobalSafe(taskId, episodeId),
+                ReadGlobalSafe(taskId, episodeId, timeInEpisode),
                 player,
                 entities,
                 BuildEntityMask(entities.Count));
@@ -152,11 +155,14 @@ namespace HKRLEnvMod.Observation
             }
         }
 
-        private GlobalObservation ReadGlobalSafe(int taskId, ulong episodeId)
+        private GlobalObservation ReadGlobalSafe(
+            int taskId,
+            ulong episodeId,
+            float timeInEpisode)
         {
             try
             {
-                return _global.Read(taskId, episodeId);
+                return _global.Read(taskId, episodeId, timeInEpisode: timeInEpisode);
             }
             catch (Exception exception)
             {
@@ -166,7 +172,7 @@ namespace HKRLEnvMod.Observation
                     arenaId: 0,
                     taskId: taskId,
                     difficulty: 0,
-                    timeInEpisode: 0.0f,
+                    timeInEpisode: timeInEpisode,
                     timeScale: 0.0f,
                     fixedDeltaTime: 0.0f,
                     stageIndex: 0,

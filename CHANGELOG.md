@@ -186,6 +186,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod observation collection now catches player/entity/global read failures,
   logs them, and returns a conservative fallback snapshot instead of unwinding
   `FixedUpdate`.
+- Mod GlobalState `time_in_episode` now starts at the first `RUNNING` tick for
+  each episode instead of using Unity scene-load time.
 - Mod StepController now wraps `FixedTick` in a top-level guard that logs
   unexpected failures and clears pending repeated actions.
 - HKRLEnv now rejects StepResponses whose `env_id` does not match the local

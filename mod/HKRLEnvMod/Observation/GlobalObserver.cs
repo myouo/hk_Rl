@@ -44,7 +44,11 @@ namespace HKRLEnvMod.Observation
     /// </summary>
     public sealed class GlobalObserver
     {
-        public GlobalObservation Read(int taskId = 0, ulong episodeId = 0, int stageIndex = 0)
+        public GlobalObservation Read(
+            int taskId = 0,
+            ulong episodeId = 0,
+            int stageIndex = 0,
+            float timeInEpisode = 0.0f)
         {
             Scene scene = SceneManager.GetActiveScene();
             int sceneHash = StableHash(scene.name);
@@ -53,7 +57,7 @@ namespace HKRLEnvMod.Observation
                 arenaId: sceneHash,
                 taskId,
                 difficulty: 0,
-                timeInEpisode: Time.timeSinceLevelLoad,
+                timeInEpisode: timeInEpisode,
                 timeScale: Time.timeScale,
                 fixedDeltaTime: Time.fixedDeltaTime,
                 stageIndex,

@@ -25,6 +25,8 @@ namespace HKRLEnvMod.Env
         private readonly Heartbeat _heartbeat;
         private readonly ObservationCollector _observations;
         private ulong _serverTick;
+        private ulong _episodeStartServerTick;
+        private ulong _runningEpisodeId;
         private DecodedStepRequest? _repeatRequest;
         private int _repeatTicksRemaining;
 
@@ -133,7 +135,10 @@ namespace HKRLEnvMod.Env
                 _rewardTracker.Reset();
             }
 
-            var observation = _observations.Collect(request.TaskId, _lifecycle.EpisodeId);
+            var observation = _observations.Collect(
+                request.TaskId,
+                _lifecycle.EpisodeId,
+                CurrentEpisodeTime(state));
             if (_lifecycle.IsRunning)
             {
                 _rewardTracker.Update(observation, _rewards);
@@ -240,6 +245,7 @@ namespace HKRLEnvMod.Env
                         _actions.Clear();
                         _rewards.Clear();
                         _rewardTracker.Reset();
+                        _runningEpisodeId = 0;
                         _resetManager.BeginReset(request.TaskId);
                         _lifecycle.RequestReset();
                         break;
@@ -365,6 +371,26 @@ namespace HKRLEnvMod.Env
                 canAttack: player.CanAttack,
                 canCast: player.CanCast,
                 canFocus: player.CanFocus);
+        }
+
+        private float CurrentEpisodeTime(HKRL.LifecycleState state)
+        {
+            if (state != HKRL.LifecycleState.Running)
+            {
+                return 0.0f;
+            }
+
+            if (_runningEpisodeId != _lifecycle.EpisodeId)
+            {
+                _runningEpisodeId = _lifecycle.EpisodeId;
+                _episodeStartServerTick = _serverTick;
+                return 0.0f;
+            }
+
+            var elapsedTicks = _serverTick >= _episodeStartServerTick
+                ? _serverTick - _episodeStartServerTick
+                : 0;
+            return elapsedTicks * UnityEngine.Time.fixedDeltaTime;
         }
 
         private HKRL.LifecycleState AdvanceLifecycle()
