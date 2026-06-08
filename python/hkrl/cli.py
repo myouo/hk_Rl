@@ -266,7 +266,7 @@ def run_ppo_training_loop(
                 policy_version=update,
                 step=total_steps,
             )
-            last_checkpoint = meta.path
+            last_checkpoint = str(registry.resolve_path(meta))
             last_checkpoint_version = meta.version
 
     sink.flush()

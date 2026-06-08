@@ -17,6 +17,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 # Import model modules for registry side effects.
 from hkrl.models import mlp as _mlp  # noqa: F401
@@ -86,7 +87,13 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         n_macros=task.action.n_macro_actions,
         max_entities=task.observation.max_entities,
     )
-    checkpoint_client = CheckpointClient(args.registry) if args.registry else None
+    checkpoint_client = (
+        CheckpointClient(
+            args.registry, auth_token=_checkpoint_auth_token(cfg, args.registry)
+        )
+        if args.registry
+        else None
+    )
 
     if args.dry_run:
         auth_token_env = cfg.security.auth_token_env
@@ -229,6 +236,14 @@ def _make_task_provider(
         return tasks[index]
 
     return provide
+
+
+def _checkpoint_auth_token(cfg: Any, registry_endpoint: str | None) -> str | None:
+    if registry_endpoint is None:
+        return None
+    if urlparse(registry_endpoint).scheme in ("http", "https"):
+        return resolve_auth_token(cfg)
+    return None
 
 
 def _make_batch_uploader(

@@ -8,6 +8,7 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pytest
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.training.batch_io import load_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
@@ -111,6 +112,19 @@ def test_run_worker_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None
     )
 
     assert model.trunk[0].out_features == 256
+
+
+def test_run_worker_checkpoint_auth_token_only_for_http(monkeypatch: object) -> None:
+    module = _load_script("run_worker.py")
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/remote_learner.yaml")
+    monkeypatch.delenv("HKRL_AUTH_TOKEN", raising=False)
+
+    assert module._checkpoint_auth_token(cfg, "/tmp/checkpoints") is None
+    with pytest.raises(ValueError, match="HKRL_AUTH_TOKEN"):
+        module._checkpoint_auth_token(cfg, "http://127.0.0.1:8000/checkpoints")
+
+    monkeypatch.setenv("HKRL_AUTH_TOKEN", "secret")
+    assert module._checkpoint_auth_token(cfg, "http://127.0.0.1:8000/checkpoints") == "secret"
 
 
 def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:

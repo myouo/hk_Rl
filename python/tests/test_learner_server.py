@@ -43,7 +43,11 @@ def test_learner_server_submits_updates_and_publishes_checkpoint(tmp_path: Path)
     assert metrics["policy_version"] == 1.0
     assert registry.latest() is not None
     assert server.last_checkpoint == registry.latest()
-    checkpoint = torch.load(server.last_checkpoint.path, map_location="cpu", weights_only=True)
+    checkpoint = torch.load(
+        registry.resolve_path(server.last_checkpoint),
+        map_location="cpu",
+        weights_only=True,
+    )
     assert checkpoint["policy_version"] == 1
     assert checkpoint["update"] == 1
 

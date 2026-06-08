@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import functools
 import json
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -33,10 +38,24 @@ def test_checkpoint_client_accepts_file_url(tmp_path: Path) -> None:
     assert client.latest_version() == meta.version
 
 
+def test_checkpoint_client_pulls_verified_http_checkpoint(tmp_path: Path) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.publish({"model_state_dict": {"weight": torch.tensor([2.0])}}, 2, 5)
+
+    with _serve_directory(tmp_path) as endpoint:
+        client = CheckpointClient(endpoint)
+
+        assert client.latest_version() == meta.version
+        state = client.pull(meta.version)
+
+    assert client.current_version == meta.version
+    torch.testing.assert_close(state["model_state_dict"]["weight"], torch.tensor([2.0]))
+
+
 def test_checkpoint_client_rejects_hash_mismatch(tmp_path: Path) -> None:
     registry = CheckpointRegistry(str(tmp_path))
     meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
-    with open(meta.path, "ab") as fh:
+    with open(registry.resolve_path(meta), "ab") as fh:
         fh.write(b"corruption")
     client = CheckpointClient(str(tmp_path))
 
@@ -88,4 +107,23 @@ def test_checkpoint_client_rejects_duplicate_index_versions(tmp_path: Path) -> N
 
 def test_checkpoint_client_rejects_unsupported_endpoint() -> None:
     with pytest.raises(ValueError, match="unsupported checkpoint registry endpoint"):
-        CheckpointClient("https://example.invalid/checkpoints")
+        CheckpointClient("s3://example.invalid/checkpoints")
+
+
+@contextmanager
+def _serve_directory(root: Path) -> Iterator[str]:
+    handler = functools.partial(_QuietHandler, directory=str(root))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3.0)
+
+
+class _QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self, message_format: str, *args: object) -> None:
+        return

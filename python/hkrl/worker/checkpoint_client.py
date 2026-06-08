@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
-from typing import Any
-from urllib.parse import unquote, urlparse
+from typing import Any, Literal
+from urllib.error import HTTPError
+from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.request import Request, urlopen
 
 import torch
 
@@ -20,23 +23,47 @@ from hkrl.learner.checkpoint_registry import CheckpointMeta
 class CheckpointClient:
     """Pulls and verifies policy checkpoints for hot-swapping."""
 
-    def __init__(self, registry_endpoint: str, verify_hash: bool = True) -> None:
+    def __init__(
+        self,
+        registry_endpoint: str,
+        verify_hash: bool = True,
+        auth_token: str | None = None,
+        timeout_s: float = 10.0,
+    ) -> None:
+        if auth_token == "":
+            raise ValueError("auth_token must not be empty")
+        if timeout_s <= 0:
+            raise ValueError("timeout_s must be positive")
+
         self.registry_endpoint = registry_endpoint
         self.verify_hash = verify_hash
+        self.auth_token = auth_token
+        self.timeout_s = timeout_s
         self._current_version = -1
-        self._root = _resolve_local_endpoint(registry_endpoint)
+        self._parsed_endpoint = urlparse(registry_endpoint)
+        self._kind: Literal["local", "http"]
+        self._root: Path | None
+        self._base_url: str | None
+        if self._parsed_endpoint.scheme in ("", "file"):
+            self._kind = "local"
+            self._root = _resolve_local_endpoint(registry_endpoint)
+            self._base_url = None
+        elif self._parsed_endpoint.scheme in ("http", "https"):
+            self._kind = "http"
+            self._root = None
+            self._base_url = registry_endpoint.rstrip("/") + "/"
+        else:
+            raise ValueError(
+                f"unsupported checkpoint registry endpoint scheme {self._parsed_endpoint.scheme!r}"
+            )
 
     @property
     def current_version(self) -> int:
         return self._current_version
 
     def latest_version(self) -> int:
-        """Return the newest available checkpoint version (or -1).
-
-        Phase 6 starts with local/file registry endpoints. A future learner
-        service can expose the same metadata over an authenticated LAN endpoint.
-        """
-        metas = _load_index(self._root)
+        """Return the newest available checkpoint version (or -1)."""
+        metas = self._load_index()
         if not metas:
             return -1
         return max(metas)
@@ -47,26 +74,58 @@ class CheckpointClient:
         The checkpoint is loaded only after its content hash matches registry
         metadata when ``verify_hash`` is enabled.
         """
-        metas = _load_index(self._root)
+        metas = self._load_index()
         try:
             meta = metas[version]
         except KeyError as exc:
             raise KeyError(f"unknown checkpoint version {version}") from exc
 
-        path = _checkpoint_path(self._root, meta.path)
+        payload = self._read_checkpoint(meta)
         if self.verify_hash:
-            actual_hash = _sha256_file(path)
+            actual_hash = _sha256_bytes(payload)
             if actual_hash != meta.sha256:
                 raise ValueError(
                     f"checkpoint sha256 mismatch for version {version}: "
                     f"expected {meta.sha256}, got {actual_hash}"
                 )
 
-        state = torch.load(path, map_location="cpu", weights_only=True)
+        state = torch.load(BytesIO(payload), map_location="cpu", weights_only=True)
         if not isinstance(state, dict):
             raise ValueError(f"checkpoint version {version} did not contain a state dict")
         self._current_version = version
         return state
+
+    def _load_index(self) -> dict[int, CheckpointMeta]:
+        if self._kind == "local":
+            assert self._root is not None
+            return _load_index(self._root)
+
+        assert self._base_url is not None
+        try:
+            payload = _http_get_bytes(
+                urljoin(self._base_url, "index.jsonl"),
+                auth_token=self.auth_token,
+                timeout_s=self.timeout_s,
+            )
+        except HTTPError as exc:
+            if exc.code == 404:
+                return {}
+            raise
+        return _parse_index(payload.decode("utf-8").splitlines())
+
+    def _read_checkpoint(self, meta: CheckpointMeta) -> bytes:
+        if self._kind == "local":
+            assert self._root is not None
+            path = _checkpoint_path(self._root, meta.path)
+            with open(path, "rb") as fh:
+                return fh.read()
+
+        assert self._base_url is not None
+        return _http_get_bytes(
+            _checkpoint_url(self._base_url, meta.path),
+            auth_token=self.auth_token,
+            timeout_s=self.timeout_s,
+        )
 
 
 def _resolve_local_endpoint(endpoint: str) -> Path:
@@ -84,20 +143,24 @@ def _load_index(root: Path) -> dict[int, CheckpointMeta]:
     if not index_path.exists():
         return {}
 
-    metas: dict[int, CheckpointMeta] = {}
     with open(index_path, encoding="utf-8") as fh:
-        for line_no, line in enumerate(fh, start=1):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                payload = json.loads(stripped)
-                meta = _meta_from_payload(payload)
-            except (TypeError, ValueError, KeyError) as exc:
-                raise ValueError(f"invalid checkpoint index line {line_no}") from exc
-            if meta.version in metas:
-                raise ValueError(f"duplicate checkpoint version {meta.version}")
-            metas[meta.version] = meta
+        return _parse_index(fh)
+
+
+def _parse_index(lines: Any) -> dict[int, CheckpointMeta]:
+    metas: dict[int, CheckpointMeta] = {}
+    for line_no, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+            meta = _meta_from_payload(payload)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError(f"invalid checkpoint index line {line_no}") from exc
+        if meta.version in metas:
+            raise ValueError(f"duplicate checkpoint version {meta.version}")
+        metas[meta.version] = meta
     return metas
 
 
@@ -124,9 +187,28 @@ def _checkpoint_path(root: Path, path: str) -> Path:
     return resolved_checkpoint
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _checkpoint_url(base_url: str, path: str) -> str:
+    parsed = urlparse(path)
+    if parsed.scheme or parsed.netloc or path.startswith("/"):
+        raise ValueError("remote checkpoint paths must be relative to the registry root")
+    parts = [part for part in path.split("/") if part]
+    if any(part == ".." for part in parts):
+        raise ValueError("remote checkpoint path escapes registry root")
+    quoted_path = "/".join(quote(part) for part in parts)
+    url = urljoin(base_url, quoted_path)
+    if not url.startswith(base_url):
+        raise ValueError("remote checkpoint path escapes registry root")
+    return url
+
+
+def _http_get_bytes(url: str, *, auth_token: str | None, timeout_s: float) -> bytes:
+    headers = {}
+    if auth_token is not None:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    request = Request(url, headers=headers)
+    with urlopen(request, timeout=timeout_s) as response:
+        return response.read()
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()

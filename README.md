@@ -142,16 +142,21 @@ python scripts/run_learner.py \
   --checkpoint-dir checkpoints
 
 # worker 在本地推理/采样，rollout 满后上传到 learner；也可同时写 --batch-dir 作为本地 spool
+# checkpoint registry 可用只读 HTTP(S) 暴露；本地 smoke 可先运行：
+python -m http.server 8000 --directory checkpoints
+
 python scripts/run_worker.py \
   --config configs/train/remote_learner.yaml \
   --task configs/tasks/gruz_mother.yaml \
   --learner 127.0.0.1:5600 \
+  --registry http://127.0.0.1:8000/ \
   --steps 2048
 ```
 
 `--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与
-`checkpoint_v*.pt`，包含 `policy_version`、step、sha256 等元数据，可被 worker
-侧 checkpoint client 验证加载。
+`checkpoint_v*.pt`，包含 `policy_version`、step、sha256 等元数据。registry
+中的 checkpoint 路径是相对路径，可用本地路径、`file://` 或 HTTP(S) 目录提供给
+worker 的 `--registry`，worker 会在加载前验证 sha256。
 
 ## CI
 

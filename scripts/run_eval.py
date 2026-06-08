@@ -37,7 +37,12 @@ from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.transport.base import Transport
 from hkrl.transport.factory import make_transport
-from hkrl.utils.config import TaskConfig, TrainConfig, load_task_config, load_train_config
+from hkrl.utils.config import (
+    TaskConfig,
+    TrainConfig,
+    load_task_config,
+    load_train_config,
+)
 from hkrl.utils.registry import get
 from hkrl.wrappers import NormalizeObservation
 
@@ -45,8 +50,12 @@ from hkrl.wrappers import NormalizeObservation
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Evaluator")
     p.add_argument("--policy", choices=("scripted", "mlp", "model"), default="scripted")
-    p.add_argument("--checkpoint", help="checkpoint .pt file or CheckpointRegistry directory")
-    p.add_argument("--checkpoint-dir", help="CheckpointRegistry directory; loads latest version")
+    p.add_argument(
+        "--checkpoint", help="checkpoint .pt file or CheckpointRegistry directory"
+    )
+    p.add_argument(
+        "--checkpoint-dir", help="CheckpointRegistry directory; loads latest version"
+    )
     p.add_argument("--train-config", default="configs/train/ppo_mlp.yaml")
     p.add_argument("--tasks", nargs="+", required=True)
     p.add_argument("--episodes", type=int, default=20)
@@ -55,7 +64,9 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=5555)
     p.add_argument("--max-steps", type=int, default=4096)
     p.add_argument("--no-normalize", action="store_true")
-    p.add_argument("--baseline", help="optional baseline metrics JSON for regression diff")
+    p.add_argument(
+        "--baseline", help="optional baseline metrics JSON for regression diff"
+    )
     p.add_argument("--output", help="optional path to write metrics JSON")
     return p
 
@@ -126,13 +137,19 @@ def _validate_model_task_layouts(tasks: list[TaskConfig]) -> None:
     base = tasks[0]
     for task in tasks[1:]:
         if task.observation.max_entities != base.observation.max_entities:
-            raise ValueError("all evaluator model tasks must share observation.max_entities")
+            raise ValueError(
+                "all evaluator model tasks must share observation.max_entities"
+            )
         if task.observation.tier != base.observation.tier:
             raise ValueError("all evaluator model tasks must share observation.tier")
         if task.action.enable_macro_actions != base.action.enable_macro_actions:
-            raise ValueError("all evaluator model tasks must share action.enable_macro_actions")
+            raise ValueError(
+                "all evaluator model tasks must share action.enable_macro_actions"
+            )
         if task.action.n_macro_actions != base.action.n_macro_actions:
-            raise ValueError("all evaluator model tasks must share action.n_macro_actions")
+            raise ValueError(
+                "all evaluator model tasks must share action.n_macro_actions"
+            )
 
 
 def _build_policy(
@@ -218,7 +235,9 @@ def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> Transp
 
 def _write_output(output: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _load_baseline_metrics(path: Path) -> dict[str, dict[str, float]]:
@@ -236,7 +255,9 @@ def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
     checkpoint = getattr(args, "checkpoint", None)
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if checkpoint is None and checkpoint_dir is None:
-        raise SystemExit("--checkpoint or --checkpoint-dir is required with --policy mlp/model")
+        raise SystemExit(
+            "--checkpoint or --checkpoint-dir is required with --policy mlp/model"
+        )
 
     if checkpoint_dir is not None:
         return _latest_registry_checkpoint(Path(checkpoint_dir))
@@ -248,10 +269,11 @@ def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
 
 
 def _latest_registry_checkpoint(root: Path) -> Path:
-    latest = CheckpointRegistry(str(root)).latest()
+    registry = CheckpointRegistry(str(root))
+    latest = registry.latest()
     if latest is None:
         raise SystemExit(f"checkpoint registry is empty: {root}")
-    path = Path(latest.path)
+    path = registry.resolve_path(latest)
     actual_hash = _sha256_file(path)
     if actual_hash != latest.sha256:
         raise ValueError(

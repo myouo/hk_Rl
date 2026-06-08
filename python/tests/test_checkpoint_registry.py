@@ -28,10 +28,12 @@ def test_checkpoint_registry_publish_latest_get_and_reload(tmp_path: Path) -> No
     assert second.version == 2
     assert registry.latest() == second
     assert registry.get(1) == first
-    assert Path(first.path).exists()
-    assert first.sha256 == _sha256(Path(first.path))
+    assert first.path == "checkpoint_v000001.pt"
+    first_path = registry.resolve_path(first)
+    assert first_path.exists()
+    assert first.sha256 == _sha256(first_path)
 
-    loaded = torch.load(first.path, map_location="cpu", weights_only=True)
+    loaded = torch.load(first_path, map_location="cpu", weights_only=True)
     torch.testing.assert_close(loaded["model_state_dict"]["weight"], torch.tensor([1.0]))
 
     reloaded = CheckpointRegistry(str(tmp_path))
@@ -51,6 +53,25 @@ def test_checkpoint_registry_rejects_invalid_index(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="invalid checkpoint index line"):
         CheckpointRegistry(str(tmp_path))
+
+
+def test_checkpoint_registry_accepts_legacy_absolute_paths_inside_root(tmp_path: Path) -> None:
+    path = tmp_path / "checkpoint_v000001.pt"
+    torch.save({"model_state_dict": {}}, path)
+    payload = {
+        "version": 1,
+        "path": str(path),
+        "sha256": _sha256(path),
+        "policy_version": 1,
+        "created_step": 10,
+    }
+    (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    registry = CheckpointRegistry(str(tmp_path))
+    latest = registry.latest()
+
+    assert latest is not None
+    assert registry.resolve_path(latest) == path
 
 
 def test_checkpoint_registry_rejects_paths_outside_root(tmp_path: Path) -> None:

@@ -87,6 +87,9 @@ the project version tracks the **schema_version** + roadmap phase.
   collection.
 - RolloutBatch now supports in-memory NPZ serialization and an authenticated TCP
   batch intake path from `run_worker --learner` to `run_learner --intake-count`.
+- Checkpoint registries now publish relative checkpoint paths, and worker
+  CheckpointClient can pull hash-verified checkpoints from local/file or HTTP(S)
+  registry endpoints.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with

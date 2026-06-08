@@ -85,14 +85,14 @@ def test_run_eval_resolves_checkpoint_directory_argument(tmp_path: Path) -> None
     meta = registry.publish({"model_state_dict": {}}, policy_version=1, step=1)
     args = argparse.Namespace(checkpoint=str(tmp_path), checkpoint_dir=None)
 
-    assert module._resolve_checkpoint_path(args) == Path(meta.path)
+    assert module._resolve_checkpoint_path(args) == registry.resolve_path(meta)
 
 
 def test_run_eval_rejects_registry_checkpoint_hash_mismatch(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     registry = CheckpointRegistry(str(tmp_path))
     meta = registry.publish({"model_state_dict": {}}, policy_version=1, step=1)
-    Path(meta.path).write_bytes(b"tampered")
+    registry.resolve_path(meta).write_bytes(b"tampered")
 
     with pytest.raises(ValueError, match="sha256 mismatch"):
         module._latest_registry_checkpoint(tmp_path)

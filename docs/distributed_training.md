@@ -120,6 +120,11 @@ Checkpoint registries and local file checkpoint clients reject index entries
 whose checkpoint path escapes the registry root, so a compromised or malformed
 index cannot redirect workers to arbitrary local files. Evaluator registry loads
 also recompute the checkpoint sha256 before loading policy weights.
+Newly published registry entries store checkpoint paths relative to the registry
+root so the same `index.jsonl` can be mounted locally or served over HTTP(S).
+`CheckpointClient` supports local/file and HTTP(S) registry endpoints, sends the
+configured bearer token for HTTP(S), and verifies the downloaded checkpoint
+sha256 before loading weights.
 
 ## 7. Worker recovery
 

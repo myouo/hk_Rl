@@ -42,11 +42,12 @@ class CheckpointRegistry:
         records the learner policy version carried by rollout batches.
         """
         version = self._next_version()
-        path = self._root_path / f"checkpoint_v{version:06d}.pt"
+        filename = f"checkpoint_v{version:06d}.pt"
+        path = self._root_path / filename
         torch.save(state, path)
         meta = CheckpointMeta(
             version=version,
-            path=str(path),
+            path=filename,
             sha256=_sha256_file(path),
             policy_version=policy_version,
             created_step=step,
@@ -65,6 +66,11 @@ class CheckpointRegistry:
             return self._metas[version]
         except KeyError as exc:
             raise KeyError(f"unknown checkpoint version {version}") from exc
+
+    def resolve_path(self, meta_or_path: CheckpointMeta | str) -> Path:
+        """Resolve a checkpoint metadata path against this registry root."""
+        path = meta_or_path.path if isinstance(meta_or_path, CheckpointMeta) else meta_or_path
+        return _checkpoint_path(self._root_path, path)
 
     def _load_index(self) -> None:
         if not self._index_path.exists():
