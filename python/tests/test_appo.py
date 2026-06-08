@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 import torch
 from hkrl.models.base import ActorCritic
 from hkrl.models.mlp import MlpActorCritic
@@ -108,6 +109,18 @@ def test_appo_passes_rollout_rnn_states_to_model() -> None:
     assert (4,) in model.seen_prev_reward_shapes
 
 
+def test_appo_update_rejects_non_finite_model_outputs_before_step() -> None:
+    model = _NaNLossActorCritic()
+    appo = APPO(model, TrainConfig(algorithm="appo", epochs=1, minibatch_size=1))
+    assert appo.ingest(_rnn_batch(policy_version=0), current_version=0)
+    before = model.weight.detach().clone()
+
+    with pytest.raises(ValueError, match="model log_probs"):
+        appo.update()
+
+    assert torch.equal(model.weight.detach(), before)
+
+
 class _RnnAwareActorCritic(ActorCritic):
     def __init__(self) -> None:
         super().__init__()
@@ -162,6 +175,51 @@ class _RnnAwareActorCritic(ActorCritic):
         log_prob = self.weight.expand(batch_size)
         entropy = self.weight.expand(batch_size) * 0.0
         return log_prob, entropy, value
+
+
+class _NaNLossActorCritic(ActorCritic):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(()))
+
+    def initial_state(
+        self,
+        batch_size: int,
+        device: torch.device | None = None,
+    ) -> None:
+        return None
+
+    def forward(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[None, torch.Tensor, None]:
+        batch_size = obs["global"].shape[0]
+        return None, self.weight.expand(batch_size), None
+
+    def act(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, None]:
+        batch_size = obs["global"].shape[0]
+        value = self.weight.expand(batch_size)
+        return torch.zeros((batch_size, 12), dtype=torch.long), value, value, None
+
+    def evaluate_actions(
+        self,
+        obs: dict[str, torch.Tensor],
+        actions: torch.Tensor,
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        output_shape = actions.shape[:-1]
+        finite = self.weight.expand(output_shape)
+        nan = self.weight * torch.full(output_shape, float("nan"), device=actions.device)
+        return nan, finite, finite
 
 
 def _rollout_batch(model: MlpActorCritic) -> RolloutBatch:

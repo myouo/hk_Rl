@@ -15,6 +15,7 @@ import torch
 from torch import Tensor, nn
 
 from hkrl.models.base import ActorCritic, RnnState
+from hkrl.training.numerics import require_finite_tensor
 from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer, RecurrentSequenceBatch
 from hkrl.utils.config import TrainConfig
 from hkrl.utils.registry import register_algo
@@ -96,7 +97,11 @@ class RecurrentPPO:
             rnn_state=batch.rnn_state,
             action_mask=batch.action_masks,
         )
+        require_finite_tensor("model log_probs", log_probs)
+        require_finite_tensor("model entropy", entropy)
+        require_finite_tensor("model values", values)
         ratio = torch.exp(log_probs - batch.old_log_probs)
+        require_finite_tensor("recurrent ppo ratio", ratio)
         unclipped_policy = ratio * advantages
         clipped_policy = (
             torch.clamp(
@@ -121,13 +126,22 @@ class RecurrentPPO:
 
         entropy_mean = _masked_mean(entropy, valid)
         loss = policy_loss + self.cfg.value_coef * value_loss - self.cfg.entropy_coef * entropy_mean
+        approx_kl = _masked_mean(batch.old_log_probs - log_probs, valid)
+        for name, tensor in (
+            ("policy_loss", policy_loss),
+            ("value_loss", value_loss),
+            ("entropy_mean", entropy_mean),
+            ("policy_kl", approx_kl),
+            ("loss", loss),
+        ):
+            require_finite_tensor(name, tensor)
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.max_grad_norm)
+        require_finite_tensor("grad_norm", grad_norm)
         self.optimizer.step()
 
-        approx_kl = _masked_mean(batch.old_log_probs - log_probs, valid)
         return {
             "policy_loss": float(policy_loss.detach().cpu()),
             "value_loss": float(value_loss.detach().cpu()),

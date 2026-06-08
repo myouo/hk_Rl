@@ -14,6 +14,7 @@ import torch
 from torch import Tensor, nn
 
 from hkrl.models.base import ActorCritic
+from hkrl.training.numerics import require_finite_tensor
 from hkrl.training.rollout_buffer import RolloutBatch
 from hkrl.utils.config import TrainConfig
 from hkrl.utils.registry import register_algo
@@ -125,7 +126,11 @@ class APPO:
             rnn_state=rnn_state,
             action_mask=action_masks,
         )
+        require_finite_tensor("model log_probs", log_probs)
+        require_finite_tensor("model entropy", entropy)
+        require_finite_tensor("model values", values)
         ratio = torch.exp(log_probs - old_log_probs)
+        require_finite_tensor("appo ratio", ratio)
         unclipped_policy = ratio * mb_advantages
         clipped_policy = (
             torch.clamp(
@@ -147,13 +152,22 @@ class APPO:
 
         entropy_mean = entropy.mean()
         loss = policy_loss + self.cfg.value_coef * value_loss - self.cfg.entropy_coef * entropy_mean
+        approx_kl = (old_log_probs - log_probs).mean()
+        for name, tensor in (
+            ("policy_loss", policy_loss),
+            ("value_loss", value_loss),
+            ("entropy_mean", entropy_mean),
+            ("policy_kl", approx_kl),
+            ("loss", loss),
+        ):
+            require_finite_tensor(name, tensor)
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.max_grad_norm)
+        require_finite_tensor("grad_norm", grad_norm)
         self.optimizer.step()
 
-        approx_kl = (old_log_probs - log_probs).mean()
         return {
             "policy_loss": float(policy_loss.detach().cpu()),
             "value_loss": float(value_loss.detach().cpu()),

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
+from hkrl.models.base import ActorCritic
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
 from hkrl.training.ppo import PPO
@@ -101,6 +104,87 @@ def test_ppo_update_rejects_non_finite_rollout_values() -> None:
 
     with pytest.raises(ValueError, match="non-finite"):
         ppo.update(buffer)
+
+
+def test_ppo_update_rejects_non_finite_model_outputs_before_step() -> None:
+    model = _NaNLossActorCritic()
+    ppo = PPO(model, TrainConfig(algorithm="ppo", epochs=1, minibatch_size=1))
+    buffer = _single_step_buffer()
+    before = model.weight.detach().clone()
+
+    with pytest.raises(ValueError, match="model log_probs"):
+        ppo.update(buffer)
+
+    assert torch.equal(model.weight.detach(), before)
+
+
+class _NaNLossActorCritic(ActorCritic):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(()))
+
+    def initial_state(
+        self,
+        batch_size: int,
+        device: torch.device | None = None,
+    ) -> None:
+        return None
+
+    def forward(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[None, torch.Tensor, None]:
+        batch_size = obs["global"].shape[0]
+        return None, self.weight.expand(batch_size), None
+
+    def act(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, None]:
+        batch_size = obs["global"].shape[0]
+        value = self.weight.expand(batch_size)
+        return torch.zeros((batch_size, 12), dtype=torch.long), value, value, None
+
+    def evaluate_actions(
+        self,
+        obs: dict[str, torch.Tensor],
+        actions: torch.Tensor,
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        output_shape = actions.shape[:-1]
+        finite = self.weight.expand(output_shape)
+        nan = self.weight * torch.full(output_shape, float("nan"), device=actions.device)
+        return nan, finite, finite
+
+
+def _single_step_buffer() -> RolloutBuffer:
+    buffer = RolloutBuffer(
+        capacity=1,
+        num_envs=1,
+        obs_spec={
+            **_obs_spec(),
+            "action": (12,),
+            "action_mask": (_mask_dim(),),
+        },
+    )
+    buffer.add(
+        obs=_numpy_obs(0),
+        action=np.zeros((12,), dtype=np.int64),
+        log_prob=np.array([0.0], dtype=np.float32),
+        value=np.array([0.0], dtype=np.float32),
+        reward=np.array([0.0], dtype=np.float32),
+        done=np.array([False]),
+        truncated=np.array([False]),
+        action_mask=np.ones((_mask_dim(),), dtype=bool),
+    )
+    buffer.compute_returns(np.array([0.0], dtype=np.float32), gamma=0.99, gae_lambda=0.95)
+    return buffer
 
 
 def _obs_spec() -> dict[str, tuple[int, ...]]:
