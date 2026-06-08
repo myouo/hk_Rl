@@ -199,6 +199,20 @@ def test_mod_player_observer_reads_playerdata_with_fallbacks() -> None:
     assert "TryReadGetInt" in observer
 
 
+def test_mod_reward_hooks_log_exceptions() -> None:
+    root = Path(__file__).parents[2]
+    for relative in (
+        "mod/HKRLEnvMod/Rewards/DamageHooks.cs",
+        "mod/HKRLEnvMod/Rewards/DeathHooks.cs",
+        "mod/HKRLEnvMod/Rewards/HealHooks.cs",
+        "mod/HKRLEnvMod/Rewards/SceneHooks.cs",
+    ):
+        source = (root / relative).read_text(encoding="utf-8")
+        assert "try" in source
+        assert "catch (System.Exception exception)" in source
+        assert "global::HKRLEnvMod.Debug.Logger.Error" in source
+
+
 def _build_step_response(
     *,
     schema_version: int = protocol.SCHEMA_VERSION,

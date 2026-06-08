@@ -15,12 +15,19 @@ namespace HKRLEnvMod.Rewards
 
         public static void RecordSceneChanged(int fromSceneHash, int toSceneHash)
         {
-            _buffer?.Add(
-                HKRL.RewardEventKind.SceneChanged,
-                entityId: 0,
-                amount: 0.0f,
-                auxInt: fromSceneHash,
-                auxInt2: toSceneHash);
+            try
+            {
+                _buffer?.Add(
+                    HKRL.RewardEventKind.SceneChanged,
+                    entityId: 0,
+                    amount: 0.0f,
+                    auxInt: fromSceneHash,
+                    auxInt2: toSceneHash);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record scene change", exception);
+            }
         }
     }
 }

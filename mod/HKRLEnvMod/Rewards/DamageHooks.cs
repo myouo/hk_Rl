@@ -17,12 +17,26 @@ namespace HKRLEnvMod.Rewards
 
         public static void RecordDamageDealt(int entityId, float amount, int damageType = 0)
         {
-            _buffer?.Add(HKRL.RewardEventKind.DamageDealt, entityId, amount, damageType);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.DamageDealt, entityId, amount, damageType);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record damage dealt", exception);
+            }
         }
 
         public static void RecordDamageTaken(int entityId, float amount, int damageType = 0)
         {
-            _buffer?.Add(HKRL.RewardEventKind.DamageTaken, entityId, amount, damageType);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.DamageTaken, entityId, amount, damageType);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record damage taken", exception);
+            }
         }
     }
 }

@@ -16,12 +16,26 @@ namespace HKRLEnvMod.Rewards
 
         public static void RecordPlayerDeath(int entityId = 0)
         {
-            _buffer?.Add(HKRL.RewardEventKind.PlayerDeath, entityId);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.PlayerDeath, entityId);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record player death", exception);
+            }
         }
 
         public static void RecordBossKilled(int entityId)
         {
-            _buffer?.Add(HKRL.RewardEventKind.BossKilled, entityId);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.BossKilled, entityId);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record boss kill", exception);
+            }
         }
     }
 }

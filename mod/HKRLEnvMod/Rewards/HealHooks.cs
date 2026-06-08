@@ -14,12 +14,26 @@ namespace HKRLEnvMod.Rewards
 
         public static void RecordHeal(int entityId, float amount)
         {
-            _buffer?.Add(HKRL.RewardEventKind.Heal, entityId, amount);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.Heal, entityId, amount);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record heal", exception);
+            }
         }
 
         public static void RecordSoulGained(int entityId, float amount)
         {
-            _buffer?.Add(HKRL.RewardEventKind.SoulGained, entityId, amount);
+            try
+            {
+                _buffer?.Add(HKRL.RewardEventKind.SoulGained, entityId, amount);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error("Failed to record soul gained", exception);
+            }
         }
     }
 }
