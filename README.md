@@ -66,8 +66,13 @@ conda activate hkrl
 # 2. 生成 schema 绑定并运行本地质量门禁
 make check
 
-# 3. 本地 smoke（待 Phase 2 实现）
-python scripts/train.py --config configs/train/ppo_mlp.yaml
+# 3. 本地 smoke（需要 Hollow Knight + HKRLEnvMod 正在监听 TCP）
+python scripts/train.py \
+  --config configs/train/ppo_mlp.yaml \
+  --task configs/tasks/gruz_mother.yaml \
+  --smoke \
+  --steps 100 \
+  --metrics runs/smoke.jsonl
 ```
 
 ## CI
@@ -98,7 +103,9 @@ bindings，再执行格式检查、lint、typecheck 和 tests。如果本机有 
 
 ## 当前状态
 
-**Phase 0 — 调研与环境准备**。下一步优先级（P0）：双向 step/reset 协议、Gymnasium Env、Clean episode lifecycle、action mask、reward events、单 Boss baseline。
+**Phase 0/1/2 基础推进中**：schema、CI、Python transport、Gymnasium Env、
+step/reset 协议 helper、observation normalization、随机策略 smoke 入口已就位。
+下一步优先级（P0）：mod 侧 step/reset server、action mask、reward events、单 Boss baseline。
 
 ## License
 
