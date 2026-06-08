@@ -241,7 +241,7 @@ class RecurrentRolloutBuffer:
         rewards = np.zeros((batch_size, max_len), dtype=np.float32)
         dones = np.zeros((batch_size, max_len), dtype=bool)
         truncateds = np.zeros((batch_size, max_len), dtype=bool)
-        action_masks = np.zeros(
+        action_masks = np.ones(
             (batch_size, max_len, *self.action_masks.shape[2:]),
             dtype=bool,
         )

@@ -48,6 +48,8 @@ the project version tracks the **schema_version** + roadmap phase.
   computes GAE returns, exports RolloutBatch copies, and supports clear/reuse.
 - RecurrentRolloutBuffer now stores hidden-state-aware rollouts, computes GAE,
   and emits padded, burn-in masked sequence batches split at episode boundaries.
+- RecurrentPPO now runs clipped sequence updates with hidden-state inputs,
+  burn-in/padding loss masks, and PPO training metrics.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
 - MLP actor-critic baseline now flattens global/player/entity observations with
