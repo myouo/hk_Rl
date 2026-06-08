@@ -42,6 +42,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - JSONL metric sink for scalar and per-episode training/evaluation records.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
+- Flat RolloutBuffer now stores fixed-capacity multi-env PPO transitions,
+  computes GAE returns, exports RolloutBatch copies, and supports clear/reuse.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
