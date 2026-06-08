@@ -65,6 +65,8 @@ the project version tracks the **schema_version** + roadmap phase.
   fieldnames for fixed wide exports.
 - Shared `hkrl`/`scripts/train.py` smoke CLI for config-driven TCP env wiring,
   normalized observations, random policy actions, and JSONL metrics.
+- `hkrl`/`scripts/train.py` now expose `--metrics-kind {jsonl,csv}` so smoke and
+  local PPO runs can write either sink backend.
 - Flat RolloutBuffer now stores fixed-capacity multi-env PPO transitions,
   computes GAE returns, exports RolloutBatch copies, and supports clear/reuse.
 - RecurrentRolloutBuffer now stores hidden-state-aware rollouts, computes GAE,

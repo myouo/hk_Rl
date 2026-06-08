@@ -96,6 +96,14 @@ python scripts/train.py \
   --metrics runs/train.jsonl \
   --checkpoint-dir checkpoints
 
+# 指标也可写 CSV
+python scripts/train.py \
+  --config configs/train/ppo_mlp.yaml \
+  --task configs/tasks/gruz_mother.yaml \
+  --smoke \
+  --metrics runs/smoke.csv \
+  --metrics-kind csv
+
 # 6. 分布式入口 dry-run（不连接真实游戏，用于验证配置/任务/worker 编排）
 python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \

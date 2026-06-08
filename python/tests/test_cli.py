@@ -44,7 +44,26 @@ def test_build_argparser_defaults_task_and_requires_config() -> None:
     args = parser.parse_args(["--config", "configs/train/ppo_mlp.yaml", "--smoke"])
 
     assert args.task == "configs/tasks/gruz_mother.yaml"
+    assert args.metrics_kind == "jsonl"
     assert args.smoke is True
+
+
+def test_build_argparser_accepts_csv_metrics_kind() -> None:
+    parser = build_argparser()
+    args = parser.parse_args(
+        [
+            "--config",
+            "configs/train/ppo_mlp.yaml",
+            "--smoke",
+            "--metrics",
+            "runs/smoke.csv",
+            "--metrics-kind",
+            "csv",
+        ]
+    )
+
+    assert args.metrics == "runs/smoke.csv"
+    assert args.metrics_kind == "csv"
 
 
 def test_run_random_policy_smoke_steps_until_done_and_logs(tmp_path: Path) -> None:

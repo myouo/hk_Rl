@@ -37,7 +37,13 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--metrics",
         default="runs/smoke.jsonl",
-        help="JSONL metrics path for smoke records",
+        help="metrics output path",
+    )
+    parser.add_argument(
+        "--metrics-kind",
+        choices=("jsonl", "csv"),
+        default="jsonl",
+        help="metrics sink backend",
     )
     parser.add_argument(
         "--reset-timeout",
@@ -94,7 +100,7 @@ def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
     )
     worker = GameWorker(env=env, model=model, config=cfg)
     algo = PPO(model=model, config=cfg)
-    sink = make_sink("jsonl", path=Path(args.metrics))
+    sink = make_sink(args.metrics_kind, path=Path(args.metrics))
 
     try:
         return run_ppo_training_loop(
@@ -128,7 +134,7 @@ def run_smoke_from_args(args: argparse.Namespace) -> dict[str, Any]:
     )
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     policy = RandomPolicy(env.action_space, seed=cfg.seed)
-    sink = make_sink("jsonl", path=Path(args.metrics))
+    sink = make_sink(args.metrics_kind, path=Path(args.metrics))
 
     try:
         return run_random_policy_smoke(
