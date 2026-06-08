@@ -43,6 +43,10 @@ in the schema. Highlights:
 
 ## 4. Reset handshake (ack)
 
+Task configs use a human-readable string `task_id` for logs/evaluation and a
+numeric `wire_id` for `StepRequest.task_id`. The mod maps the numeric id to
+Godhome scenes; rollout buffers store the same numeric id in `task_ids`.
+
 `RESET` is **not** a single round-trip. The mod walks the lifecycle state
 machine ([`episode_lifecycle.md`](./episode_lifecycle.md)) and reports progress
 via `StepResponse.lifecycle_state`. The worker may only send `STEP` once it sees

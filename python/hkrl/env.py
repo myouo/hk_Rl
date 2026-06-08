@@ -201,6 +201,7 @@ class HKRLEnv(gym.Env):
             env_id=self._env_id,
             tick_id=tick_id,
             action_repeat=action_repeat,
+            task_id=self.task.wire_id,
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))
@@ -309,6 +310,8 @@ class HKRLEnv(gym.Env):
             "lifecycle_state": response.lifecycle_state,
             "error_code": response.error_code,
             "episode_id": self._episode_id,
+            "task_id": self.task.wire_id,
+            "task_name": self.task.task_id,
         }
         if response.info is not None:
             info["raw_info"] = response.info

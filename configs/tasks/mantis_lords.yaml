@@ -1,6 +1,7 @@
 # Task: Mantis Lords (multi-entity: simultaneous bosses). Exercises the entity
 # list + attention path (PRD §3.1, Phase 4/5). Maps to hkrl.utils.config.TaskConfig.
 task_id: mantis_lords
+wire_id: 2
 scene: GG_Mantis_Lords
 difficulty: attuned
 time_limit_seconds: 180

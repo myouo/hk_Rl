@@ -38,6 +38,8 @@ episode_ids, task_ids, policy_version
 Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences for
 recurrent training preserve `rnn_states` at sequence boundaries and mask padded
 timesteps.
+`task_ids` are the numeric task `wire_id` values from task YAML, not the
+human-readable task names used in evaluator output.
 
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner

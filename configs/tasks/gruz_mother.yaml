@@ -1,5 +1,6 @@
 # Task: Gruz Mother (simple MVP boss). Maps to hkrl.utils.config.TaskConfig.
 task_id: gruz_mother
+wire_id: 0
 scene: GG_Gruz_Mother
 difficulty: attuned
 time_limit_seconds: 120

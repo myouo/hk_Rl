@@ -1,6 +1,7 @@
 # Task: Hornet Protector (Godhome). Maps to hkrl.utils.config.TaskConfig.
 # PRD §12.1.
 task_id: hornet_protector_attuned
+wire_id: 1
 scene: GG_Hornet_1
 difficulty: attuned
 time_limit_seconds: 180

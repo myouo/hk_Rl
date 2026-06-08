@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from hkrl.utils.config import load_train_config, load_yaml, resolve_auth_token
+from hkrl.utils.config import load_task_config, load_train_config, load_yaml, resolve_auth_token
 
 
 def _write_yaml(path: Path, data: dict[str, object]) -> None:
@@ -60,6 +60,17 @@ def test_load_train_config_composes_repo_defaults() -> None:
     assert config.gamma == 0.995
     assert config.transport.port == 5555
     assert config.model.name == "mlp"
+
+
+def test_load_task_config_preserves_wire_id() -> None:
+    gruz = load_task_config(Path("../configs/tasks/gruz_mother.yaml"))
+    hornet = load_task_config(Path("../configs/tasks/hornet_protector.yaml"))
+    mantis = load_task_config(Path("../configs/tasks/mantis_lords.yaml"))
+
+    assert gruz.task_id == "gruz_mother"
+    assert gruz.wire_id == 0
+    assert hornet.wire_id == 1
+    assert mantis.wire_id == 2
 
 
 def test_load_train_config_preserves_distributed_runtime_settings() -> None:

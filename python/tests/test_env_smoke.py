@@ -91,7 +91,7 @@ def test_env_module_imports() -> None:
 def test_env_constructs_spaces_from_task_config() -> None:
     from hkrl.env import HKRLEnv
 
-    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    task = load_task_config("../configs/tasks/gruz_mother.yaml").model_copy(update={"wire_id": 11})
     transport = DummyTransport()
 
     env = HKRLEnv(transport=transport, task=task)
@@ -120,7 +120,7 @@ def test_registry_has_builtin_components() -> None:
 def test_env_reset_polls_until_running_and_returns_space_observation() -> None:
     from hkrl.env import HKRLEnv
 
-    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    task = load_task_config("../configs/tasks/gruz_mother.yaml").model_copy(update={"wire_id": 11})
     transport = ScriptedTransport(
         [
             lambda req: _build_response(req, lifecycle=protocol.LifecycleState.COUNTDOWN),
@@ -136,17 +136,20 @@ def test_env_reset_polls_until_running_and_returns_space_observation() -> None:
         protocol.Command.STEP,
     ]
     assert all(req.ActionRepeat() == 1 for req in transport.requests)
+    assert all(req.TaskId() == 11 for req in transport.requests)
     assert env.observation_space.contains(obs)
     assert obs["entities"].shape == env.observation_space["entities"].shape
     assert int(np.sum(obs["entity_mask"])) == 1
     assert info["lifecycle_state"] is protocol.LifecycleState.RUNNING
     assert info["episode_id"] == 123
+    assert info["task_id"] == 11
+    assert info["task_name"] == "gruz_mother"
 
 
 def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     from hkrl.env import HKRLEnv
 
-    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    task = load_task_config("../configs/tasks/gruz_mother.yaml").model_copy(update={"wire_id": 12})
     transport = ScriptedTransport(
         [
             lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
@@ -174,6 +177,7 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     step_request = transport.requests[-1]
     assert protocol.Command(step_request.Command()) is protocol.Command.STEP
     assert step_request.ActionRepeat() == task.action.action_repeat
+    assert step_request.TaskId() == 12
     assert step_request.Action().Buttons() == 1 << 3
     assert env.observation_space.contains(obs)
     assert reward == pytest.approx(3.0 + task.reward.time_penalty * task.action.action_repeat)

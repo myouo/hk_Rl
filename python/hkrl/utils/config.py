@@ -51,6 +51,7 @@ class TaskConfig(StrictConfigModel):
     """One boss/arena task (configs/tasks/*.yaml). Mirrors PRD §12.1."""
 
     task_id: str
+    wire_id: int = Field(default=0, ge=0)
     scene: str
     difficulty: str = "attuned"
     time_limit_seconds: int = 180

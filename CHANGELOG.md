@@ -44,6 +44,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - HKRLEnv reset/step now drive the Transport protocol, poll the clean lifecycle
   until `RUNNING`, compose reward events, enforce tick echoes, and adapt decoded
   observations to Gymnasium spaces.
+- Task configs now separate human-readable `task_id` from numeric `wire_id`;
+  HKRLEnv sends `wire_id` in every StepRequest and exposes it in Gym info for
+  rollout task_ids.
 - HKRLEnv now rejects malformed observations with non-finite values, mismatched
   entity masks, entity hp above max hp, or missing boss entities in boss tasks.
 - NormalizeObservation wrapper now scales player/entity positions, velocities,
