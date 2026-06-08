@@ -46,6 +46,8 @@ the project version tracks the **schema_version** + roadmap phase.
   computes GAE returns, exports RolloutBatch copies, and supports clear/reuse.
 - Mask-aware PyTorch hybrid policy/value heads now sample and evaluate packed
   training action tensors for the MLP/PPO baseline path.
+- MLP actor-critic baseline now flattens global/player/entity observations with
+  entity-mask padding suppression and exposes act/evaluate_actions for PPO.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
