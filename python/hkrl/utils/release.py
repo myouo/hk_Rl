@@ -1376,6 +1376,12 @@ def _verify_phase8_smoke_summary_structure(
     )
     if task_wire_failure is not None:
         return task_wire_failure
+    sampler_failure = _verify_phase8_smoke_sampler_evidence(
+        coordinator,
+        task_ids=task_ids,
+    )
+    if sampler_failure is not None:
+        return sampler_failure
     missing_worker_ids = sorted(
         str(worker_id) for worker_id in worker_ids if worker_id not in workers
     )
@@ -1436,6 +1442,69 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_sampler_evidence(
+    coordinator: Mapping[str, Any],
+    *,
+    task_ids: Sequence[Any],
+) -> dict[str, Any] | None:
+    task_id_set = {str(task_id) for task_id in task_ids if isinstance(task_id, str)}
+    eval_winrates = coordinator.get("eval_winrates")
+    sampler_weights = coordinator.get("sampler_weights")
+    sampler_mastered_tasks = coordinator.get("sampler_mastered_tasks")
+    malformed_sections: list[str] = []
+    missing_task_ids: dict[str, list[str]] = {}
+    unexpected_task_ids: dict[str, list[str]] = {}
+    malformed_task_ids: dict[str, list[str]] = {}
+
+    for field, values, validator in (
+        ("coordinator.eval_winrates", eval_winrates, _is_probability),
+        ("coordinator.sampler_weights", sampler_weights, _is_non_negative_number),
+    ):
+        if not isinstance(values, Mapping) or not values:
+            malformed_sections.append(field)
+            continue
+        value_task_ids = {str(task_id) for task_id in values}
+        missing = sorted(task_id_set - value_task_ids)
+        unexpected = sorted(value_task_ids - task_id_set)
+        malformed = sorted(
+            str(task_id)
+            for task_id, value in values.items()
+            if not isinstance(task_id, str) or not task_id or not validator(value)
+        )
+        if missing:
+            missing_task_ids[field] = missing
+        if unexpected:
+            unexpected_task_ids[field] = unexpected
+        if malformed:
+            malformed_task_ids[field] = malformed
+
+    if (
+        not isinstance(sampler_mastered_tasks, Sequence)
+        or isinstance(sampler_mastered_tasks, (str, bytes))
+        or not all(isinstance(task_id, str) and task_id for task_id in sampler_mastered_tasks)
+    ):
+        malformed_sections.append("coordinator.sampler_mastered_tasks")
+    else:
+        unexpected_mastered = sorted(
+            {str(task_id) for task_id in sampler_mastered_tasks} - task_id_set
+        )
+        if unexpected_mastered:
+            unexpected_task_ids["coordinator.sampler_mastered_tasks"] = unexpected_mastered
+
+    if malformed_sections or missing_task_ids or unexpected_task_ids or malformed_task_ids:
+        return {
+            "field": "coordinator.sampler",
+            "malformed_sections": malformed_sections,
+            "malformed_task_ids": malformed_task_ids,
+            "missing_task_ids": missing_task_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_sampler_malformed",
+            "unexpected_task_ids": unexpected_task_ids,
+        }
     return None
 
 

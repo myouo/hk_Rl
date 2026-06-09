@@ -1071,6 +1071,48 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_task_wire_ids(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_sampler_evidence(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["eval_winrates"] = {"gruz_mother": 1.2, "unknown_task": 0.2}
+    coordinator["sampler_weights"] = {"gruz_mother": -0.1}
+    coordinator["sampler_mastered_tasks"] = ["gruz_mother", 7]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.sampler",
+            "malformed_sections": ["coordinator.sampler_mastered_tasks"],
+            "malformed_task_ids": {
+                "coordinator.eval_winrates": ["gruz_mother"],
+                "coordinator.sampler_weights": ["gruz_mother"],
+            },
+            "missing_task_ids": {
+                "coordinator.eval_winrates": ["hornet_protector_attuned"],
+                "coordinator.sampler_weights": ["hornet_protector_attuned"],
+            },
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_sampler_malformed",
+            "unexpected_task_ids": {
+                "coordinator.eval_winrates": ["unknown_task"],
+            },
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_json(
     tmp_path: Path,
 ) -> None:
@@ -2734,12 +2776,21 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "worker-0": "hornet_protector_attuned",
                 "worker-1": "gruz_mother",
             },
+            "eval_winrates": {
+                "gruz_mother": 0.9,
+                "hornet_protector_attuned": 0.2,
+            },
             "metrics": {
                 "active_worker_count": 2.0,
                 "sps": 32.0,
                 "worker_count": 2.0,
             },
             "num_workers": 2,
+            "sampler_mastered_tasks": ["gruz_mother"],
+            "sampler_weights": {
+                "gruz_mother": 0.1,
+                "hornet_protector_attuned": 0.8,
+            },
             "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "task_wire_ids": {
                 "gruz_mother": 0,
