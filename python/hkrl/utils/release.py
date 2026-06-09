@@ -270,12 +270,7 @@ def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
     ]
     for index, artifact in enumerate(artifacts):
         item = _artifact_markdown_item(artifact, index=index)
-        lines.append(
-            "| "
-            f"{_markdown_cell(str(item.get('path', '')))} | "
-            f"{item.get('bytes', 0)} | "
-            f"`{item.get('sha256', '')}` |"
-        )
+        lines.append(_release_evidence_markdown_artifact_row(item))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -291,6 +286,15 @@ def _artifact_markdown_item(artifact: Any, *, index: int) -> Mapping[str, Any]:
         "path": f"<invalid artifact {index}>",
         "sha256": "",
     }
+
+
+def _release_evidence_markdown_artifact_row(artifact: Mapping[str, Any]) -> str:
+    return (
+        "| "
+        f"{_markdown_cell(str(artifact.get('path', '')))} | "
+        f"{artifact.get('bytes', 0)} | "
+        f"`{artifact.get('sha256', '')}` |"
+    )
 
 
 def verify_release_evidence_manifest(
@@ -402,6 +406,13 @@ def verify_release_evidence_manifest(
     total_bytes_failure = _verify_manifest_total_bytes(manifest, artifacts)
     if total_bytes_failure is not None:
         failures.append(total_bytes_failure)
+
+    release_evidence_markdown_failure = _verify_release_evidence_markdown(
+        root_path,
+        manifest,
+    )
+    if release_evidence_markdown_failure is not None:
+        failures.append(release_evidence_markdown_failure)
 
     return {
         "artifact_count": len(results),
@@ -693,6 +704,88 @@ def _verify_manifest_optional_artifacts(
             "reason": "manifest_optional_artifacts_partial",
         }
     return None
+
+
+def _verify_release_evidence_markdown(
+    root: Path,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    path = root / "runs/release/evidence.md"
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_invalid",
+        }
+
+    if not text.startswith("# HKRL Release Evidence\n"):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_title_missing",
+        }
+
+    missing_metadata = [
+        line for line in _release_evidence_markdown_metadata(manifest) if line not in text
+    ]
+    if missing_metadata:
+        return {
+            "field": "metadata",
+            "missing_metadata": missing_metadata,
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_metadata_mismatch",
+        }
+
+    if "## Artifacts" not in text or "| Path | Bytes | SHA256 |" not in text:
+        return {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifacts_missing",
+        }
+
+    missing_paths = [
+        str(item.get("path", ""))
+        for item in _release_evidence_markdown_artifacts(manifest)
+        if _release_evidence_markdown_artifact_row(item) not in text
+    ]
+    if missing_paths:
+        return {
+            "field": "artifacts",
+            "missing_paths": missing_paths,
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifact_rows_missing",
+        }
+
+    return None
+
+
+def _release_evidence_markdown_metadata(manifest: Mapping[str, Any]) -> tuple[str, ...]:
+    return (
+        f"- Version: `{manifest.get('version', 'unknown')}`",
+        f"- Git SHA: `{manifest.get('git_sha') or 'unrecorded'}`",
+        f"- Artifact count: `{manifest.get('artifact_count', 0)}`",
+        f"- Total bytes: `{manifest.get('total_bytes', 0)}`",
+    )
+
+
+def _release_evidence_markdown_artifacts(
+    manifest: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    artifacts = manifest.get("artifacts", [])
+    if not isinstance(artifacts, Sequence) or isinstance(artifacts, (str, bytes)):
+        return []
+    return [
+        _artifact_markdown_item(artifact, index=index) for index, artifact in enumerate(artifacts)
+    ]
 
 
 def _verify_eval_report_artifact(
