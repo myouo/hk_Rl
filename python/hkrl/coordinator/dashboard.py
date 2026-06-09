@@ -19,6 +19,8 @@ KEY_METRICS: tuple[str, ...] = (
     "worker_checkpoint_lag_max",
     "stale_policy_worker_count",
     "stale_checkpoint_worker_count",
+    "worker_without_policy_version_count",
+    "worker_without_checkpoint_version_count",
 )
 
 
@@ -191,6 +193,10 @@ def _health(metrics: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("stale policy workers")
     if _float(metrics.get("stale_checkpoint_worker_count", 0.0)) > 0.0:
         reasons.append("stale checkpoint workers")
+    if _float(metrics.get("worker_without_policy_version_count", 0.0)) > 0.0:
+        reasons.append("workers missing policy version")
+    if _float(metrics.get("worker_without_checkpoint_version_count", 0.0)) > 0.0:
+        reasons.append("workers missing checkpoint version")
     if (
         _float(metrics.get("active_worker_count", 0.0)) > 0.0
         and _float(metrics.get("sps", 0.0)) <= 0.0

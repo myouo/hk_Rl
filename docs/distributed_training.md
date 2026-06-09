@@ -201,8 +201,8 @@ turns either a coordinator summary or a Phase 8 smoke summary into a static
 monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 `runs/phase8-smoke/dashboard.html` plus the normalized dashboard model JSON for
 CI artifacts or local inspection. Dashboard health is marked degraded when
-workers are lost/recovering, crash churn is visible, workers lag policy or
-checkpoint versions, or active workers report zero fleet SPS.
+workers are lost/recovering, crash churn is visible, workers lag or omit policy
+or checkpoint versions, or active workers report zero fleet SPS.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, stale policies/checkpoints, and missing

@@ -21,6 +21,8 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
     }
     assert model["metrics"]["sps"] == 12.5
     assert model["metrics"]["worker_policy_lag_max"] == 2.0
+    assert model["metrics"]["worker_without_policy_version_count"] == 0.0
+    assert model["metrics"]["worker_without_checkpoint_version_count"] == 0.0
     assert model["workers"] == [
         {
             "alive": True,
@@ -100,6 +102,41 @@ def test_dashboard_health_flags_worker_crashes_without_active_recovery() -> None
     }
 
 
+def test_dashboard_health_flags_workers_missing_versions() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_without_checkpoint_version_count": 1.0,
+            "worker_without_policy_version_count": 1.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics.pop("checkpoint_version")
+    worker_metrics.pop("policy_version")
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": [
+            "workers missing policy version",
+            "workers missing checkpoint version",
+        ],
+    }
+    assert model["workers"][1]["policy_version"] is None
+    assert model["workers"][1]["checkpoint_version"] is None
+
+
 def test_render_phase8_dashboard_script_writes_html_and_json(tmp_path: Path) -> None:
     module = _load_script("render_phase8_dashboard.py")
     summary_path = tmp_path / "summary.json"
@@ -138,6 +175,8 @@ def _phase8_summary() -> dict[str, object]:
                 "worker_crash_count": 1.0,
                 "worker_policy_lag_max": 2.0,
                 "worker_policy_version_max": 7.0,
+                "worker_without_checkpoint_version_count": 0.0,
+                "worker_without_policy_version_count": 0.0,
             },
             "sampler_mastered_tasks": ["gruz"],
             "sampler_weights": {"gruz": 0.1, "hornet": 0.8},

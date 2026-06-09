@@ -342,6 +342,8 @@ the project version tracks the **schema_version** + roadmap phase.
   static Phase 8 fleet dashboard from coordinator or offline-smoke summary JSON.
 - Phase 8 dashboard health now marks worker crash churn as degraded even when no
   worker is currently in recovery.
+- Phase 8 dashboard health now surfaces workers that have not reported policy or
+  checkpoint versions.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

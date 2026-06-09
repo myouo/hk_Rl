@@ -73,7 +73,8 @@ policy/checkpoint lag, worker table state, sampler weights, and evaluator
 win-rate inputs; `make phase8-dashboard` writes the default offline smoke
 dashboard to `runs/phase8-smoke/`.
 Dashboard health is degraded for lost workers, recovering workers, crash churn,
-stale policy/checkpoint versions, or active workers reporting zero fleet SPS.
+stale/missing policy or checkpoint versions, or active workers reporting zero
+fleet SPS.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
 crash/recovery counts, and policy/checkpoint lag into bottleneck findings.
