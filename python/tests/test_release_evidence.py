@@ -36,6 +36,7 @@ def test_release_evidence_manifest_hashes_artifacts(tmp_path: Path) -> None:
 
     assert manifest["version"] == "phase8"
     assert manifest["git_sha"] == "abc123"
+    assert manifest["manifest_version"] == 1
     assert manifest["artifact_count"] == 2
     assert manifest["total_bytes"] == summary.stat().st_size + checklist.stat().st_size
     assert manifest["artifacts"][0] == {
@@ -172,6 +173,33 @@ def test_release_evidence_verifier_reports_artifact_count_mismatch(
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_artifact_count_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_manifest_version_mismatch(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    manifest["manifest_version"] = 2
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == [
+        {
+            "actual_manifest_version": 2,
+            "expected_manifest_version": 1,
+            "field": "manifest_version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_version_mismatch",
         }
     ]
 

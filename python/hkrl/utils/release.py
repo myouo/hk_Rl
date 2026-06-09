@@ -140,6 +140,8 @@ PHASE8_OPTIONAL_RELEASE_ARTIFACTS: tuple[str, ...] = (
     "runs/eval-report.json",
 )
 
+RELEASE_EVIDENCE_MANIFEST_VERSION = 1
+
 
 def build_release_checklist(
     *,
@@ -212,7 +214,7 @@ def build_release_evidence_manifest(
         "artifact_count": len(artifact_rows),
         "artifacts": artifact_rows,
         "git_sha": git_sha,
-        "manifest_version": 1,
+        "manifest_version": RELEASE_EVIDENCE_MANIFEST_VERSION,
         "total_bytes": total_bytes,
         "version": version,
     }
@@ -285,6 +287,10 @@ def verify_release_evidence_manifest(
         results.append(result)
         if not result["ok"]:
             failures.append(result)
+
+    version_failure = _verify_manifest_version(manifest)
+    if version_failure is not None:
+        failures.append(version_failure)
 
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
@@ -409,6 +415,27 @@ def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
         "path": relative_path,
         "sha256": actual_sha256,
     }
+
+
+def _verify_manifest_version(manifest: Mapping[str, Any]) -> dict[str, Any] | None:
+    manifest_version = manifest.get("manifest_version")
+    if _invalid_non_negative_int(manifest_version):
+        return {
+            "field": "manifest_version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_version_invalid",
+        }
+    if manifest_version != RELEASE_EVIDENCE_MANIFEST_VERSION:
+        return {
+            "actual_manifest_version": manifest_version,
+            "expected_manifest_version": RELEASE_EVIDENCE_MANIFEST_VERSION,
+            "field": "manifest_version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_version_mismatch",
+        }
+    return None
 
 
 def _verify_manifest_artifact_count(
