@@ -361,6 +361,12 @@ def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
             "path": "<missing>",
             "reason": "artifact_path_missing",
         }
+    if Path(raw_path).expanduser().is_absolute():
+        return {
+            "ok": False,
+            "path": raw_path,
+            "reason": "artifact_path_absolute",
+        }
 
     try:
         path, relative_path = _resolve_artifact_path(root, raw_path)

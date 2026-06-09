@@ -117,6 +117,17 @@ def test_release_evidence_rejects_artifacts_outside_root(tmp_path: Path) -> None
         build_release_evidence_manifest(root=tmp_path, artifacts=[outside])
 
 
+def test_release_evidence_manifest_normalizes_absolute_artifact_inputs(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+
+    manifest = build_release_evidence_manifest(root=tmp_path, artifacts=[artifact])
+
+    assert manifest["artifacts"][0]["path"] == "runs/phase8-smoke/summary.json"
+
+
 def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
     _write(artifact, '{"ok": true}\n')
@@ -131,6 +142,28 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     assert result["artifact_count"] == 1
     assert result["checked_artifact_count"] == 1
     assert result["failures"] == []
+
+
+def test_release_evidence_verifier_reports_absolute_manifest_path(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    manifest["artifacts"][0]["path"] = str(artifact)
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 0
+    assert result["failures"][0] == {
+        "ok": False,
+        "path": str(artifact),
+        "reason": "artifact_path_absolute",
+    }
 
 
 def test_release_evidence_verifier_reports_sha_mismatch(tmp_path: Path) -> None:
