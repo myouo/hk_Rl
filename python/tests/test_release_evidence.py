@@ -12,6 +12,7 @@ from types import ModuleType
 import pytest
 from hkrl.coordinator.dashboard import render_dashboard_html
 from hkrl.coordinator.profiling import render_profile_markdown
+from hkrl.eval.report import render_eval_report_markdown
 from hkrl.utils.release import (
     PHASE8_RELEASE_ARTIFACTS,
     build_release_checklist,
@@ -996,6 +997,110 @@ def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> 
     assert result["ok"] is True
     assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
     assert result["failures"] == []
+
+
+def test_release_evidence_verifier_rejects_invalid_eval_report_markdown(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(tmp_path, _eval_report())
+    _write(tmp_path / "runs" / "eval-report.md", "not an eval report\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == [
+        {
+            "field": "title",
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_title_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_eval_report_markdown_without_sections(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(tmp_path, _eval_report())
+    _write(tmp_path / "runs" / "eval-report.md", "# HKRL Eval Report\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == [
+        {
+            "field": "sections",
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_sections_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_eval_report_markdown_missing_task_row(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    report = _eval_report(
+        tasks=[
+            {
+                "metrics_valid": True,
+                "task_id": "gruz_mother",
+            },
+            {
+                "metrics_valid": True,
+                "task_id": "hornet_protector_attuned",
+            },
+        ],
+        summary={
+            "malformed_task_count": 0.0,
+            "task_count": 2.0,
+            "valid_task_count": 2.0,
+        },
+    )
+    _write_eval_artifacts(tmp_path, report)
+    markdown_report = _eval_report(
+        tasks=[
+            {
+                "metrics_valid": True,
+                "task_id": "gruz_mother",
+            }
+        ]
+    )
+    _write(
+        tmp_path / "runs" / "eval-report.md",
+        render_eval_report_markdown(markdown_report),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "missing_task_ids": ["hornet_protector_attuned"],
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_task_rows_missing",
+        }
+    ]
 
 
 def test_release_evidence_verifier_rejects_eval_report_without_findings(
@@ -2022,7 +2127,7 @@ def _phase8_profile_report() -> dict[str, object]:
 
 def _write_eval_artifacts(root: Path, report: dict[str, object]) -> None:
     _write(root / "runs" / "eval.json", '{"metrics": {}}\n')
-    _write(root / "runs" / "eval-report.md", "# Eval\n")
+    _write(root / "runs" / "eval-report.md", render_eval_report_markdown(report))
     _write(root / "runs" / "eval-report.json", json.dumps(report) + "\n")
 
 

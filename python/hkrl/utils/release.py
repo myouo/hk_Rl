@@ -391,6 +391,10 @@ def verify_release_evidence_manifest(
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
 
+    eval_report_markdown_failure = _verify_eval_report_markdown_artifact(root_path, results)
+    if eval_report_markdown_failure is not None:
+        failures.append(eval_report_markdown_failure)
+
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
         failures.append(count_failure)
@@ -766,6 +770,99 @@ def _verify_eval_report_artifact(
             "reason": "eval_report_critical_findings",
         }
     return None
+
+
+def _verify_eval_report_markdown_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    eval_markdown = next(
+        (result for result in results if result.get("path") == "runs/eval-report.md"),
+        None,
+    )
+    if eval_markdown is None or eval_markdown.get("ok") is not True:
+        return None
+    if _verify_eval_report_artifact(root, results) is not None:
+        return None
+
+    path = root / "runs/eval-report.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_invalid",
+        }
+
+    if not text.startswith("# HKRL Eval Report\n"):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_title_missing",
+        }
+
+    for section in ("## Summary", "## Tasks"):
+        if section not in text:
+            return {
+                "field": "sections",
+                "ok": False,
+                "path": "runs/eval-report.md",
+                "reason": "eval_report_markdown_sections_missing",
+            }
+
+    if "| Task | Metrics Valid | Regression Valid | Win Rate |" not in text:
+        return {
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_tasks_missing",
+        }
+
+    missing_task_ids = sorted(
+        task_id
+        for task_id in _eval_report_task_ids(root, results)
+        if f"| {_markdown_cell(task_id)} |" not in text
+    )
+    if missing_task_ids:
+        return {
+            "field": "tasks",
+            "missing_task_ids": missing_task_ids,
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_task_rows_missing",
+        }
+
+    return None
+
+
+def _eval_report_task_ids(root: Path, results: Sequence[Mapping[str, Any]]) -> list[str]:
+    eval_report = next(
+        (result for result in results if result.get("path") == "runs/eval-report.json"),
+        None,
+    )
+    if eval_report is None or eval_report.get("ok") is not True:
+        return []
+
+    try:
+        payload = json.loads((root / "runs/eval-report.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, Mapping):
+        return []
+
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)):
+        return []
+    return [
+        task_id
+        for task in tasks
+        if isinstance(task, Mapping)
+        and isinstance((task_id := task.get("task_id")), str)
+        and task_id
+    ]
 
 
 def _verify_release_checklist_artifact(

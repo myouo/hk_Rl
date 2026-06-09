@@ -390,6 +390,8 @@ the project version tracks the **schema_version** + roadmap phase.
   duplicate task IDs.
 - Phase 8 release evidence verification now rejects included eval reports whose
   malformed-task counts do not match task rows.
+- Phase 8 release evidence verification now rejects included eval report
+  Markdown missing the eval title, report sections, or JSON task rows.
 - Phase 8 release evidence verification now rejects manifests whose `git_sha`
   differs from the expected release commit when provided.
 - Phase 8 release evidence verification now rejects hash-valid Phase 8 smoke
