@@ -1,0 +1,96 @@
+# Release
+
+Phase 8 releases are evidence-driven. A release is not ready until local gates,
+offline distributed artifacts, remote CI, and game-machine checks have all been
+recorded.
+
+## 1. Local Gates
+
+Run the Python quality gate first:
+
+```bash
+make check
+```
+
+Then produce the offline Phase 8 artifacts:
+
+```bash
+make phase8-smoke
+make phase8-dashboard
+make phase8-profile
+make phase8-release-checklist
+```
+
+The generated files under `runs/` are ignored by git and should be attached to a
+release note or CI artifact store when useful:
+
+```text
+runs/phase8-smoke/summary.json
+runs/phase8-smoke/dashboard.html
+runs/phase8-smoke/dashboard.json
+runs/phase8-smoke/profile.md
+runs/phase8-smoke/profile.json
+runs/release/checklist.md
+runs/release/checklist.json
+```
+
+## 2. Remote CI
+
+After pushing, confirm the latest `main` run is green and matches the release
+commit:
+
+```bash
+gh run list --branch main --limit 1
+```
+
+The CI gate currently covers the Python package and generated FlatBuffers
+bindings through `make check`.
+
+## 3. Game Machine Gates
+
+These gates require a machine with Hollow Knight, HKRLEnvMod dependencies, and
+the HK Modding API configured:
+
+```bash
+dotnet build mod/HKRLEnvMod/HKRLEnvMod.csproj
+python scripts/train.py --config configs/train/ppo_mlp.yaml \
+  --task configs/tasks/gruz_mother.yaml --smoke
+python scripts/run_eval.py --policy scripted \
+  --tasks configs/tasks/gruz_mother.yaml --episodes 5 \
+  --output runs/eval.json
+```
+
+For multi-instance evaluation, provide one live mod TCP port per intended worker:
+
+```bash
+python scripts/run_eval.py --policy scripted \
+  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+  --episodes 5 --eval-workers 2 --ports 5555 5556 \
+  --output runs/eval.json
+```
+
+## 4. Security Review
+
+Before a LAN release, verify:
+
+- `security.bind_scope` is `localhost` or LAN-scoped as intended.
+- `security.require_token` is true for non-loopback services.
+- `HKRL_AUTH_TOKEN` is configured where required.
+- Checkpoint registries remain local, LAN, or authenticated HTTP(S), and workers
+  keep sha256 verification enabled.
+- No service is intentionally exposed to a public network.
+
+## 5. Checklist Artifact
+
+Use the checklist renderer for a release record:
+
+```bash
+python scripts/render_release_checklist.py \
+  --version phase8 \
+  --git-sha "$(git rev-parse HEAD)" \
+  --output-json runs/release/checklist.json \
+  --output-md runs/release/checklist.md
+```
+
+The checklist is a release record, not an automated certification. The game
+machine gates still need to be executed on a configured Hollow Knight host.
