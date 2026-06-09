@@ -9,7 +9,7 @@ training/recurrent_ppo.py.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
 import torch
 from torch import Tensor, nn
@@ -191,7 +191,8 @@ class EntityAttentionRecurrentAC(ActorCritic):
             device=global_seq.device,
             dtype=global_seq.dtype,
         )
-        scale = self._prev_action_scale.to(device=prev_action.device, dtype=prev_action.dtype)
+        prev_action_scale = cast(Tensor, self._prev_action_scale)
+        scale = prev_action_scale.to(device=prev_action.device, dtype=prev_action.dtype)
         prev_action = prev_action / torch.clamp_min(scale, 1.0)
         prev_action_emb = self.prev_action_encoder(prev_action.reshape(batch_size * seq_len, -1))
         prev_reward = prev_reward.reshape(batch_size * seq_len, 1)
