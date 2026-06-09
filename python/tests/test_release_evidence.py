@@ -501,6 +501,67 @@ def test_release_evidence_verifier_rejects_phase8_smoke_without_metrics(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_empty_metrics(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["metrics"] = {}
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.metrics",
+            "malformed_metrics": ["active_worker_count", "sps", "worker_count"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metrics_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_metrics(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["active_worker_count"] = -1.0
+    metrics["sps"] = "fast"
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.metrics",
+            "malformed_metrics": ["active_worker_count", "sps"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metrics_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_worker_rows(
     tmp_path: Path,
 ) -> None:

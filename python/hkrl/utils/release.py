@@ -1259,12 +1259,25 @@ def _verify_phase8_smoke_summary_structure(
 
     coordinator = payload.get("coordinator")
     assert isinstance(coordinator, Mapping)
-    if not isinstance(coordinator.get("metrics"), Mapping):
+    metrics = coordinator.get("metrics")
+    if not isinstance(metrics, Mapping):
         return {
             "field": "coordinator.metrics",
             "ok": False,
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_metrics_invalid",
+        }
+    required_metrics = ("active_worker_count", "sps", "worker_count")
+    malformed_metrics = [
+        metric for metric in required_metrics if not _is_non_negative_number(metrics.get(metric))
+    ]
+    if malformed_metrics:
+        return {
+            "field": "coordinator.metrics",
+            "malformed_metrics": malformed_metrics,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metrics_malformed",
         }
     workers = coordinator.get("workers")
     if not isinstance(workers, Mapping) or not workers:
