@@ -1478,28 +1478,83 @@ def _verify_phase8_smoke_metric_totals(
     *,
     workers: Mapping[str, Any],
 ) -> dict[str, Any] | None:
-    active_worker_count = sum(
-        1
-        for worker in workers.values()
-        if isinstance(worker, Mapping) and worker.get("alive") is True
-    )
-    sps = 0.0
-    worker_crash_count = 0.0
-    for worker in workers.values():
-        if not isinstance(worker, Mapping):
-            continue
-        worker_metrics = worker.get("metrics")
-        if not isinstance(worker_metrics, Mapping):
-            continue
-        sps += float(worker_metrics.get("sps", 0.0))
-        worker_crash_count += float(worker_metrics.get("worker_crash_count", 0.0))
+    worker_rows = [worker for worker in workers.values() if isinstance(worker, Mapping)]
+    active_workers = [worker for worker in worker_rows if worker.get("alive") is True]
+    active_sps = [_phase8_worker_metric(worker, "sps") for worker in active_workers]
+    sps = sum(active_sps)
+    policy_versions = _phase8_worker_metric_values(active_workers, "policy_version")
+    checkpoint_versions = _phase8_worker_metric_values(active_workers, "checkpoint_version")
+    policy_version_max = max(policy_versions, default=0.0)
+    policy_version_min = min(policy_versions, default=0.0)
+    checkpoint_version_max = max(checkpoint_versions, default=0.0)
+    checkpoint_version_min = min(checkpoint_versions, default=0.0)
 
-    expected: dict[str, float] = {
-        "active_worker_count": float(active_worker_count),
+    expected_all: dict[str, float] = {
+        "active_worker_count": float(len(active_workers)),
+        "lost_worker_count": float(len(worker_rows) - len(active_workers)),
+        "assigned_worker_count": float(
+            sum(1 for worker in active_workers if worker.get("assigned_task") is not None)
+        ),
         "sps": sps,
+        "sps_mean": sps / len(active_sps) if active_sps else 0.0,
+        "worker_crash_count": sum(
+            _phase8_worker_metric(worker, "worker_crash_count") for worker in worker_rows
+        ),
+        "recovering_worker_count": float(
+            sum(
+                1
+                for worker in active_workers
+                if isinstance(worker.get("info"), Mapping)
+                and worker["info"].get("status") == "recovering"
+            )
+        ),
+        "worker_policy_version_min": policy_version_min,
+        "worker_policy_version_max": policy_version_max,
+        "worker_policy_lag_max": policy_version_max - policy_version_min,
+        "stale_policy_worker_count": float(
+            sum(1 for version in policy_versions if version < policy_version_max)
+        ),
+        "worker_without_policy_version_count": float(
+            sum(
+                1
+                for worker in active_workers
+                if not _phase8_worker_has_metric(worker, "policy_version")
+            )
+        ),
+        "worker_checkpoint_version_min": checkpoint_version_min,
+        "worker_checkpoint_version_max": checkpoint_version_max,
+        "worker_checkpoint_lag_max": checkpoint_version_max - checkpoint_version_min,
+        "stale_checkpoint_worker_count": float(
+            sum(1 for version in checkpoint_versions if version < checkpoint_version_max)
+        ),
+        "worker_without_checkpoint_version_count": float(
+            sum(
+                1
+                for worker in active_workers
+                if not _phase8_worker_has_metric(worker, "checkpoint_version")
+            )
+        ),
+        "worker_learner_upload_accepted_batches": sum(
+            _phase8_worker_metric(worker, "learner_upload_accepted_batches")
+            for worker in worker_rows
+        ),
+        "worker_learner_upload_failed_batches": sum(
+            _phase8_worker_metric(worker, "learner_upload_failed_batches") for worker in worker_rows
+        ),
+        "worker_learner_upload_rejected_batches": sum(
+            _phase8_worker_metric(worker, "learner_upload_rejected_batches")
+            for worker in worker_rows
+        ),
+        "worker_learner_upload_submitted_batches": sum(
+            _phase8_worker_metric(worker, "learner_upload_submitted_batches")
+            for worker in worker_rows
+        ),
     }
-    if "worker_crash_count" in metrics:
-        expected["worker_crash_count"] = worker_crash_count
+    expected = {
+        field: expected_value
+        for field, expected_value in expected_all.items()
+        if field in metrics or field in {"active_worker_count", "sps"}
+    }
 
     metric_mismatches: dict[str, dict[str, Any]] = {}
     for field, expected_value in expected.items():
@@ -1526,6 +1581,39 @@ def _verify_phase8_smoke_metric_totals(
             "reason": "phase8_smoke_summary_metric_totals_mismatch",
         }
     return None
+
+
+def _phase8_worker_metric(worker: Mapping[str, Any], field: str) -> float:
+    worker_metrics = worker.get("metrics")
+    if not isinstance(worker_metrics, Mapping):
+        return 0.0
+    value = worker_metrics.get(field)
+    if not _is_non_negative_number(value):
+        return 0.0
+    assert isinstance(value, (int, float))
+    return float(value)
+
+
+def _phase8_worker_has_metric(worker: Mapping[str, Any], field: str) -> bool:
+    worker_metrics = worker.get("metrics")
+    return isinstance(worker_metrics, Mapping) and field in worker_metrics
+
+
+def _phase8_worker_metric_values(
+    workers: Sequence[Mapping[str, Any]],
+    field: str,
+) -> list[float]:
+    values: list[float] = []
+    for worker in workers:
+        worker_metrics = worker.get("metrics")
+        if not isinstance(worker_metrics, Mapping) or field not in worker_metrics:
+            continue
+        value = worker_metrics.get(field)
+        if not _is_non_negative_number(value):
+            continue
+        assert isinstance(value, (int, float))
+        values.append(float(value))
+    return values
 
 
 def _verify_phase8_smoke_worker_details(

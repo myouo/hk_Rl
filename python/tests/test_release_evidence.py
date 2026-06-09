@@ -1196,6 +1196,67 @@ def test_release_evidence_verifier_rejects_phase8_smoke_metric_totals_mismatch(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_monitoring_metric_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["assigned_worker_count"] = 1.0
+    metrics["recovering_worker_count"] = 0.0
+    metrics["sps_mean"] = 32.0
+    metrics["stale_policy_worker_count"] = 0.0
+    metrics["worker_checkpoint_lag_max"] = 0.0
+    metrics["worker_learner_upload_submitted_batches"] = 2.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.metrics",
+            "metric_mismatches": {
+                "assigned_worker_count": {
+                    "actual": 1.0,
+                    "expected": 2.0,
+                },
+                "sps_mean": {
+                    "actual": 32.0,
+                    "expected": 16.0,
+                },
+                "recovering_worker_count": {
+                    "actual": 0.0,
+                    "expected": 1.0,
+                },
+                "stale_policy_worker_count": {
+                    "actual": 0.0,
+                    "expected": 1.0,
+                },
+                "worker_checkpoint_lag_max": {
+                    "actual": 0.0,
+                    "expected": 1.0,
+                },
+                "worker_learner_upload_submitted_batches": {
+                    "actual": 2.0,
+                    "expected": 0.0,
+                },
+            },
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metric_totals_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -3091,9 +3152,27 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
             "metrics": {
                 "active_worker_count": 2.0,
+                "assigned_worker_count": 2.0,
+                "lost_worker_count": 0.0,
+                "recovering_worker_count": 1.0,
                 "sps": 32.0,
+                "sps_mean": 16.0,
+                "stale_checkpoint_worker_count": 1.0,
+                "stale_policy_worker_count": 1.0,
+                "worker_checkpoint_lag_max": 1.0,
+                "worker_checkpoint_version_max": 2.0,
+                "worker_checkpoint_version_min": 1.0,
                 "worker_count": 2.0,
                 "worker_crash_count": 1.0,
+                "worker_learner_upload_accepted_batches": 0.0,
+                "worker_learner_upload_failed_batches": 0.0,
+                "worker_learner_upload_rejected_batches": 0.0,
+                "worker_learner_upload_submitted_batches": 0.0,
+                "worker_policy_lag_max": 1.0,
+                "worker_policy_version_max": 2.0,
+                "worker_policy_version_min": 1.0,
+                "worker_without_checkpoint_version_count": 0.0,
+                "worker_without_policy_version_count": 0.0,
             },
             "num_workers": 2,
             "sampler_mastered_tasks": ["gruz_mother"],
@@ -3115,6 +3194,11 @@ def _phase8_smoke_summary() -> dict[str, object]:
                     "lost_at": None,
                     "metrics": {
                         "checkpoint_version": 2.0,
+                        "learner_upload_accepted_batches": 0.0,
+                        "learner_upload_failed_batches": 0.0,
+                        "learner_upload_rejected_batches": 0.0,
+                        "learner_upload_submitted_batches": 0.0,
+                        "policy_version": 2.0,
                         "sps": 32.0,
                         "worker_crash_count": 0.0,
                     },
@@ -3127,6 +3211,11 @@ def _phase8_smoke_summary() -> dict[str, object]:
                     "lost_at": None,
                     "metrics": {
                         "checkpoint_version": 1.0,
+                        "learner_upload_accepted_batches": 0.0,
+                        "learner_upload_failed_batches": 0.0,
+                        "learner_upload_rejected_batches": 0.0,
+                        "learner_upload_submitted_batches": 0.0,
+                        "policy_version": 1.0,
                         "sps": 0.0,
                         "worker_crash_count": 1.0,
                     },
