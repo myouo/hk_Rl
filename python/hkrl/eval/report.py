@@ -101,16 +101,17 @@ def render_eval_report_markdown(report: Mapping[str, Any]) -> str:
             "## Tasks",
             "",
             (
-                "| Task | Win Rate | Regression Delta | Damage Taken | "
+                "| Task | Metrics Valid | Win Rate | Regression Delta | Damage Taken | "
                 "TTK | Invalid Action Ratio | Death Rate |"
             ),
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for task in (_mapping(item) for item in tasks):
         lines.append(
             "| "
             f"{_markdown_cell(str(task.get('task_id', '')))} | "
+            f"{_format_value(task.get('metrics_valid'))} | "
             f"{_format_value(task.get('win_rate'))} | "
             f"{_format_value(task.get('regression_delta'))} | "
             f"{_format_value(task.get('damage_taken'))} | "
@@ -153,16 +154,19 @@ def _task_metric(task_metrics: Mapping[str, Any], key: str) -> float:
 
 
 def _summary(tasks: list[dict[str, Any]]) -> dict[str, float]:
-    win_rates = [_float(task.get("win_rate", 0.0)) for task in tasks]
+    valid_tasks = [task for task in tasks if task.get("metrics_valid") is not False]
+    win_rates = [_float(task.get("win_rate", 0.0)) for task in valid_tasks]
     regressions = [
         float(task["regression_delta"])
-        for task in tasks
+        for task in valid_tasks
         if task.get("regression_delta") is not None
     ]
     return {
+        "malformed_task_count": float(len(tasks) - len(valid_tasks)),
         "mean_win_rate": _mean(win_rates),
         "min_win_rate": min(win_rates, default=0.0),
         "task_count": float(len(tasks)),
+        "valid_task_count": float(len(valid_tasks)),
         "worst_regression_delta": min(regressions, default=0.0),
     }
 
@@ -291,6 +295,8 @@ def _mean(values: list[float]) -> float:
 def _format_value(value: Any) -> str:
     if value is None:
         return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
     if isinstance(value, float):
         if value.is_integer():
             return str(int(value))

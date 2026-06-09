@@ -19,9 +19,11 @@ def test_eval_report_summarizes_metrics_and_regressions() -> None:
     assert report["metadata"]["policy"] == "model"
     assert report["metadata"]["eval_workers"] == 2.0
     assert report["summary"] == {
+        "malformed_task_count": 0.0,
         "mean_win_rate": 0.55,
         "min_win_rate": 0.4,
         "task_count": 2.0,
+        "valid_task_count": 2.0,
         "worst_regression_delta": -0.2,
     }
     assert report["tasks"][0]["task_id"] == "gruz_mother"
@@ -62,6 +64,9 @@ def test_eval_report_flags_malformed_task_metrics() -> None:
     )
 
     assert report["summary"]["task_count"] == 1.0
+    assert report["summary"]["valid_task_count"] == 0.0
+    assert report["summary"]["malformed_task_count"] == 1.0
+    assert report["summary"]["mean_win_rate"] == 0.0
     assert report["tasks"][0]["metrics_valid"] is False
     assert report["tasks"][0]["win_rate"] == 0.0
     assert report["findings"] == [
@@ -121,8 +126,8 @@ def test_eval_report_markdown_contains_task_table() -> None:
     markdown = render_eval_report_markdown(build_eval_report(_eval_payload()))
 
     assert "# HKRL Eval Report" in markdown
-    assert "| Task | Win Rate | Regression Delta |" in markdown
-    assert "| gruz_mother | 0.7 | -0.2 | 1.5 | 120 | 0.01 | 0.1 |" in markdown
+    assert "| Task | Metrics Valid | Win Rate | Regression Delta |" in markdown
+    assert "| gruz_mother | yes | 0.7 | -0.2 | 1.5 | 120 | 0.01 | 0.1 |" in markdown
 
 
 def test_render_eval_report_script_writes_json_and_markdown(tmp_path: Path) -> None:

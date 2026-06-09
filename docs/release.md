@@ -95,7 +95,8 @@ and regression deltas when the eval output includes a `regression` section. If a
 task omits `win_rate` or reports an invalid value, the report uses
 `per_boss_win_rate` as the canonical win-rate fallback. Non-object per-task
 metric payloads are rendered as critical findings so malformed eval evidence
-does not pass as ordinary zero-valued performance.
+does not pass as ordinary zero-valued performance. Summary win-rate metrics are
+computed over valid task rows and report separate valid/malformed task counts.
 
 ## 4. Security Review
 

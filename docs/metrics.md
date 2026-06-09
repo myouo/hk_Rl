@@ -57,7 +57,9 @@ artifacts. If `win_rate` is absent or invalid for a task, the report uses
 `per_boss_win_rate` as the canonical win-rate fallback. `make
 phase8-eval-report` writes `runs/eval-report.json` and `runs/eval-report.md`
 from the most recent evaluator output. Non-object per-task metric payloads are
-reported as critical findings instead of being silently treated as valid zeros.
+reported as critical findings instead of being silently treated as valid zeros;
+win-rate summaries are computed over valid task rows and include separate
+valid/malformed task counts.
 
 ## 3. SPS, not FPS (PRD §9.6)
 
