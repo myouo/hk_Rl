@@ -1106,6 +1106,50 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_assignments(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_details(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_0 = workers["worker-0"]
+    assert isinstance(worker_0, dict)
+    worker_0["assigned_task"] = "gruz_mother"
+    worker_0["last_heartbeat"] = -1.0
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["info"] = {"status": ""}
+    worker_1["lost_at"] = "never"
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "assigned_task_mismatches": {
+                "worker-0": {
+                    "actual": "gruz_mother",
+                    "expected": "hornet_protector_attuned",
+                }
+            },
+            "field": "coordinator.workers",
+            "malformed_worker_ids": ["worker-0", "worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_details_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -3018,6 +3062,10 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "workers": {
                 "worker-0": {
                     "alive": True,
+                    "assigned_task": "hornet_protector_attuned",
+                    "info": {"source": "configured", "status": "running"},
+                    "last_heartbeat": 10.0,
+                    "lost_at": None,
                     "metrics": {
                         "checkpoint_version": 2.0,
                         "sps": 32.0,
@@ -3026,6 +3074,10 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 },
                 "worker-1": {
                     "alive": True,
+                    "assigned_task": "gruz_mother",
+                    "info": {"source": "configured", "status": "recovering"},
+                    "last_heartbeat": 10.0,
+                    "lost_at": None,
                     "metrics": {
                         "checkpoint_version": 1.0,
                         "sps": 0.0,

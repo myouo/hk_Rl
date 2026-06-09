@@ -1461,6 +1461,58 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    worker_detail_failure = _verify_phase8_smoke_worker_details(
+        workers,
+        assignments=assignments,
+    )
+    if worker_detail_failure is not None:
+        return worker_detail_failure
+    return None
+
+
+def _verify_phase8_smoke_worker_details(
+    workers: Mapping[str, Any],
+    *,
+    assignments: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    assigned_task_mismatches: dict[str, dict[str, Any]] = {}
+    malformed_worker_ids: list[str] = []
+    for worker_id, worker in workers.items():
+        if not isinstance(worker, Mapping):
+            malformed_worker_ids.append(str(worker_id))
+            continue
+        expected_task = assignments.get(worker_id)
+        actual_task = worker.get("assigned_task")
+        if actual_task != expected_task:
+            assigned_task_mismatches[str(worker_id)] = {
+                "actual": actual_task,
+                "expected": expected_task,
+            }
+
+        info = worker.get("info")
+        if not isinstance(info, Mapping):
+            malformed_worker_ids.append(str(worker_id))
+        else:
+            status = info.get("status")
+            if not isinstance(status, str) or not status:
+                malformed_worker_ids.append(str(worker_id))
+
+        if not _is_non_negative_number(worker.get("last_heartbeat")):
+            malformed_worker_ids.append(str(worker_id))
+        lost_at = worker.get("lost_at")
+        if lost_at is not None and not _is_non_negative_number(lost_at):
+            malformed_worker_ids.append(str(worker_id))
+
+    malformed_worker_ids = sorted(set(malformed_worker_ids))
+    if assigned_task_mismatches or malformed_worker_ids:
+        return {
+            "assigned_task_mismatches": assigned_task_mismatches,
+            "field": "coordinator.workers",
+            "malformed_worker_ids": malformed_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_details_malformed",
+        }
     return None
 
 
