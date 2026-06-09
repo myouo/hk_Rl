@@ -405,6 +405,8 @@ the project version tracks the **schema_version** + roadmap phase.
   whose coordinator `task_ids`, `num_workers`, or `metrics.worker_count`
   disagree with the top-level task and worker-id sections.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  whose learner or worker task sections disagree with the top-level task IDs.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   with malformed learner policy versions or dry-run worker identities.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   missing coordinator worker rows for listed worker IDs.

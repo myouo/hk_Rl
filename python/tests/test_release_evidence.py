@@ -644,6 +644,45 @@ def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_task_ids(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_task_sections(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["task_ids"] = ["gruz_mother"]
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["task_id"] = "unknown_task"
+    worker["task_ids"] = ["gruz_mother", "unknown_task"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "expected_task_ids": ["gruz_mother", "hornet_protector_attuned"],
+            "field": "task_ids",
+            "malformed_sections": ["learner.task_ids", "worker.task_ids", "worker.task_id"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_sections_mismatch",
+            "section_task_ids": {
+                "learner.task_ids": ["gruz_mother"],
+                "worker.task_ids": ["gruz_mother", "unknown_task"],
+            },
+            "worker_task_id": "unknown_task",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_worker_count(
     tmp_path: Path,
 ) -> None:
@@ -2672,11 +2711,14 @@ def _phase8_smoke_summary() -> dict[str, object]:
         },
         "learner": {
             "policy_version": 2.0,
+            "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         },
         "ok": True,
         "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         "worker": {
             "dry_run": True,
+            "task_id": "gruz_mother",
+            "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "worker_id": "worker-0",
         },
         "worker_ids": ["worker-0", "worker-1"],

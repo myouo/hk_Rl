@@ -1352,6 +1352,13 @@ def _verify_phase8_smoke_summary_structure(
     worker_ids = payload.get("worker_ids")
     assert isinstance(task_ids, Sequence)
     assert isinstance(worker_ids, Sequence)
+    component_task_ids_failure = _verify_phase8_smoke_component_task_ids(
+        learner,
+        worker,
+        task_ids=task_ids,
+    )
+    if component_task_ids_failure is not None:
+        return component_task_ids_failure
     task_ids_failure = _verify_phase8_smoke_coordinator_task_ids(coordinator, task_ids=task_ids)
     if task_ids_failure is not None:
         return task_ids_failure
@@ -1422,6 +1429,50 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_component_task_ids(
+    learner: Mapping[str, Any],
+    worker: Mapping[str, Any],
+    *,
+    task_ids: Sequence[Any],
+) -> dict[str, Any] | None:
+    expected_task_ids = list(task_ids)
+    section_task_ids: dict[str, Any] = {}
+    malformed_sections: list[str] = []
+    for field, value in (
+        ("learner.task_ids", learner.get("task_ids")),
+        ("worker.task_ids", worker.get("task_ids")),
+    ):
+        section_task_ids[field] = (
+            list(value)
+            if isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+            else value
+        )
+        if (
+            not isinstance(value, Sequence)
+            or isinstance(value, (str, bytes))
+            or not all(isinstance(task_id, str) and task_id for task_id in value)
+            or list(value) != expected_task_ids
+        ):
+            malformed_sections.append(field)
+
+    worker_task_id = worker.get("task_id")
+    if not isinstance(worker_task_id, str) or worker_task_id not in expected_task_ids:
+        malformed_sections.append("worker.task_id")
+
+    if malformed_sections:
+        return {
+            "expected_task_ids": expected_task_ids,
+            "field": "task_ids",
+            "malformed_sections": malformed_sections,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_sections_mismatch",
+            "section_task_ids": section_task_ids,
+            "worker_task_id": worker_task_id,
+        }
     return None
 
 
