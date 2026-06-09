@@ -731,6 +731,17 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
             "path": "runs/eval-report.json",
             "reason": "eval_report_tasks_invalid",
         }
+    malformed_task_indexes = [
+        index for index, task in enumerate(tasks) if not _valid_eval_report_task(task)
+    ]
+    if malformed_task_indexes:
+        return {
+            "field": "tasks",
+            "indexes": malformed_task_indexes,
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_tasks_malformed",
+        }
     if expected_task_count != len(tasks):
         return {
             "actual_task_count": len(tasks),
@@ -739,6 +750,18 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_task_count_mismatch",
+        }
+    actual_valid_task_count = sum(
+        1 for task in tasks if isinstance(task, Mapping) and task.get("metrics_valid") is not False
+    )
+    if int(valid_tasks) != actual_valid_task_count:
+        return {
+            "actual_valid_task_count": actual_valid_task_count,
+            "expected_valid_task_count": valid_task_count,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_valid_task_count_mismatch",
         }
     if valid_tasks <= 0.0:
         return {
@@ -757,6 +780,15 @@ def _valid_eval_report_finding(finding: Any) -> bool:
         and bool(finding.get("code"))
         and isinstance(finding.get("severity"), str)
         and bool(finding.get("severity"))
+    )
+
+
+def _valid_eval_report_task(task: Any) -> bool:
+    return (
+        isinstance(task, Mapping)
+        and isinstance(task.get("task_id"), str)
+        and bool(task.get("task_id"))
+        and isinstance(task.get("metrics_valid"), bool)
     )
 
 

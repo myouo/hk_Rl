@@ -329,6 +329,91 @@ def test_release_evidence_verifier_rejects_eval_report_task_count_mismatch(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_eval_report_tasks(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 3.0,
+                "valid_task_count": 1.0,
+            },
+            tasks=[
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                },
+                {
+                    "task_id": "missing metrics_valid",
+                },
+                "not an object",
+            ],
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "indexes": [1, 2],
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_tasks_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 2.0,
+                "valid_task_count": 2.0,
+            },
+            tasks=[
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                },
+                {
+                    "metrics_valid": False,
+                    "task_id": "hornet_protector_attuned",
+                },
+            ],
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "actual_valid_task_count": 1,
+            "expected_valid_task_count": 2.0,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_valid_task_count_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_non_object_artifact_entries(
     tmp_path: Path,
 ) -> None:
