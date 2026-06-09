@@ -221,7 +221,9 @@ or still-queued learner batches.
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, unassigned workers, stale or missing
 policies/checkpoints, worker upload failures/rejections, learner intake
-backpressure, and missing rollout timing.
+backpressure, and missing rollout timing. The Markdown worker table includes
+each worker's alive flag and status so heartbeat-expired workers can be located
+without opening the JSON payload.
 `make phase8-profile` writes `runs/phase8-smoke/profile.md` and `profile.json`;
 it is a stable report format for CI/local comparisons, not a replacement for
 Unity profiler captures on the game machine.

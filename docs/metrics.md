@@ -87,9 +87,9 @@ workers reporting zero fleet SPS. Worker learner upload failures/rejections and
 learner rejected/queued batches are also reported as dashboard health issues.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
-lost/recovering workers, crash counts, unassigned workers, and stale/missing
-policy or checkpoint versions into bottleneck findings, with worker upload
-failures/rejections and learner rejected/queued batches reported as
-intake/backpressure findings.
+per-worker alive/status state, lost/recovering workers, crash counts,
+unassigned workers, and stale/missing policy or checkpoint versions into
+bottleneck findings, with worker upload failures/rejections and learner
+rejected/queued batches reported as intake/backpressure findings.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

@@ -110,16 +110,17 @@ def render_profile_markdown(report: Mapping[str, Any]) -> str:
             "## Workers",
             "",
             (
-                "| Worker | Status | SPS | Rollout s | Steps | Crashes | "
+                "| Worker | Alive | Status | SPS | Rollout s | Steps | Crashes | "
                 "Upload Submitted | Upload Accepted | Upload Rejected | Upload Failed |"
             ),
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| --- | :---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for worker in (_mapping(item) for item in workers):
         lines.append(
             "| "
             f"{worker.get('worker_id', '')} | "
+            f"{_format_bool(worker.get('alive'))} | "
             f"{worker.get('status', '')} | "
             f"{_format_value(worker.get('sps'))} | "
             f"{_format_value(worker.get('rollout_duration_s'))} | "
@@ -372,4 +373,12 @@ def _format_value(value: Any) -> str:
         return "-"
     if isinstance(value, float):
         return f"{value:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _format_bool(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
     return str(value)

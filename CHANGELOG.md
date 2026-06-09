@@ -367,6 +367,8 @@ the project version tracks the **schema_version** + roadmap phase.
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
+- Phase 8 profile Markdown worker tables now show each worker's alive flag next
+  to its status so heartbeat-expired workers are visible per row.
 - Phase 8 profile reports now flag workers that have not reported policy or
   checkpoint versions.
 - Phase 8 profile reports now flag workers marked lost by the coordinator

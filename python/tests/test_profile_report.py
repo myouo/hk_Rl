@@ -35,6 +35,7 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
         "stale_checkpoint_workers",
     ]
     assert report["workers"][0]["worker_id"] == "worker-0"
+    assert report["workers"][0]["alive"] is True
     assert report["workers"][0]["learner_upload_submitted_batches"] == 1.0
     assert report["workers"][0]["rollout_duration_s"] == 4.0
 
@@ -152,7 +153,23 @@ def test_profile_report_markdown_contains_findings_and_worker_table() -> None:
 
     assert "# HKRL Phase 8 Profile" in markdown
     assert "`recovering_workers`" in markdown
-    assert "| worker-0 | running | 32 | 4 | 128 | 0 | 1 | 1 | 0 | 0 |" in markdown
+    assert "| Worker | Alive | Status | SPS | Rollout s | Steps | Crashes |" in markdown
+    assert "| worker-0 | yes | running | 32 | 4 | 128 | 0 | 1 | 1 | 0 | 0 |" in markdown
+
+
+def test_profile_report_markdown_shows_dead_workers() -> None:
+    summary = _summary(include_timing=True)
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["alive"] = False
+
+    markdown = render_profile_markdown(build_profile_report(summary))
+
+    assert "| worker-1 | no | recovering | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in markdown
 
 
 def test_render_profile_report_script_writes_json_and_markdown(tmp_path: Path) -> None:
