@@ -373,6 +373,8 @@ the project version tracks the **schema_version** + roadmap phase.
   produce a sha256 manifest for Phase 8 release artifacts.
 - `scripts/verify_release_evidence.py` and `make phase8-verify-release-evidence`
   now verify Phase 8 release artifacts against that manifest.
+- Phase 8 release evidence verification now fails if manifest `artifact_count`
+  or `total_bytes` drift from the listed artifact rows.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

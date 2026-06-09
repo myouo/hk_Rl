@@ -149,6 +149,58 @@ def test_release_evidence_verifier_reports_sha_mismatch(tmp_path: Path) -> None:
     assert result["failures"][0]["reason"] == "artifact_sha256_mismatch"
 
 
+def test_release_evidence_verifier_reports_artifact_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    manifest["artifact_count"] = 2
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == [
+        {
+            "actual_artifact_count": 1,
+            "expected_artifact_count": 2,
+            "field": "artifact_count",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_artifact_count_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_total_bytes_mismatch(tmp_path: Path) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    manifest["total_bytes"] = int(manifest["total_bytes"]) + 1
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == [
+        {
+            "actual_total_bytes": artifact.stat().st_size,
+            "expected_total_bytes": artifact.stat().st_size + 1,
+            "field": "total_bytes",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_total_bytes_mismatch",
+        }
+    ]
+
+
 def test_render_release_evidence_script_writes_json_and_markdown(tmp_path: Path) -> None:
     module = _load_script("render_release_evidence.py")
     artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"

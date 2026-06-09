@@ -286,6 +286,14 @@ def verify_release_evidence_manifest(
         if not result["ok"]:
             failures.append(result)
 
+    count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
+    if count_failure is not None:
+        failures.append(count_failure)
+
+    total_bytes_failure = _verify_manifest_total_bytes(manifest, artifacts)
+    if total_bytes_failure is not None:
+        failures.append(total_bytes_failure)
+
     return {
         "artifact_count": len(results),
         "checked_artifact_count": sum(1 for result in results if result["ok"]),
@@ -403,6 +411,65 @@ def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
     }
 
 
+def _verify_manifest_artifact_count(
+    manifest: Mapping[str, Any],
+    *,
+    actual_count: int,
+) -> dict[str, Any] | None:
+    expected_count = manifest.get("artifact_count")
+    if _invalid_non_negative_int(expected_count):
+        return {
+            "field": "artifact_count",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_artifact_count_invalid",
+        }
+    if expected_count != actual_count:
+        return {
+            "actual_artifact_count": actual_count,
+            "expected_artifact_count": expected_count,
+            "field": "artifact_count",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_artifact_count_mismatch",
+        }
+    return None
+
+
+def _verify_manifest_total_bytes(
+    manifest: Mapping[str, Any],
+    artifacts: Sequence[Any],
+) -> dict[str, Any] | None:
+    expected_total = manifest.get("total_bytes")
+    if _invalid_non_negative_int(expected_total):
+        return {
+            "field": "total_bytes",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_total_bytes_invalid",
+        }
+
+    declared_total = 0
+    for artifact in artifacts:
+        item = artifact if isinstance(artifact, Mapping) else {}
+        declared_bytes = item.get("bytes")
+        if _invalid_non_negative_int(declared_bytes):
+            return None
+        assert isinstance(declared_bytes, int)
+        declared_total += declared_bytes
+
+    if expected_total != declared_total:
+        return {
+            "actual_total_bytes": declared_total,
+            "expected_total_bytes": expected_total,
+            "field": "total_bytes",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_total_bytes_mismatch",
+        }
+    return None
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fh:
@@ -421,3 +488,7 @@ def _is_sha256(value: Any) -> bool:
         and len(value) == 64
         and all(char in "0123456789abcdefABCDEF" for char in value)
     )
+
+
+def _invalid_non_negative_int(value: Any) -> bool:
+    return isinstance(value, bool) or not isinstance(value, int) or value < 0
