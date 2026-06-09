@@ -1282,6 +1282,8 @@ def _verify_phase8_smoke_summary_structure(
 
     coordinator = payload.get("coordinator")
     assert isinstance(coordinator, Mapping)
+    artifacts = payload.get("artifacts")
+    assert isinstance(artifacts, Mapping)
     metrics = coordinator.get("metrics")
     if not isinstance(metrics, Mapping):
         return {
@@ -1302,6 +1304,14 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_metrics_malformed",
         }
+    artifact_reference_failure = _verify_phase8_smoke_artifact_references(
+        artifacts,
+        learner=learner,
+        worker=worker,
+        coordinator=coordinator,
+    )
+    if artifact_reference_failure is not None:
+        return artifact_reference_failure
     workers = coordinator.get("workers")
     if not isinstance(workers, Mapping) or not workers:
         return {
@@ -1506,6 +1516,57 @@ def _verify_phase8_smoke_artifacts(payload: Mapping[str, Any]) -> dict[str, Any]
             "ok": False,
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_artifacts_malformed",
+        }
+    return None
+
+
+def _verify_phase8_smoke_artifact_references(
+    artifacts: Mapping[str, Any],
+    *,
+    learner: Mapping[str, Any],
+    worker: Mapping[str, Any],
+    coordinator: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    checkpoint_dir = artifacts.get("checkpoint_dir")
+    eval_metrics = artifacts.get("eval_metrics")
+    heartbeat_jsonl = artifacts.get("heartbeat_jsonl")
+    work_dir = artifacts.get("work_dir")
+    expected_batch_dir = (
+        str(Path(work_dir) / "batches") if isinstance(work_dir, str) and work_dir else None
+    )
+    expected: dict[str, Any] = {
+        "coordinator.eval_metrics": eval_metrics,
+        "coordinator.heartbeat_jsonl": heartbeat_jsonl,
+        "learner.checkpoint_dir": checkpoint_dir,
+        "worker.batch_dir": expected_batch_dir,
+        "worker.heartbeat_jsonl": heartbeat_jsonl,
+        "worker.registry": checkpoint_dir,
+    }
+    actual: dict[str, Any] = {
+        "coordinator.eval_metrics": coordinator.get("eval_metrics"),
+        "coordinator.heartbeat_jsonl": coordinator.get("heartbeat_jsonl"),
+        "learner.checkpoint_dir": learner.get("checkpoint_dir"),
+        "worker.batch_dir": worker.get("batch_dir"),
+        "worker.heartbeat_jsonl": worker.get("heartbeat_jsonl"),
+        "worker.registry": worker.get("registry"),
+    }
+    malformed_fields = sorted(
+        field
+        for field, expected_value in expected.items()
+        if not isinstance(expected_value, str)
+        or not expected_value
+        or not isinstance(actual.get(field), str)
+        or actual.get(field) != expected_value
+    )
+    if malformed_fields:
+        return {
+            "actual": actual,
+            "expected": expected,
+            "field": "artifact_references",
+            "malformed_fields": malformed_fields,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_artifact_references_malformed",
         }
     return None
 

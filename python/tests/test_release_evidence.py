@@ -566,6 +566,67 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_artifacts(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_artifact_references(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["checkpoint_dir"] = "runs/phase8-smoke/other-checkpoints"
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["batch_dir"] = "runs/phase8-smoke/not-batches"
+    worker["heartbeat_jsonl"] = "runs/phase8-smoke/other-heartbeats.jsonl"
+    worker["registry"] = "runs/other/checkpoints"
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["eval_metrics"] = "runs/other/eval-metrics.json"
+    coordinator["heartbeat_jsonl"] = "runs/other/worker-heartbeats.jsonl"
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual": {
+                "coordinator.eval_metrics": "runs/other/eval-metrics.json",
+                "coordinator.heartbeat_jsonl": "runs/other/worker-heartbeats.jsonl",
+                "learner.checkpoint_dir": "runs/phase8-smoke/other-checkpoints",
+                "worker.batch_dir": "runs/phase8-smoke/not-batches",
+                "worker.heartbeat_jsonl": "runs/phase8-smoke/other-heartbeats.jsonl",
+                "worker.registry": "runs/other/checkpoints",
+            },
+            "expected": {
+                "coordinator.eval_metrics": "runs/phase8-smoke/eval-metrics.json",
+                "coordinator.heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
+                "learner.checkpoint_dir": "runs/phase8-smoke/checkpoints",
+                "worker.batch_dir": "runs/phase8-smoke/batches",
+                "worker.heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
+                "worker.registry": "runs/phase8-smoke/checkpoints",
+            },
+            "field": "artifact_references",
+            "malformed_fields": [
+                "coordinator.eval_metrics",
+                "coordinator.heartbeat_jsonl",
+                "learner.checkpoint_dir",
+                "worker.batch_dir",
+                "worker.heartbeat_jsonl",
+                "worker.registry",
+            ],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_artifact_references_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_metrics(
     tmp_path: Path,
 ) -> None:
@@ -2936,6 +2997,8 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "gruz_mother": 0.9,
                 "hornet_protector_attuned": 0.2,
             },
+            "eval_metrics": "runs/phase8-smoke/eval-metrics.json",
+            "heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
             "metrics": {
                 "active_worker_count": 2.0,
                 "sps": 32.0,
@@ -2974,6 +3037,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
         "learner": {
             "algorithm": "appo",
             "bind": "127.0.0.1:0",
+            "checkpoint_dir": "runs/phase8-smoke/checkpoints",
             "enable_macro_actions": True,
             "model": "entity_attention_gru",
             "n_macro_actions": 11,
@@ -2987,13 +3051,16 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "auth_token_configured": False,
             "auth_token_env": "HKRL_AUTH_TOKEN",
             "auth_token_required": True,
+            "batch_dir": "runs/phase8-smoke/batches",
             "dry_run": True,
             "enable_macro_actions": True,
+            "heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
             "latest_checkpoint": 2,
             "learner": None,
             "learner_upload_enabled": False,
             "model": "entity_attention_gru",
             "n_macro_actions": 11,
+            "registry": "runs/phase8-smoke/checkpoints",
             "task_id": "gruz_mother",
             "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "worker_id": "worker-0",
