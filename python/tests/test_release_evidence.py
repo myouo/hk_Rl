@@ -380,6 +380,56 @@ def test_release_evidence_verifier_rejects_incomplete_phase8_dashboard(
     ]
 
 
+def test_release_evidence_verifier_rejects_invalid_phase8_profile_json(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.json", "not json\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_json_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_incomplete_phase8_profile(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    del profile["metrics"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.json", json.dumps(profile) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_metrics_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
@@ -1274,6 +1324,8 @@ def _write_required_release_artifacts(root: Path) -> None:
             _write(root / artifact, json.dumps(_phase8_smoke_summary()) + "\n")
         elif artifact == "runs/phase8-smoke/dashboard.json":
             _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
+        elif artifact == "runs/phase8-smoke/profile.json":
+            _write(root / artifact, json.dumps(_phase8_profile_report()) + "\n")
         else:
             _write(root / artifact, f"{artifact}\n")
 
@@ -1331,6 +1383,25 @@ def _phase8_dashboard_model() -> dict[str, object]:
                 "task_id": "hornet_protector_attuned",
             },
         ],
+        "workers": [
+            {
+                "worker_id": "worker-0",
+            },
+            {
+                "worker_id": "worker-1",
+            },
+        ],
+    }
+
+
+def _phase8_profile_report() -> dict[str, object]:
+    return {
+        "findings": [],
+        "metrics": {
+            "sps": 32.0,
+            "worker_count": 2.0,
+        },
+        "source": "phase8_smoke",
         "workers": [
             {
                 "worker_id": "worker-0",

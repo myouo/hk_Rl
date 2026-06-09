@@ -358,6 +358,10 @@ def verify_release_evidence_manifest(
     if dashboard_failure is not None:
         failures.append(dashboard_failure)
 
+    profile_failure = _verify_phase8_profile_artifact(root_path, results)
+    if profile_failure is not None:
+        failures.append(profile_failure)
+
     eval_report_failure = _verify_eval_report_artifact(root_path, results)
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
@@ -897,6 +901,67 @@ def _verify_phase8_dashboard_artifact(
                 "path": "runs/phase8-smoke/dashboard.json",
                 "reason": "phase8_dashboard_list_invalid",
             }
+    return None
+
+
+def _verify_phase8_profile_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    profile_result = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/profile.json"),
+        None,
+    )
+    if profile_result is None or profile_result.get("ok") is not True:
+        return None
+
+    path = root / "runs/phase8-smoke/profile.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "field": "metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_json_invalid",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "field": "metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_not_object",
+        }
+    if payload.get("source") != "phase8_smoke":
+        return {
+            "field": "source",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_source_invalid",
+        }
+    if not isinstance(payload.get("metrics"), Mapping):
+        return {
+            "field": "metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_metrics_invalid",
+        }
+    findings = payload.get("findings")
+    if not isinstance(findings, Sequence) or isinstance(findings, (str, bytes)):
+        return {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_findings_invalid",
+        }
+    workers = payload.get("workers")
+    if not isinstance(workers, Sequence) or isinstance(workers, (str, bytes)) or not workers:
+        return {
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_workers_invalid",
+        }
     return None
 
 
