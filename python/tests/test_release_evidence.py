@@ -1623,6 +1623,68 @@ def test_release_evidence_verifier_rejects_malformed_phase8_dashboard_workers(
     ]
 
 
+def test_release_evidence_verifier_rejects_duplicate_phase8_dashboard_tasks(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    tasks = dashboard["tasks"]
+    assert isinstance(tasks, list)
+    first_task = tasks[0]
+    assert isinstance(first_task, dict)
+    tasks.append(dict(first_task))
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", json.dumps(dashboard) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "duplicate_task_ids": ["gruz_mother"],
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_tasks_duplicate",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_duplicate_phase8_dashboard_workers(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    workers = dashboard["workers"]
+    assert isinstance(workers, list)
+    first_worker = workers[0]
+    assert isinstance(first_worker, dict)
+    workers.append(dict(first_worker))
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", json.dumps(dashboard) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "duplicate_worker_ids": ["worker-0"],
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_workers_duplicate",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_html(
     tmp_path: Path,
 ) -> None:
@@ -1842,6 +1904,37 @@ def test_release_evidence_verifier_rejects_malformed_phase8_profile_workers(
             "ok": False,
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_workers_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_duplicate_phase8_profile_workers(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    workers = profile["workers"]
+    assert isinstance(workers, list)
+    first_worker = workers[0]
+    assert isinstance(first_worker, dict)
+    workers.append(dict(first_worker))
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.json", json.dumps(profile) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "duplicate_worker_ids": ["worker-0"],
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_workers_duplicate",
         }
     ]
 

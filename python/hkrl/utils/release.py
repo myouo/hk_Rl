@@ -2298,6 +2298,15 @@ def _verify_phase8_dashboard_artifact(
             "path": "runs/phase8-smoke/dashboard.json",
             "reason": "phase8_dashboard_tasks_malformed",
         }
+    duplicate_task_ids = _duplicate_mapping_field_values(tasks, "task_id")
+    if duplicate_task_ids:
+        return {
+            "duplicate_task_ids": duplicate_task_ids,
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_tasks_duplicate",
+        }
     workers = payload.get("workers")
     assert isinstance(workers, Sequence)
     malformed_workers = [
@@ -2310,6 +2319,15 @@ def _verify_phase8_dashboard_artifact(
             "ok": False,
             "path": "runs/phase8-smoke/dashboard.json",
             "reason": "phase8_dashboard_workers_malformed",
+        }
+    duplicate_worker_ids = _duplicate_mapping_field_values(workers, "worker_id")
+    if duplicate_worker_ids:
+        return {
+            "duplicate_worker_ids": duplicate_worker_ids,
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_workers_duplicate",
         }
     return None
 
@@ -2476,6 +2494,21 @@ def _mapping_rows(rows: Any) -> list[Mapping[str, Any]]:
     return [row for row in rows if isinstance(row, Mapping)]
 
 
+def _duplicate_mapping_field_values(rows: Sequence[Any], field: str) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        value = row.get(field)
+        if not isinstance(value, str):
+            continue
+        if value in seen:
+            duplicates.add(value)
+        seen.add(value)
+    return sorted(duplicates)
+
+
 def _phase8_dashboard_worker_html_row(worker: Mapping[str, Any]) -> str:
     return _html_table_row(
         (
@@ -2607,6 +2640,15 @@ def _verify_phase8_profile_artifact(
             "ok": False,
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_workers_malformed",
+        }
+    duplicate_worker_ids = _duplicate_mapping_field_values(workers, "worker_id")
+    if duplicate_worker_ids:
+        return {
+            "duplicate_worker_ids": duplicate_worker_ids,
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_workers_duplicate",
         }
     return None
 
