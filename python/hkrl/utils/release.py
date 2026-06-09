@@ -362,6 +362,10 @@ def verify_release_evidence_manifest(
     if profile_failure is not None:
         failures.append(profile_failure)
 
+    profile_markdown_failure = _verify_phase8_profile_markdown_artifact(root_path, results)
+    if profile_markdown_failure is not None:
+        failures.append(profile_markdown_failure)
+
     checklist_failure = _verify_release_checklist_artifact(
         root_path,
         results,
@@ -1321,6 +1325,86 @@ def _valid_phase8_profile_worker(worker: Any) -> bool:
             "worker_crash_count",
         )
     )
+
+
+def _verify_phase8_profile_markdown_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    profile_markdown = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/profile.md"),
+        None,
+    )
+    if profile_markdown is None or profile_markdown.get("ok") is not True:
+        return None
+
+    path = root / "runs/phase8-smoke/profile.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_invalid",
+        }
+
+    if not text.startswith("# HKRL Phase 8 Profile\n"):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_title_missing",
+        }
+    if "| Worker | Alive | Status | SPS | Rollout s | Steps | Crashes |" not in text:
+        return {
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_workers_missing",
+        }
+
+    worker_ids = _phase8_profile_worker_ids(root, results)
+    missing_worker_ids = sorted(
+        worker_id for worker_id in worker_ids if f"| {worker_id} |" not in text
+    )
+    if missing_worker_ids:
+        return {
+            "field": "workers",
+            "missing_worker_ids": missing_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_worker_rows_missing",
+        }
+
+    return None
+
+
+def _phase8_profile_worker_ids(root: Path, results: Sequence[Mapping[str, Any]]) -> list[str]:
+    profile_result = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/profile.json"),
+        None,
+    )
+    if profile_result is None or profile_result.get("ok") is not True:
+        return []
+
+    try:
+        payload = json.loads((root / "runs/phase8-smoke/profile.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, Mapping):
+        return []
+
+    workers = payload.get("workers")
+    if not isinstance(workers, Sequence) or isinstance(workers, (str, bytes)):
+        return []
+    return [
+        worker_id
+        for worker in workers
+        if isinstance(worker, Mapping)
+        and isinstance((worker_id := worker.get("worker_id")), str)
+        and worker_id
+    ]
 
 
 def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] | None:

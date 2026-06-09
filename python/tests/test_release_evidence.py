@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from hkrl.coordinator.profiling import render_profile_markdown
 from hkrl.utils.release import (
     PHASE8_RELEASE_ARTIFACTS,
     build_release_checklist,
@@ -548,6 +549,86 @@ def test_release_evidence_verifier_rejects_malformed_phase8_profile_workers(
             "ok": False,
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_workers_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_invalid_phase8_profile_markdown(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.md", "not a profile\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_title_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_profile_markdown_without_workers(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.md", "# HKRL Phase 8 Profile\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_workers_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_profile_markdown_missing_worker_row(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    workers = profile["workers"]
+    assert isinstance(workers, list)
+    profile["workers"] = workers[:1]
+    _write(
+        tmp_path / "runs" / "phase8-smoke" / "profile.md",
+        render_profile_markdown(profile),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "missing_worker_ids": ["worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_worker_rows_missing",
         }
     ]
 
@@ -1670,6 +1751,8 @@ def _write_required_release_artifacts(root: Path) -> None:
             _write(root / artifact, json.dumps(_phase8_smoke_summary()) + "\n")
         elif artifact == "runs/phase8-smoke/dashboard.json":
             _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
+        elif artifact == "runs/phase8-smoke/profile.md":
+            _write(root / artifact, render_profile_markdown(_phase8_profile_report()))
         elif artifact == "runs/phase8-smoke/profile.json":
             _write(root / artifact, json.dumps(_phase8_profile_report()) + "\n")
         elif artifact == "runs/release/checklist.md":
