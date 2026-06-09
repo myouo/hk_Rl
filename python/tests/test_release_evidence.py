@@ -683,6 +683,57 @@ def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_task_sections
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_model_layout_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["algorithm"] = "ppo"
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["enable_macro_actions"] = "yes"
+    worker["model"] = ""
+    worker["n_macro_actions"] = 12
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "learner_worker_layout",
+            "learner_layout": {
+                "algorithm": "ppo",
+                "enable_macro_actions": True,
+                "model": "entity_attention_gru",
+                "n_macro_actions": 11,
+            },
+            "malformed_fields": [
+                "algorithm",
+                "model",
+                "enable_macro_actions",
+                "n_macro_actions",
+            ],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_model_layout_mismatch",
+            "worker_layout": {
+                "algorithm": "appo",
+                "enable_macro_actions": "yes",
+                "model": "",
+                "n_macro_actions": 12,
+            },
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_worker_count(
     tmp_path: Path,
 ) -> None:
@@ -2816,14 +2867,22 @@ def _phase8_smoke_summary() -> dict[str, object]:
             },
         },
         "learner": {
+            "algorithm": "appo",
+            "enable_macro_actions": True,
+            "model": "entity_attention_gru",
+            "n_macro_actions": 11,
             "policy_version": 2.0,
             "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         },
         "ok": True,
         "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         "worker": {
+            "algorithm": "appo",
             "dry_run": True,
+            "enable_macro_actions": True,
             "latest_checkpoint": 2,
+            "model": "entity_attention_gru",
+            "n_macro_actions": 11,
             "task_id": "gruz_mother",
             "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "worker_id": "worker-0",

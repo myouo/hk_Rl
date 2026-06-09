@@ -1359,6 +1359,9 @@ def _verify_phase8_smoke_summary_structure(
     )
     if component_task_ids_failure is not None:
         return component_task_ids_failure
+    model_layout_failure = _verify_phase8_smoke_model_layout(learner, worker)
+    if model_layout_failure is not None:
+        return model_layout_failure
     task_ids_failure = _verify_phase8_smoke_coordinator_task_ids(coordinator, task_ids=task_ids)
     if task_ids_failure is not None:
         return task_ids_failure
@@ -1442,6 +1445,74 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_model_layout(
+    learner: Mapping[str, Any],
+    worker: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    malformed_fields: list[str] = []
+    for field in ("algorithm", "model"):
+        learner_value = learner.get(field)
+        worker_value = worker.get(field)
+        if (
+            not isinstance(learner_value, str)
+            or not learner_value
+            or not isinstance(worker_value, str)
+            or not worker_value
+            or learner_value != worker_value
+        ):
+            malformed_fields.append(field)
+
+    learner_macro_enabled = learner.get("enable_macro_actions")
+    worker_macro_enabled = worker.get("enable_macro_actions")
+    if (
+        not isinstance(learner_macro_enabled, bool)
+        or not isinstance(worker_macro_enabled, bool)
+        or learner_macro_enabled != worker_macro_enabled
+    ):
+        malformed_fields.append("enable_macro_actions")
+
+    learner_macro_count = learner.get("n_macro_actions")
+    worker_macro_count = worker.get("n_macro_actions")
+    learner_macro_count_value = None
+    worker_macro_count_value = None
+    if _is_non_negative_count(learner_macro_count):
+        assert isinstance(learner_macro_count, (int, float))
+        learner_macro_count_value = int(float(learner_macro_count))
+    if _is_non_negative_count(worker_macro_count):
+        assert isinstance(worker_macro_count, (int, float))
+        worker_macro_count_value = int(float(worker_macro_count))
+    if (
+        learner_macro_count_value is None
+        or worker_macro_count_value is None
+        or learner_macro_count_value <= 0
+        or worker_macro_count_value <= 0
+        or learner_macro_count_value != worker_macro_count_value
+    ):
+        malformed_fields.append("n_macro_actions")
+
+    if malformed_fields:
+        return {
+            "field": "learner_worker_layout",
+            "learner_layout": {
+                "algorithm": learner.get("algorithm"),
+                "enable_macro_actions": learner_macro_enabled,
+                "model": learner.get("model"),
+                "n_macro_actions": learner_macro_count,
+            },
+            "malformed_fields": malformed_fields,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_model_layout_mismatch",
+            "worker_layout": {
+                "algorithm": worker.get("algorithm"),
+                "enable_macro_actions": worker_macro_enabled,
+                "model": worker.get("model"),
+                "n_macro_actions": worker_macro_count,
+            },
+        }
     return None
 
 

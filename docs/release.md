@@ -42,6 +42,8 @@ versions. Learner, worker, and coordinator task IDs must match the top-level
 `task_ids`, and the dry-run worker `task_id` must be listed there. Coordinator
 worker counts must match the listed `worker_ids`. Coordinator task wire IDs
 must exactly cover the listed task IDs with unique non-negative wire IDs. The
+learner and worker algorithm, model, macro-action enablement, and macro-action
+count must match. The
 coordinator eval win rates and sampler weights must exactly cover the listed
 task IDs, and mastered sampler tasks must be a subset of them. The
 dry-run `worker_id` must be listed in `worker_ids`, and coordinator worker rows
