@@ -309,6 +309,10 @@ def verify_release_evidence_manifest(
     if required_artifacts_failure is not None:
         failures.append(required_artifacts_failure)
 
+    optional_artifacts_failure = _verify_manifest_optional_artifacts(results)
+    if optional_artifacts_failure is not None:
+        failures.append(optional_artifacts_failure)
+
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
         failures.append(count_failure)
@@ -537,11 +541,7 @@ def _verify_manifest_unique_artifact_paths(
 def _verify_manifest_required_artifacts(
     results: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any] | None:
-    paths = {
-        path
-        for result in results
-        if isinstance((path := result.get("path")), str) and path != "<missing>"
-    }
+    paths = _manifest_artifact_paths(results)
     missing_paths = [path for path in PHASE8_RELEASE_ARTIFACTS if path not in paths]
     if missing_paths:
         return {
@@ -552,6 +552,35 @@ def _verify_manifest_required_artifacts(
             "reason": "manifest_required_artifacts_missing",
         }
     return None
+
+
+def _verify_manifest_optional_artifacts(
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    paths = _manifest_artifact_paths(results)
+    present_paths = [path for path in PHASE8_OPTIONAL_RELEASE_ARTIFACTS if path in paths]
+    if not present_paths:
+        return None
+    missing_paths = [path for path in PHASE8_OPTIONAL_RELEASE_ARTIFACTS if path not in paths]
+    if missing_paths:
+        return {
+            "field": "artifacts",
+            "group": "phase8_eval",
+            "missing_paths": missing_paths,
+            "ok": False,
+            "path": "<manifest>",
+            "present_paths": present_paths,
+            "reason": "manifest_optional_artifacts_partial",
+        }
+    return None
+
+
+def _manifest_artifact_paths(results: Sequence[Mapping[str, Any]]) -> set[str]:
+    return {
+        path
+        for result in results
+        if isinstance((path := result.get("path")), str) and path != "<missing>"
+    }
 
 
 def _verify_manifest_artifact_count(

@@ -378,6 +378,34 @@ def test_release_evidence_verifier_reports_missing_required_artifacts(
     ]
 
 
+def test_release_evidence_verifier_reports_partial_eval_artifacts(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "eval.json", '{"metrics": {}}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+        artifacts=(*PHASE8_RELEASE_ARTIFACTS, "runs/eval.json"),
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 1
+    assert result["failures"] == [
+        {
+            "field": "artifacts",
+            "group": "phase8_eval",
+            "missing_paths": ["runs/eval-report.md", "runs/eval-report.json"],
+            "ok": False,
+            "path": "<manifest>",
+            "present_paths": ["runs/eval.json"],
+            "reason": "manifest_optional_artifacts_partial",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_duplicate_artifact_paths(
     tmp_path: Path,
 ) -> None:
