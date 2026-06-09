@@ -30,6 +30,7 @@ def test_release_checklist_contains_phase8_gates() -> None:
         "mod_build",
         "live_smoke",
         "fixed_seed_eval",
+        "fixed_seed_eval_report",
         "security_scope",
         "docs_changelog",
     } <= check_ids
@@ -37,6 +38,7 @@ def test_release_checklist_contains_phase8_gates() -> None:
     assert "make phase8-smoke" in commands
     assert "make phase8-dashboard" in commands
     assert "make phase8-profile" in commands
+    assert "make phase8-eval-report" in commands
     assert "make phase8-release-evidence" in commands
     assert "make phase8-verify-release-evidence" in commands
 

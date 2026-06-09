@@ -10,7 +10,7 @@ CS_SCHEMA := mod/HKRLEnvMod/Schema
 GIT_SHA  ?= $(shell git rev-parse HEAD 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-eval-report phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -70,6 +70,10 @@ phase8-profile: ## Render offline Phase 8 profiling report under runs/phase8-smo
 	  --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json \
 	  --profile-json runs/phase8-smoke/profile.json \
 	  --profile-md runs/phase8-smoke/profile.md
+
+phase8-eval-report: ## Render fixed-seed eval report from runs/eval.json
+	$(PY) scripts/render_eval_report.py --eval-json runs/eval.json \
+	  --output-json runs/eval-report.json --output-md runs/eval-report.md
 
 phase8-release-checklist: ## Render Phase 8 release checklist under runs/release
 	mkdir -p runs/release

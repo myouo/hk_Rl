@@ -357,6 +357,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.
+- `scripts/render_eval_report.py` and `make phase8-eval-report` now render
+  fixed-seed evaluator JSON into JSON/Markdown regression reports.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
 - Phase 8 profile reports now flag workers that have not reported policy or

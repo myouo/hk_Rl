@@ -99,6 +99,13 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         evidence="runs/eval.json contains shaping-free per-boss metrics",
     ),
     ReleaseCheck(
+        id="fixed_seed_eval_report",
+        category="game_machine",
+        title="Render the fixed-seed eval regression report",
+        command="make phase8-eval-report",
+        evidence="runs/eval-report.json and eval-report.md summarize win rates/regressions",
+    ),
+    ReleaseCheck(
         id="security_scope",
         category="review",
         title="Review runtime network/security settings",

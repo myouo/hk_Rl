@@ -65,6 +65,7 @@ python scripts/train.py --config configs/train/ppo_mlp.yaml \
 python scripts/run_eval.py --policy scripted \
   --tasks configs/tasks/gruz_mother.yaml --episodes 5 \
   --output runs/eval.json
+make phase8-eval-report
 ```
 
 For multi-instance evaluation, provide one live mod TCP port per intended worker:
@@ -74,7 +75,12 @@ python scripts/run_eval.py --policy scripted \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
   --episodes 5 --eval-workers 2 --ports 5555 5556 \
   --output runs/eval.json
+make phase8-eval-report
 ```
+
+`phase8-eval-report` turns the fixed-seed evaluator JSON into
+`runs/eval-report.json` and `runs/eval-report.md`, including per-task win rates
+and regression deltas when the eval output includes a `regression` section.
 
 ## 4. Security Review
 
