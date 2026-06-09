@@ -82,6 +82,12 @@ policy.
 run: it loads task YAMLs, creates expected worker assignments, ingests optional
 heartbeat JSONL, applies optional evaluator win-rate metrics to task-sampler
 weights, and prints a JSON monitoring snapshot.
+`scripts/run_phase8_smoke.py` automates the offline version of that distributed
+smoke path. It builds the learner from task YAMLs, publishes a local checkpoint
+registry, runs a worker dry-run against that registry, writes synthetic
+heartbeats/evaluator metrics, and feeds them through the coordinator snapshot.
+It does not connect to a live game, start learner intake sockets, or exercise mod
+runtime behavior.
 
 ## 4. On-policy staleness (PRD §9.5)
 
@@ -187,6 +193,9 @@ updates `TaskSampler` weights toward weaker tasks, and exposes the resulting
 weights/mastered-task set in the JSON summary.
 It also accepts `per_boss_win_rate` when a metrics pipeline keeps only the
 canonical per-boss evaluator key.
+`make phase8-smoke` runs the same offline distributed wiring check with the
+default Phase 8 config/tasks; the Python test suite covers the script so CI can
+catch broken worker/learner/coordinator config contracts without a live game.
 
 ## 9. PyTorch + CUDA note
 

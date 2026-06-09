@@ -335,6 +335,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Coordinator monitoring snapshots now report active worker policy/checkpoint
   version lag, stale-version counts, missing-version counts, and recovering
   worker counts for Phase 8 dashboard health checks.
+- `scripts/run_phase8_smoke.py` and `make phase8-smoke` now run an offline
+  distributed wiring smoke that validates learner, worker registry probing, and
+  coordinator monitoring without a live game.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

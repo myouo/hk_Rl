@@ -9,7 +9,7 @@ PY_SCHEMA := python/hkrl/schema
 CS_SCHEMA := mod/HKRLEnvMod/Schema
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -50,6 +50,9 @@ test: ## pytest unit suite
 
 smoke: ## Run random-policy smoke against a live env (Phase 2+)
 	$(PY) scripts/train.py --config configs/train/ppo_mlp.yaml --smoke
+
+phase8-smoke: ## Run offline distributed wiring smoke (no live game required)
+	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml
 
 clean: ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
