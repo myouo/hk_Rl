@@ -403,6 +403,9 @@ the project version tracks the **schema_version** + roadmap phase.
   missing or malformed.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   missing coordinator worker rows for listed worker IDs.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  whose coordinator worker rows lack an `alive` flag or valid worker-side
+  `sps`/`worker_crash_count` metrics.
 - Phase 8 release evidence verification now rejects malformed Phase 8 dashboard
   JSON or dashboard models missing health/metrics/task/worker sections.
 - Phase 8 release evidence verification now rejects Phase 8 dashboard models

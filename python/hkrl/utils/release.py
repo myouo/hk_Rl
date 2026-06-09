@@ -1287,6 +1287,19 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_workers_invalid",
         }
+    malformed_worker_ids = sorted(
+        str(worker_id)
+        for worker_id, worker in workers.items()
+        if not _valid_phase8_smoke_worker(worker)
+    )
+    if malformed_worker_ids:
+        return {
+            "field": "coordinator.workers",
+            "malformed_worker_ids": malformed_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_malformed",
+        }
 
     for field in ("checkpoint_versions", "task_ids", "worker_ids"):
         value = payload.get(field)
@@ -1320,6 +1333,19 @@ def _verify_phase8_smoke_summary_structure(
             "reason": "phase8_smoke_summary_worker_rows_missing",
         }
     return None
+
+
+def _valid_phase8_smoke_worker(worker: Any) -> bool:
+    if not isinstance(worker, Mapping):
+        return False
+    if not isinstance(worker.get("alive"), bool):
+        return False
+    metrics = worker.get("metrics")
+    if not isinstance(metrics, Mapping):
+        return False
+    return all(
+        _is_non_negative_number(metrics.get(field)) for field in ("sps", "worker_crash_count")
+    )
 
 
 def _verify_phase8_dashboard_artifact(

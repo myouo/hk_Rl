@@ -617,6 +617,44 @@ def test_release_evidence_verifier_rejects_phase8_smoke_missing_worker_rows(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_0 = workers["worker-0"]
+    assert isinstance(worker_0, dict)
+    worker_0["alive"] = "yes"
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    metrics = worker_1["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["worker_crash_count"] = -1.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.workers",
+            "malformed_worker_ids": ["worker-0", "worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_json(
     tmp_path: Path,
 ) -> None:
@@ -2284,11 +2322,11 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "workers": {
                 "worker-0": {
                     "alive": True,
-                    "metrics": {"sps": 32.0},
+                    "metrics": {"sps": 32.0, "worker_crash_count": 0.0},
                 },
                 "worker-1": {
                     "alive": True,
-                    "metrics": {"sps": 0.0},
+                    "metrics": {"sps": 0.0, "worker_crash_count": 1.0},
                 },
             },
         },
