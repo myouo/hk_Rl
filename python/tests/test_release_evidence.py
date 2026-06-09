@@ -669,6 +669,69 @@ def test_release_evidence_verifier_rejects_phase8_smoke_missing_worker_rows(
     ]
 
 
+def test_release_evidence_verifier_rejects_extra_phase8_smoke_worker_rows(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    workers["worker-extra"] = {
+        "alive": True,
+        "metrics": {"sps": 1.0, "worker_crash_count": 0.0},
+    }
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "extra_worker_ids": ["worker-extra"],
+            "field": "coordinator.workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_unexpected",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_unlisted_phase8_smoke_worker_id(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["worker_id"] = "worker-missing"
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "worker.worker_id",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_id_unlisted",
+            "worker_id": "worker-missing",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:

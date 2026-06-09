@@ -1361,6 +1361,26 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_worker_rows_missing",
         }
+    extra_worker_ids = sorted(
+        str(worker_id) for worker_id in workers if worker_id not in worker_ids
+    )
+    if extra_worker_ids:
+        return {
+            "extra_worker_ids": extra_worker_ids,
+            "field": "coordinator.workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_unexpected",
+        }
+    worker_id = worker.get("worker_id")
+    if worker_id not in worker_ids:
+        return {
+            "field": "worker.worker_id",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_id_unlisted",
+            "worker_id": worker_id,
+        }
     return None
 
 
