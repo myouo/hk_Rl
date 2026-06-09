@@ -51,6 +51,28 @@ def test_eval_report_marks_empty_metrics_critical() -> None:
     ]
 
 
+def test_eval_report_uses_per_boss_win_rate_fallback() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": {
+                    "death_rate": 0.2,
+                    "per_boss_win_rate": 0.6,
+                },
+                "hornet_protector_attuned": {
+                    "per_boss_win_rate": 0.8,
+                },
+            }
+        },
+        min_win_rate=0.5,
+    )
+
+    assert report["summary"]["mean_win_rate"] == 0.7
+    assert report["summary"]["min_win_rate"] == 0.6
+    assert [task["win_rate"] for task in report["tasks"]] == [0.6, 0.8]
+    assert report["findings"] == []
+
+
 def test_eval_report_markdown_contains_task_table() -> None:
     markdown = render_eval_report_markdown(build_eval_report(_eval_payload()))
 

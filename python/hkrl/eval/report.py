@@ -134,11 +134,17 @@ def _task_rows(
     rows: list[dict[str, Any]] = []
     for task_id, raw_metrics in sorted(metrics.items()):
         task_metrics = _mapping(raw_metrics)
-        row: dict[str, Any] = {key: _float(task_metrics.get(key, 0.0)) for key in TASK_METRICS}
+        row: dict[str, Any] = {key: _task_metric(task_metrics, key) for key in TASK_METRICS}
         row["task_id"] = str(task_id)
         row["regression_delta"] = _optional_float(regression.get(str(task_id)))
         rows.append(row)
     return rows
+
+
+def _task_metric(task_metrics: Mapping[str, Any], key: str) -> float:
+    if key == "win_rate" and "win_rate" not in task_metrics:
+        return _float(task_metrics.get("per_boss_win_rate", 0.0))
+    return _float(task_metrics.get(key, 0.0))
 
 
 def _summary(tasks: list[dict[str, Any]]) -> dict[str, float]:

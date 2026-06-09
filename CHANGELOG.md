@@ -366,6 +366,8 @@ the project version tracks the **schema_version** + roadmap phase.
   env instances.
 - `scripts/render_eval_report.py` and `make phase8-eval-report` now render
   fixed-seed evaluator JSON into JSON/Markdown regression reports.
+- Phase 8 eval reports now use `per_boss_win_rate` as the task win-rate fallback
+  when evaluator output omits `win_rate`.
 - Phase 8 release evidence manifests now include live eval JSON/report artifacts
   when those game-machine outputs exist locally.
 - Phase 8 release evidence manifest generation now only includes live eval

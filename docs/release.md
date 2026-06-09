@@ -91,7 +91,9 @@ make phase8-eval-report
 
 `phase8-eval-report` turns the fixed-seed evaluator JSON into
 `runs/eval-report.json` and `runs/eval-report.md`, including per-task win rates
-and regression deltas when the eval output includes a `regression` section.
+and regression deltas when the eval output includes a `regression` section. If a
+task omits `win_rate`, the report uses `per_boss_win_rate` as the canonical
+win-rate fallback.
 
 ## 4. Security Review
 
