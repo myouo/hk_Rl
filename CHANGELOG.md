@@ -399,6 +399,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   missing coordinator metrics or learner/worker/task/checkpoint sections.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  with malformed smoke config or internal artifact pointers for checkpoint,
+  eval-metrics, heartbeat, or work-dir evidence.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   whose coordinator `worker_count`, `active_worker_count`, or `sps` metrics are
   missing or malformed.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries

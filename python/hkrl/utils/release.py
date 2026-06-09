@@ -1256,6 +1256,9 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_section_invalid",
             }
+    artifact_failure = _verify_phase8_smoke_artifacts(payload)
+    if artifact_failure is not None:
+        return artifact_failure
 
     learner = payload.get("learner")
     assert isinstance(learner, Mapping)
@@ -1448,6 +1451,62 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_artifacts(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    config = payload.get("config")
+    artifacts = payload.get("artifacts")
+    if (
+        not isinstance(config, str)
+        or not config
+        or not config.endswith((".yaml", ".yml"))
+        or not isinstance(artifacts, Mapping)
+    ):
+        return {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_artifacts_invalid",
+        }
+
+    expected_names = {
+        "checkpoint_dir": "checkpoints",
+        "eval_metrics": "eval-metrics.json",
+        "heartbeat_jsonl": "worker-heartbeats.jsonl",
+        "work_dir": "phase8-smoke",
+    }
+    malformed_fields: list[str] = []
+    paths: dict[str, Path] = {}
+    for field, expected_name in expected_names.items():
+        value = artifacts.get(field)
+        if not isinstance(value, str) or not value:
+            malformed_fields.append(field)
+            continue
+        path = Path(value)
+        paths[field] = path
+        if path.name != expected_name:
+            malformed_fields.append(field)
+
+    work_dir = paths.get("work_dir")
+    if work_dir is not None:
+        for field in ("checkpoint_dir", "eval_metrics", "heartbeat_jsonl"):
+            artifact_path = paths.get(field)
+            if artifact_path is None:
+                continue
+            if artifact_path.parent != work_dir:
+                malformed_fields.append(field)
+
+    if malformed_fields:
+        return {
+            "artifact_paths": {field: artifacts.get(field) for field in expected_names},
+            "config": config,
+            "field": "artifacts",
+            "malformed_fields": sorted(set(malformed_fields)),
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_artifacts_malformed",
+        }
     return None
 
 

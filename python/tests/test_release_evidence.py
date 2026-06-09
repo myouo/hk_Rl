@@ -527,6 +527,45 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_section
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_artifacts(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    artifacts = summary["artifacts"]
+    assert isinstance(artifacts, dict)
+    artifacts["checkpoint_dir"] = "runs/phase8-smoke/not-checkpoints"
+    artifacts["eval_metrics"] = "runs/other/eval-metrics.json"
+    artifacts["heartbeat_jsonl"] = ""
+    artifacts["work_dir"] = "runs/phase8-smoke"
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "artifact_paths": {
+                "checkpoint_dir": "runs/phase8-smoke/not-checkpoints",
+                "eval_metrics": "runs/other/eval-metrics.json",
+                "heartbeat_jsonl": "",
+                "work_dir": "runs/phase8-smoke",
+            },
+            "config": "configs/train/remote_learner.yaml",
+            "field": "artifacts",
+            "malformed_fields": ["checkpoint_dir", "eval_metrics", "heartbeat_jsonl"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_artifacts_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_metrics(
     tmp_path: Path,
 ) -> None:
@@ -2879,7 +2918,14 @@ def _release_checklist(*, git_sha: str = FULL_GIT_SHA) -> dict[str, object]:
 
 def _phase8_smoke_summary() -> dict[str, object]:
     return {
+        "artifacts": {
+            "checkpoint_dir": "runs/phase8-smoke/checkpoints",
+            "eval_metrics": "runs/phase8-smoke/eval-metrics.json",
+            "heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
+            "work_dir": "runs/phase8-smoke",
+        },
         "checkpoint_versions": [1, 2],
+        "config": "configs/train/remote_learner.yaml",
         "coordinator": {
             "assignments": {
                 "worker-0": "hornet_protector_attuned",
