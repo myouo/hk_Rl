@@ -101,10 +101,10 @@ def render_eval_report_markdown(report: Mapping[str, Any]) -> str:
             "## Tasks",
             "",
             (
-                "| Task | Metrics Valid | Win Rate | Regression Delta | Damage Taken | "
-                "TTK | Invalid Action Ratio | Death Rate |"
+                "| Task | Metrics Valid | Regression Valid | Win Rate | Regression Delta | "
+                "Damage Taken | TTK | Invalid Action Ratio | Death Rate |"
             ),
-            "| --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| --- | :---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for task in (_mapping(item) for item in tasks):
@@ -112,6 +112,7 @@ def render_eval_report_markdown(report: Mapping[str, Any]) -> str:
             "| "
             f"{_markdown_cell(str(task.get('task_id', '')))} | "
             f"{_format_value(task.get('metrics_valid'))} | "
+            f"{_format_value(task.get('regression_valid'))} | "
             f"{_format_value(task.get('win_rate'))} | "
             f"{_format_value(task.get('regression_delta'))} | "
             f"{_format_value(task.get('damage_taken'))} | "
@@ -139,7 +140,10 @@ def _task_rows(
         row: dict[str, Any] = {key: _task_metric(task_metrics, key) for key in TASK_METRICS}
         row["metrics_valid"] = metrics_valid
         row["task_id"] = str(task_id)
-        row["regression_delta"] = _optional_float(regression.get(str(task_id)))
+        row["regression_delta"], row["regression_valid"] = _regression_delta(
+            regression,
+            str(task_id),
+        )
         rows.append(row)
     return rows
 
@@ -153,13 +157,28 @@ def _task_metric(task_metrics: Mapping[str, Any], key: str) -> float:
     return _float(task_metrics.get(key, 0.0))
 
 
+def _regression_delta(
+    regression: Mapping[str, Any],
+    task_id: str,
+) -> tuple[float | None, bool]:
+    if task_id not in regression:
+        return None, True
+    raw_delta = regression.get(task_id)
+    if raw_delta is None:
+        return None, True
+    delta = _finite_float_or_none(raw_delta)
+    if delta is None:
+        return None, False
+    return delta, True
+
+
 def _summary(tasks: list[dict[str, Any]]) -> dict[str, float]:
     valid_tasks = [task for task in tasks if task.get("metrics_valid") is not False]
     win_rates = [_float(task.get("win_rate", 0.0)) for task in valid_tasks]
     regressions = [
         float(task["regression_delta"])
         for task in valid_tasks
-        if task.get("regression_delta") is not None
+        if task.get("regression_valid") is not False and task.get("regression_delta") is not None
     ]
     return {
         "malformed_task_count": float(len(tasks) - len(valid_tasks)),
@@ -225,6 +244,18 @@ def _findings(
             )
         )
 
+    for task in tasks:
+        if task.get("metrics_valid") is False or task.get("regression_valid") is not False:
+            continue
+        findings.append(
+            _finding(
+                "critical",
+                "malformed_regression_delta",
+                f"{task['task_id']} has a non-finite or non-numeric regression delta.",
+                "Rebuild the regression baseline comparison before using this eval report.",
+            )
+        )
+
     if min_win_rate is not None:
         for task in tasks:
             if task.get("metrics_valid") is False:
@@ -241,6 +272,8 @@ def _findings(
 
     for task in tasks:
         if task.get("metrics_valid") is False:
+            continue
+        if task.get("regression_valid") is False:
             continue
         delta = task.get("regression_delta")
         if delta is not None and float(delta) < -max_regression_drop:

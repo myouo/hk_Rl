@@ -61,7 +61,9 @@ reported as critical findings instead of being silently treated as valid zeros;
 win-rate summaries are computed over valid task rows and include separate
 valid/malformed task counts. If every task row is malformed, the report also
 emits a critical no-valid-task finding so release evidence cannot pass without
-at least one usable fixed-seed metric row.
+at least one usable fixed-seed metric row. Non-numeric or non-finite regression
+deltas are reported as critical findings and omitted from regression summaries
+instead of being coerced to zero.
 
 ## 3. SPS, not FPS (PRD §9.6)
 

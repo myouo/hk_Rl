@@ -99,6 +99,8 @@ does not pass as ordinary zero-valued performance. Summary win-rate metrics are
 computed over valid task rows and report separate valid/malformed task counts.
 If no valid task metric rows remain, the report emits an additional critical
 finding and the live eval evidence should be regenerated before release.
+Malformed regression deltas are also critical findings; they are left out of
+worst-regression summaries rather than coerced into a non-regression value.
 
 ## 4. Security Review
 

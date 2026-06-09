@@ -53,6 +53,36 @@ def test_eval_report_marks_empty_metrics_critical() -> None:
     ]
 
 
+def test_eval_report_flags_malformed_regression_delta() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": {
+                    "per_boss_win_rate": 0.8,
+                },
+            },
+            "regression": {
+                "gruz_mother": "not a number",
+            },
+        },
+        max_regression_drop=0.05,
+    )
+
+    assert report["tasks"][0]["regression_delta"] is None
+    assert report["tasks"][0]["regression_valid"] is False
+    assert report["summary"]["worst_regression_delta"] == 0.0
+    assert report["findings"] == [
+        {
+            "code": "malformed_regression_delta",
+            "message": "gruz_mother has a non-finite or non-numeric regression delta.",
+            "recommendation": (
+                "Rebuild the regression baseline comparison before using this eval report."
+            ),
+            "severity": "critical",
+        }
+    ]
+
+
 def test_eval_report_flags_malformed_task_metrics() -> None:
     report = build_eval_report(
         {
@@ -154,8 +184,8 @@ def test_eval_report_markdown_contains_task_table() -> None:
     markdown = render_eval_report_markdown(build_eval_report(_eval_payload()))
 
     assert "# HKRL Eval Report" in markdown
-    assert "| Task | Metrics Valid | Win Rate | Regression Delta |" in markdown
-    assert "| gruz_mother | yes | 0.7 | -0.2 | 1.5 | 120 | 0.01 | 0.1 |" in markdown
+    assert "| Task | Metrics Valid | Regression Valid | Win Rate | Regression Delta |" in markdown
+    assert "| gruz_mother | yes | yes | 0.7 | -0.2 | 1.5 | 120 | 0.01 | 0.1 |" in markdown
 
 
 def test_render_eval_report_script_writes_json_and_markdown(tmp_path: Path) -> None:

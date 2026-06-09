@@ -374,6 +374,8 @@ the project version tracks the **schema_version** + roadmap phase.
   rows and show separate valid/malformed task counts in JSON/Markdown.
 - Phase 8 eval reports now emit a critical no-valid-task finding when every
   task metric payload is malformed.
+- Phase 8 eval reports now flag malformed regression deltas as critical findings
+  instead of coercing them to zero.
 - Phase 8 release evidence manifests now include live eval JSON/report artifacts
   when those game-machine outputs exist locally.
 - Phase 8 release evidence manifest generation now only includes live eval
