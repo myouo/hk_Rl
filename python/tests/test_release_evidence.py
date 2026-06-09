@@ -475,6 +475,58 @@ def test_release_evidence_verifier_rejects_incomplete_phase8_smoke_summary(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_learner(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    summary["learner"] = {"policy_version": "latest"}
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "learner",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_learner_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_section(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    summary["worker"] = {"dry_run": False, "worker_id": ""}
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "worker",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_metrics(
     tmp_path: Path,
 ) -> None:
@@ -2363,6 +2415,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
         "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         "worker": {
             "dry_run": True,
+            "worker_id": "worker-0",
         },
         "worker_ids": ["worker-0", "worker-1"],
     }

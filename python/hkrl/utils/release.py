@@ -1257,6 +1257,26 @@ def _verify_phase8_smoke_summary_structure(
                 "reason": "phase8_smoke_summary_section_invalid",
             }
 
+    learner = payload.get("learner")
+    assert isinstance(learner, Mapping)
+    if not _valid_phase8_smoke_learner(learner):
+        return {
+            "field": "learner",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_learner_malformed",
+        }
+
+    worker = payload.get("worker")
+    assert isinstance(worker, Mapping)
+    if not _valid_phase8_smoke_worker_section(worker):
+        return {
+            "field": "worker",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_malformed",
+        }
+
     coordinator = payload.get("coordinator")
     assert isinstance(coordinator, Mapping)
     metrics = coordinator.get("metrics")
@@ -1290,7 +1310,7 @@ def _verify_phase8_smoke_summary_structure(
     malformed_worker_ids = sorted(
         str(worker_id)
         for worker_id, worker in workers.items()
-        if not _valid_phase8_smoke_worker(worker)
+        if not _valid_phase8_smoke_coordinator_worker(worker)
     )
     if malformed_worker_ids:
         return {
@@ -1344,7 +1364,18 @@ def _verify_phase8_smoke_summary_structure(
     return None
 
 
-def _valid_phase8_smoke_worker(worker: Any) -> bool:
+def _valid_phase8_smoke_learner(learner: Mapping[str, Any]) -> bool:
+    return _is_non_negative_number(learner.get("policy_version"))
+
+
+def _valid_phase8_smoke_worker_section(worker: Mapping[str, Any]) -> bool:
+    if worker.get("dry_run") is not True:
+        return False
+    worker_id = worker.get("worker_id")
+    return isinstance(worker_id, str) and bool(worker_id)
+
+
+def _valid_phase8_smoke_coordinator_worker(worker: Any) -> bool:
     if not isinstance(worker, Mapping):
         return False
     if not isinstance(worker.get("alive"), bool):
