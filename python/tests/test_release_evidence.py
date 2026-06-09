@@ -430,6 +430,64 @@ def test_release_evidence_verifier_rejects_incomplete_phase8_profile(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_profile_findings(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    profile["findings"] = [{"code": "stale_policy_workers", "severity": "warning"}]
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.json", json.dumps(profile) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "findings",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_findings_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_profile_workers(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    workers = profile["workers"]
+    assert isinstance(workers, list)
+    worker = workers[0]
+    assert isinstance(worker, dict)
+    del worker["status"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.json", json.dumps(profile) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_workers_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
@@ -1404,9 +1462,29 @@ def _phase8_profile_report() -> dict[str, object]:
         "source": "phase8_smoke",
         "workers": [
             {
+                "alive": True,
+                "learner_upload_accepted_batches": 1.0,
+                "learner_upload_failed_batches": 0.0,
+                "learner_upload_rejected_batches": 0.0,
+                "learner_upload_submitted_batches": 1.0,
+                "rollout_duration_s": 4.0,
+                "rollout_steps": 128.0,
+                "sps": 32.0,
+                "status": "running",
+                "worker_crash_count": 0.0,
                 "worker_id": "worker-0",
             },
             {
+                "alive": True,
+                "learner_upload_accepted_batches": 0.0,
+                "learner_upload_failed_batches": 0.0,
+                "learner_upload_rejected_batches": 0.0,
+                "learner_upload_submitted_batches": 0.0,
+                "rollout_duration_s": 0.0,
+                "rollout_steps": 0.0,
+                "sps": 0.0,
+                "status": "recovering",
+                "worker_crash_count": 1.0,
                 "worker_id": "worker-1",
             },
         ],

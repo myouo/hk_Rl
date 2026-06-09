@@ -954,6 +954,19 @@ def _verify_phase8_profile_artifact(
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_findings_invalid",
         }
+    malformed_findings = [
+        index
+        for index, finding in enumerate(findings)
+        if not _valid_phase8_profile_finding(finding)
+    ]
+    if malformed_findings:
+        return {
+            "field": "findings",
+            "indexes": malformed_findings,
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_findings_malformed",
+        }
     workers = payload.get("workers")
     if not isinstance(workers, Sequence) or isinstance(workers, (str, bytes)) or not workers:
         return {
@@ -962,7 +975,55 @@ def _verify_phase8_profile_artifact(
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_workers_invalid",
         }
+    malformed_workers = [
+        index for index, worker in enumerate(workers) if not _valid_phase8_profile_worker(worker)
+    ]
+    if malformed_workers:
+        return {
+            "field": "workers",
+            "indexes": malformed_workers,
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.json",
+            "reason": "phase8_profile_workers_malformed",
+        }
     return None
+
+
+def _valid_phase8_profile_finding(finding: Any) -> bool:
+    if not isinstance(finding, Mapping):
+        return False
+    return all(
+        isinstance(finding.get(field), str) and bool(finding.get(field))
+        for field in ("code", "message", "recommendation", "severity")
+    )
+
+
+def _valid_phase8_profile_worker(worker: Any) -> bool:
+    if not isinstance(worker, Mapping):
+        return False
+    if not isinstance(worker.get("worker_id"), str) or not worker.get("worker_id"):
+        return False
+    if not isinstance(worker.get("status"), str) or not worker.get("status"):
+        return False
+    if not isinstance(worker.get("alive"), bool):
+        return False
+
+    rollout_duration = worker.get("rollout_duration_s")
+    if rollout_duration is not None and not _is_non_negative_number(rollout_duration):
+        return False
+
+    return all(
+        _is_non_negative_number(worker.get(field))
+        for field in (
+            "learner_upload_accepted_batches",
+            "learner_upload_failed_batches",
+            "learner_upload_rejected_batches",
+            "learner_upload_submitted_batches",
+            "rollout_steps",
+            "sps",
+            "worker_crash_count",
+        )
+    )
 
 
 def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -1211,5 +1272,14 @@ def _is_non_negative_count(value: Any) -> bool:
         and isinstance(value, (int, float))
         and math.isfinite(float(value))
         and float(value).is_integer()
+        and value >= 0.0
+    )
+
+
+def _is_non_negative_number(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
         and value >= 0.0
     )

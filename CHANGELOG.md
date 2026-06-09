@@ -402,6 +402,8 @@ the project version tracks the **schema_version** + roadmap phase.
   JSON or dashboard models missing health/metrics/task/worker sections.
 - Phase 8 release evidence verification now rejects malformed Phase 8 profile
   JSON or profile reports missing source/metrics/findings/workers.
+- Phase 8 release evidence verification now rejects Phase 8 profile reports with
+  malformed finding or worker rows.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
