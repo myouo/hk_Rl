@@ -711,7 +711,12 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
         }
     task_count = summary.get("task_count")
     valid_task_count = summary.get("valid_task_count")
-    if not _is_non_negative_count(task_count) or not _is_non_negative_count(valid_task_count):
+    malformed_task_count = summary.get("malformed_task_count")
+    if (
+        not _is_non_negative_count(task_count)
+        or not _is_non_negative_count(valid_task_count)
+        or not _is_non_negative_count(malformed_task_count)
+    ):
         return {
             "field": "summary",
             "ok": False,
@@ -720,8 +725,10 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
         }
     assert isinstance(task_count, (int, float))
     assert isinstance(valid_task_count, (int, float))
+    assert isinstance(malformed_task_count, (int, float))
     expected_task_count = int(task_count)
     valid_tasks = float(valid_task_count)
+    malformed_tasks = float(malformed_task_count)
 
     tasks = payload.get("tasks")
     if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)):
@@ -763,6 +770,7 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
     actual_valid_task_count = sum(
         1 for task in tasks if isinstance(task, Mapping) and task.get("metrics_valid") is not False
     )
+    actual_malformed_task_count = len(tasks) - actual_valid_task_count
     if int(valid_tasks) != actual_valid_task_count:
         return {
             "actual_valid_task_count": actual_valid_task_count,
@@ -771,6 +779,15 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_valid_task_count_mismatch",
+        }
+    if int(malformed_tasks) != actual_malformed_task_count:
+        return {
+            "actual_malformed_task_count": actual_malformed_task_count,
+            "expected_malformed_task_count": malformed_task_count,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_malformed_task_count_mismatch",
         }
     if valid_tasks <= 0.0:
         return {

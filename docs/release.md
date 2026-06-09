@@ -36,9 +36,9 @@ group exists locally; if any live eval artifact is listed, all three live eval
 artifacts must be listed. When the eval report JSON is listed, verification
 also requires a `run_eval` report with well-formed `summary`, `tasks`, and
 `findings` sections, task rows with `task_id`/`metrics_valid`, matching
-valid-task counts, unique task IDs, at least one valid task row, and no critical
-eval findings so hash-valid but failed fixed-seed reports cannot pass as
-release evidence:
+valid/malformed task counts, unique task IDs, at least one valid task row, and
+no critical eval findings so hash-valid but failed fixed-seed reports cannot
+pass as release evidence:
 
 ```text
 runs/phase8-smoke/summary.json

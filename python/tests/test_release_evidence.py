@@ -267,6 +267,7 @@ def test_release_evidence_verifier_rejects_eval_report_without_valid_tasks(
         tmp_path,
         _eval_report(
             summary={
+                "malformed_task_count": 1.0,
                 "task_count": 1.0,
                 "valid_task_count": 0.0,
             },
@@ -304,6 +305,7 @@ def test_release_evidence_verifier_rejects_eval_report_task_count_mismatch(
         tmp_path,
         _eval_report(
             summary={
+                "malformed_task_count": 0.0,
                 "task_count": 2.0,
                 "valid_task_count": 1.0,
             },
@@ -337,6 +339,7 @@ def test_release_evidence_verifier_rejects_malformed_eval_report_tasks(
         tmp_path,
         _eval_report(
             summary={
+                "malformed_task_count": 2.0,
                 "task_count": 3.0,
                 "valid_task_count": 1.0,
             },
@@ -379,6 +382,7 @@ def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
         tmp_path,
         _eval_report(
             summary={
+                "malformed_task_count": 1.0,
                 "task_count": 2.0,
                 "valid_task_count": 2.0,
             },
@@ -414,6 +418,81 @@ def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
     ]
 
 
+def test_release_evidence_verifier_rejects_missing_malformed_task_count(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 1.0,
+                "valid_task_count": 1.0,
+            },
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_summary_counts_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_task_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "malformed_task_count": 0.0,
+                "task_count": 2.0,
+                "valid_task_count": 1.0,
+            },
+            tasks=[
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                },
+                {
+                    "metrics_valid": False,
+                    "task_id": "hornet_protector_attuned",
+                },
+            ],
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "actual_malformed_task_count": 1,
+            "expected_malformed_task_count": 0.0,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_malformed_task_count_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_duplicate_eval_report_task_ids(
     tmp_path: Path,
 ) -> None:
@@ -422,6 +501,7 @@ def test_release_evidence_verifier_rejects_duplicate_eval_report_task_ids(
         tmp_path,
         _eval_report(
             summary={
+                "malformed_task_count": 0.0,
                 "task_count": 2.0,
                 "valid_task_count": 2.0,
             },
@@ -911,6 +991,7 @@ def _eval_report(
         "source": "run_eval",
         "summary": (
             {
+                "malformed_task_count": 0.0,
                 "task_count": 1.0,
                 "valid_task_count": 1.0,
             }
