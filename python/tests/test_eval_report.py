@@ -75,7 +75,35 @@ def test_eval_report_flags_malformed_task_metrics() -> None:
             "message": "gruz_mother has a non-object metric payload.",
             "recommendation": "Re-run fixed-seed eval and check the evaluator JSON writer.",
             "severity": "critical",
-        }
+        },
+        {
+            "code": "no_valid_eval_tasks",
+            "message": "The evaluator report contains no valid task metric rows.",
+            "recommendation": "Re-run fixed-seed eval and inspect malformed task metric payloads.",
+            "severity": "critical",
+        },
+    ]
+
+
+def test_eval_report_keeps_mixed_valid_tasks_reportable() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": "not an object",
+                "hornet_protector_attuned": {
+                    "per_boss_win_rate": 0.6,
+                },
+            }
+        },
+        min_win_rate=0.5,
+    )
+
+    assert report["summary"]["task_count"] == 2.0
+    assert report["summary"]["valid_task_count"] == 1.0
+    assert report["summary"]["malformed_task_count"] == 1.0
+    assert report["summary"]["mean_win_rate"] == 0.6
+    assert [finding["code"] for finding in report["findings"]] == [
+        "malformed_task_metrics",
     ]
 
 

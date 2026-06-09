@@ -372,6 +372,8 @@ the project version tracks the **schema_version** + roadmap phase.
   findings instead of treating them as valid zero metrics.
 - Phase 8 eval report summaries now compute win-rate aggregates over valid task
   rows and show separate valid/malformed task counts in JSON/Markdown.
+- Phase 8 eval reports now emit a critical no-valid-task finding when every
+  task metric payload is malformed.
 - Phase 8 release evidence manifests now include live eval JSON/report artifacts
   when those game-machine outputs exist locally.
 - Phase 8 release evidence manifest generation now only includes live eval

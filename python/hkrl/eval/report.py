@@ -215,6 +215,16 @@ def _findings(
                 )
             )
 
+    if not any(task.get("metrics_valid") is not False for task in tasks):
+        findings.append(
+            _finding(
+                "critical",
+                "no_valid_eval_tasks",
+                "The evaluator report contains no valid task metric rows.",
+                "Re-run fixed-seed eval and inspect malformed task metric payloads.",
+            )
+        )
+
     if min_win_rate is not None:
         for task in tasks:
             if task.get("metrics_valid") is False:

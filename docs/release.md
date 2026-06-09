@@ -97,6 +97,8 @@ task omits `win_rate` or reports an invalid value, the report uses
 metric payloads are rendered as critical findings so malformed eval evidence
 does not pass as ordinary zero-valued performance. Summary win-rate metrics are
 computed over valid task rows and report separate valid/malformed task counts.
+If no valid task metric rows remain, the report emits an additional critical
+finding and the live eval evidence should be regenerated before release.
 
 ## 4. Security Review
 
