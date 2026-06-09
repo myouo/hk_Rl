@@ -408,6 +408,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   with unlisted dry-run worker IDs or unexpected coordinator worker rows.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  with missing, incomplete, or task-invalid coordinator assignments.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   whose coordinator worker rows lack an `alive` flag or valid worker-side
   `sps`/`worker_crash_count` metrics.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries

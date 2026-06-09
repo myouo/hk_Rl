@@ -36,14 +36,15 @@ artifact paths, non-object artifact entries, missing or malformed full-length
 unsupported release `version` or `manifest_version` values, and Phase 8 smoke
 summaries that do not report `ok=true` with non-negative coordinator
 `worker_count`, `active_worker_count`, and `sps` metrics, learner
-`policy_version`, a dry-run worker section with `worker_id`, task and worker-id
-sections, and non-negative integer checkpoint versions. The dry-run
-`worker_id` must be listed in `worker_ids`, and coordinator worker rows must
-match the listed worker IDs without extras. Smoke worker rows must include an
-`alive` flag and non-negative worker `sps`/`worker_crash_count` metrics.
-Dashboard JSON must include health, learner, metrics, task, and worker sections
-with well-formed task and worker rows, while dashboard HTML must have the HKRL
-dashboard title, learner/worker/task sections, and the JSON task/worker rows.
+`policy_version`, coordinator assignments, a dry-run worker section with
+`worker_id`, task and worker-id sections, and non-negative integer checkpoint
+versions. The dry-run `worker_id` must be listed in `worker_ids`, and
+coordinator worker rows plus assignments must match the listed worker IDs
+without extras. Smoke worker rows must include an `alive` flag and non-negative
+worker `sps`/`worker_crash_count` metrics. Dashboard JSON must include health,
+learner, metrics, task, and worker sections with well-formed task and worker
+rows, while dashboard HTML must have the HKRL dashboard title,
+learner/worker/task sections, and the JSON task/worker rows.
 Profile JSON must come from the Phase 8 smoke source and include metrics,
 findings, and workers with well-formed finding and worker rows, while profile
 Markdown must have the HKRL profile title, worker table, and the JSON worker

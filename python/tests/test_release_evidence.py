@@ -732,6 +732,68 @@ def test_release_evidence_verifier_rejects_unlisted_phase8_smoke_worker_id(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_without_assignments(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator.pop("assignments")
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.assignments",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_assignments_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_assignments(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["assignments"] = {
+        "worker-0": "unknown_task",
+        "worker-extra": "gruz_mother",
+    }
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.assignments",
+            "malformed_assignments": ["worker-0"],
+            "missing_worker_ids": ["worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_assignments_malformed",
+            "unexpected_worker_ids": ["worker-extra"],
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -2455,6 +2517,10 @@ def _phase8_smoke_summary() -> dict[str, object]:
     return {
         "checkpoint_versions": [1, 2],
         "coordinator": {
+            "assignments": {
+                "worker-0": "hornet_protector_attuned",
+                "worker-1": "gruz_mother",
+            },
             "metrics": {
                 "active_worker_count": 2.0,
                 "sps": 32.0,

@@ -1381,6 +1381,50 @@ def _verify_phase8_smoke_summary_structure(
             "reason": "phase8_smoke_summary_worker_id_unlisted",
             "worker_id": worker_id,
         }
+    assignments = coordinator.get("assignments")
+    if not isinstance(assignments, Mapping) or not assignments:
+        return {
+            "field": "coordinator.assignments",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_assignments_invalid",
+        }
+    assignment_failure = _verify_phase8_smoke_assignments(
+        assignments,
+        task_ids=payload.get("task_ids"),
+        worker_ids=worker_ids,
+    )
+    if assignment_failure is not None:
+        return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_assignments(
+    assignments: Mapping[str, Any],
+    *,
+    task_ids: Any,
+    worker_ids: Sequence[Any],
+) -> dict[str, Any] | None:
+    task_id_set = {str(task_id) for task_id in task_ids if isinstance(task_id, str)}
+    worker_id_set = {str(worker_id) for worker_id in worker_ids if isinstance(worker_id, str)}
+    assignment_worker_ids = {str(worker_id) for worker_id in assignments}
+    missing_worker_ids = sorted(worker_id_set - assignment_worker_ids)
+    unexpected_worker_ids = sorted(assignment_worker_ids - worker_id_set)
+    malformed_assignments = sorted(
+        str(worker_id)
+        for worker_id, task_id in assignments.items()
+        if not isinstance(task_id, str) or task_id not in task_id_set
+    )
+    if missing_worker_ids or unexpected_worker_ids or malformed_assignments:
+        return {
+            "field": "coordinator.assignments",
+            "malformed_assignments": malformed_assignments,
+            "missing_worker_ids": missing_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_assignments_malformed",
+            "unexpected_worker_ids": unexpected_worker_ids,
+        }
     return None
 
 
