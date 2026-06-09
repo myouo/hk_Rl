@@ -330,6 +330,56 @@ def test_release_evidence_verifier_rejects_phase8_smoke_missing_worker_rows(
     ]
 
 
+def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_json(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", "not json\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "health",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_json_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_incomplete_phase8_dashboard(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    del dashboard["health"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", json.dumps(dashboard) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "health",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_section_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
@@ -1222,6 +1272,8 @@ def _write_required_release_artifacts(root: Path) -> None:
     for artifact in PHASE8_RELEASE_ARTIFACTS:
         if artifact == "runs/phase8-smoke/summary.json":
             _write(root / artifact, json.dumps(_phase8_smoke_summary()) + "\n")
+        elif artifact == "runs/phase8-smoke/dashboard.json":
+            _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
         else:
             _write(root / artifact, f"{artifact}\n")
 
@@ -1255,6 +1307,38 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "dry_run": True,
         },
         "worker_ids": ["worker-0", "worker-1"],
+    }
+
+
+def _phase8_dashboard_model() -> dict[str, object]:
+    return {
+        "health": {
+            "reasons": [],
+            "status": "healthy",
+        },
+        "learner": {
+            "policy_version": 2.0,
+        },
+        "metrics": {
+            "sps": 32.0,
+            "worker_count": 2.0,
+        },
+        "tasks": [
+            {
+                "task_id": "gruz_mother",
+            },
+            {
+                "task_id": "hornet_protector_attuned",
+            },
+        ],
+        "workers": [
+            {
+                "worker_id": "worker-0",
+            },
+            {
+                "worker_id": "worker-1",
+            },
+        ],
     }
 
 

@@ -354,6 +354,10 @@ def verify_release_evidence_manifest(
     if smoke_summary_failure is not None:
         failures.append(smoke_summary_failure)
 
+    dashboard_failure = _verify_phase8_dashboard_artifact(root_path, results)
+    if dashboard_failure is not None:
+        failures.append(dashboard_failure)
+
     eval_report_failure = _verify_eval_report_artifact(root_path, results)
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
@@ -834,6 +838,65 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_worker_rows_missing",
         }
+    return None
+
+
+def _verify_phase8_dashboard_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    dashboard_result = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/dashboard.json"),
+        None,
+    )
+    if dashboard_result is None or dashboard_result.get("ok") is not True:
+        return None
+
+    path = root / "runs/phase8-smoke/dashboard.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "field": "health",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_json_invalid",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "field": "health",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_not_object",
+        }
+
+    for field in ("health", "learner", "metrics"):
+        if not isinstance(payload.get(field), Mapping):
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/dashboard.json",
+                "reason": "phase8_dashboard_section_invalid",
+            }
+    health = payload.get("health")
+    assert isinstance(health, Mapping)
+    if not isinstance(health.get("status"), str) or not health.get("status"):
+        return {
+            "field": "health.status",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_health_invalid",
+        }
+
+    for field in ("tasks", "workers"):
+        value = payload.get(field)
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or not value:
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/dashboard.json",
+                "reason": "phase8_dashboard_list_invalid",
+            }
     return None
 
 

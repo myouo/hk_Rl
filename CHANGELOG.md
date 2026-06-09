@@ -398,6 +398,8 @@ the project version tracks the **schema_version** + roadmap phase.
   missing coordinator metrics or learner/worker/task/checkpoint sections.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   missing coordinator worker rows for listed worker IDs.
+- Phase 8 release evidence verification now rejects malformed Phase 8 dashboard
+  JSON or dashboard models missing health/metrics/task/worker sections.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
