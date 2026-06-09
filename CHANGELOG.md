@@ -343,6 +343,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.
+- `scripts/render_profile_report.py` and `make phase8-profile` now render static
+  Phase 8 profiling reports from coordinator/offline-smoke summaries.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

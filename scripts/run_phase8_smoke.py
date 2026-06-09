@@ -181,6 +181,7 @@ def _write_heartbeat_jsonl(
                 "payload": {
                     "checkpoint_version": latest_checkpoint if current else latest_checkpoint - 1,
                     "policy_version": 2 if current else 1,
+                    "rollout_duration_s": 4.0 if current else 0.0,
                     "rollout_steps": 128 if current else 0,
                     "sps": 32.0 if current else 0.0,
                     "status": "running" if current else "recovering",

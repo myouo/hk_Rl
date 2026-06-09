@@ -9,7 +9,7 @@ PY_SCHEMA := python/hkrl/schema
 CS_SCHEMA := mod/HKRLEnvMod/Schema
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -58,6 +58,11 @@ phase8-dashboard: ## Render offline Phase 8 smoke dashboard under runs/phase8-sm
 	mkdir -p runs/phase8-smoke
 	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json
 	$(PY) scripts/render_phase8_dashboard.py --summary runs/phase8-smoke/summary.json --output-html runs/phase8-smoke/dashboard.html --output-json runs/phase8-smoke/dashboard.json
+
+phase8-profile: ## Render offline Phase 8 profiling report under runs/phase8-smoke
+	mkdir -p runs/phase8-smoke
+	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json
+	$(PY) scripts/render_profile_report.py --summary runs/phase8-smoke/summary.json --output-json runs/phase8-smoke/profile.json --output-md runs/phase8-smoke/profile.md
 
 clean: ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

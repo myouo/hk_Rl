@@ -72,3 +72,8 @@ summary JSON. The dashboard summarizes fleet SPS, crash/recovery counts,
 policy/checkpoint lag, worker table state, sampler weights, and evaluator
 win-rate inputs; `make phase8-dashboard` writes the default offline smoke
 dashboard to `runs/phase8-smoke/`.
+`scripts/render_profile_report.py` renders a static JSON/Markdown profile report
+from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
+crash/recovery counts, and policy/checkpoint lag into bottleneck findings.
+This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
+profiling is still performed on the game machine.

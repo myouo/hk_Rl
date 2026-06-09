@@ -26,4 +26,6 @@
   `hkrl/spaces.py` and mod `ActionMasker`; they MUST share index order.
 - **Reward up, win rate flat/down** → reward hacking; tighten terminal/shaping
   ratio; trust the evaluator, not the reward curve.
-- **SPS low** → profile reset_duration first; then timeScale/action_repeat/render.
+- **SPS low** → run `make phase8-profile` for fleet heartbeat bottlenecks, then
+  profile live `reset_duration`, `Time.timeScale`/`fixedDeltaTime`,
+  `action_repeat`, render cost, and Python inference on the game machine.
