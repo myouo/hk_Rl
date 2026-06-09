@@ -378,6 +378,8 @@ the project version tracks the **schema_version** + roadmap phase.
   instead of coercing them to zero.
 - Phase 8 release evidence manifests now include live eval JSON/report artifacts
   when those game-machine outputs exist locally.
+- Phase 8 release evidence verification now rejects included eval reports that
+  contain critical findings.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static

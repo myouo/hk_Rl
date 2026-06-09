@@ -176,6 +176,21 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     assert result["failures"] == []
 
 
+def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(tmp_path, {"findings": []})
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is True
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == []
+
+
 def test_release_evidence_verifier_reports_non_object_artifact_entries(
     tmp_path: Path,
 ) -> None:
@@ -462,6 +477,45 @@ def test_release_evidence_verifier_reports_partial_eval_artifacts(
     ]
 
 
+def test_release_evidence_verifier_rejects_critical_eval_report_findings(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        {
+            "findings": [
+                {
+                    "code": "no_valid_eval_tasks",
+                    "severity": "critical",
+                },
+                {
+                    "code": "low_win_rate",
+                    "severity": "warning",
+                },
+            ],
+        },
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == [
+        {
+            "critical_codes": ["no_valid_eval_tasks"],
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_critical_findings",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_duplicate_artifact_paths(
     tmp_path: Path,
 ) -> None:
@@ -572,6 +626,12 @@ def _write(path: Path, text: str) -> None:
 def _write_required_release_artifacts(root: Path) -> None:
     for artifact in PHASE8_RELEASE_ARTIFACTS:
         _write(root / artifact, f"{artifact}\n")
+
+
+def _write_eval_artifacts(root: Path, report: dict[str, object]) -> None:
+    _write(root / "runs" / "eval.json", '{"metrics": {}}\n')
+    _write(root / "runs" / "eval-report.md", "# Eval\n")
+    _write(root / "runs" / "eval-report.json", json.dumps(report) + "\n")
 
 
 def _sha256(path: Path) -> str:

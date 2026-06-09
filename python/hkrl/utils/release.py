@@ -341,6 +341,10 @@ def verify_release_evidence_manifest(
     if optional_artifacts_failure is not None:
         failures.append(optional_artifacts_failure)
 
+    eval_report_failure = _verify_eval_report_artifact(root_path, results)
+    if eval_report_failure is not None:
+        failures.append(eval_report_failure)
+
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
         failures.append(count_failure)
@@ -606,6 +610,60 @@ def _verify_manifest_optional_artifacts(
             "path": "<manifest>",
             "present_paths": present_paths,
             "reason": "manifest_optional_artifacts_partial",
+        }
+    return None
+
+
+def _verify_eval_report_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    eval_report = next(
+        (result for result in results if result.get("path") == "runs/eval-report.json"),
+        None,
+    )
+    if eval_report is None or eval_report.get("ok") is not True:
+        return None
+
+    path = root / "runs/eval-report.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_json_invalid",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_not_object",
+        }
+
+    findings = payload.get("findings", [])
+    if not isinstance(findings, Sequence) or isinstance(findings, (str, bytes)):
+        return {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_findings_invalid",
+        }
+
+    critical_codes = [
+        str(finding.get("code", "unknown"))
+        for finding in findings
+        if isinstance(finding, Mapping) and finding.get("severity") == "critical"
+    ]
+    if critical_codes:
+        return {
+            "critical_codes": critical_codes,
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_critical_findings",
         }
     return None
 
