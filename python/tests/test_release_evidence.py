@@ -1321,6 +1321,44 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_checkpoint_ver
     ]
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "duplicate_items"),
+    [
+        ("checkpoint_versions", [1, 2, 2], [2]),
+        ("task_ids", ["gruz_mother", "gruz_mother"], ["gruz_mother"]),
+        ("worker_ids", ["worker-0", "worker-0"], ["worker-0"]),
+    ],
+)
+def test_release_evidence_verifier_rejects_duplicate_phase8_smoke_lists(
+    tmp_path: Path,
+    field: str,
+    value: list[object],
+    duplicate_items: list[object],
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    summary[field] = value
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "duplicate_items": duplicate_items,
+            "field": field,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_list_duplicates",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_checkpoint_versions(
     tmp_path: Path,
 ) -> None:

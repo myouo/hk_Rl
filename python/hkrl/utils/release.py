@@ -1361,6 +1361,18 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_checkpoint_versions_malformed",
             }
+        duplicate_items = _phase8_smoke_list_duplicates(
+            value,
+            normalize_counts=field == "checkpoint_versions",
+        )
+        if duplicate_items:
+            return {
+                "duplicate_items": duplicate_items,
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/summary.json",
+                "reason": "phase8_smoke_summary_list_duplicates",
+            }
     task_ids = payload.get("task_ids")
     worker_ids = payload.get("worker_ids")
     assert isinstance(task_ids, Sequence)
@@ -1471,6 +1483,21 @@ def _verify_phase8_smoke_summary_structure(
     if metric_total_failure is not None:
         return metric_total_failure
     return None
+
+
+def _phase8_smoke_list_duplicates(
+    values: Sequence[Any],
+    *,
+    normalize_counts: bool,
+) -> list[Any]:
+    seen: set[Any] = set()
+    duplicates: set[Any] = set()
+    for item in values:
+        key = int(float(item)) if normalize_counts else str(item)
+        if key in seen:
+            duplicates.add(key)
+        seen.add(key)
+    return sorted(duplicates)
 
 
 def _verify_phase8_smoke_metric_totals(

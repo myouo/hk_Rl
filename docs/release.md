@@ -38,7 +38,8 @@ summaries that do not report `ok=true` with non-negative coordinator
 `worker_count`, `active_worker_count`, and `sps` metrics, learner
 `policy_version`, coordinator assignments, a dry-run worker section with
 `worker_id`, task and worker-id sections, and non-negative integer checkpoint
-versions. The smoke `config` and internal artifact pointers must identify the
+versions. Top-level task IDs, worker IDs, and checkpoint versions must be
+unique. The smoke `config` and internal artifact pointers must identify the
 Phase 8 smoke work directory, checkpoint registry, eval metrics, and heartbeat
 JSONL, and learner/worker/coordinator path fields must reference those same
 artifacts. Learner, worker, and coordinator task IDs must match the top-level
