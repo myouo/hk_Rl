@@ -34,8 +34,8 @@ values. It also requires every offline Phase 8 artifact below to be listed in
 the manifest. Live eval artifacts are included only when the full live eval
 group exists locally; if any live eval artifact is listed, all three live eval
 artifacts must be listed. When the eval report JSON is listed, verification
-also fails on critical eval findings so hash-valid but failed fixed-seed reports
-cannot pass as release evidence:
+also requires a well-formed `findings` list and fails on critical eval findings
+so hash-valid but failed fixed-seed reports cannot pass as release evidence:
 
 ```text
 runs/phase8-smoke/summary.json

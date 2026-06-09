@@ -643,13 +643,32 @@ def _verify_eval_report_artifact(
             "reason": "eval_report_not_object",
         }
 
-    findings = payload.get("findings", [])
+    if "findings" not in payload:
+        return {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_findings_missing",
+        }
+    findings = payload.get("findings")
     if not isinstance(findings, Sequence) or isinstance(findings, (str, bytes)):
         return {
             "field": "findings",
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_findings_invalid",
+        }
+
+    malformed_indexes = [
+        index for index, finding in enumerate(findings) if not _valid_eval_report_finding(finding)
+    ]
+    if malformed_indexes:
+        return {
+            "field": "findings",
+            "indexes": malformed_indexes,
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_findings_malformed",
         }
 
     critical_codes = [
@@ -666,6 +685,16 @@ def _verify_eval_report_artifact(
             "reason": "eval_report_critical_findings",
         }
     return None
+
+
+def _valid_eval_report_finding(finding: Any) -> bool:
+    return (
+        isinstance(finding, Mapping)
+        and isinstance(finding.get("code"), str)
+        and bool(finding.get("code"))
+        and isinstance(finding.get("severity"), str)
+        and bool(finding.get("severity"))
+    )
 
 
 def _manifest_artifact_paths(results: Sequence[Mapping[str, Any]]) -> set[str]:

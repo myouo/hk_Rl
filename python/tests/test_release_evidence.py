@@ -178,7 +178,17 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
 
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
-    _write_eval_artifacts(tmp_path, {"findings": []})
+    _write_eval_artifacts(
+        tmp_path,
+        {
+            "findings": [
+                {
+                    "code": "low_win_rate",
+                    "severity": "warning",
+                }
+            ],
+        },
+    )
     manifest = build_release_evidence_manifest(
         root=tmp_path,
         git_sha=FULL_GIT_SHA,
@@ -189,6 +199,62 @@ def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> 
     assert result["ok"] is True
     assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
     assert result["failures"] == []
+
+
+def test_release_evidence_verifier_rejects_eval_report_without_findings(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(tmp_path, {"source": "run_eval"})
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "findings",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_findings_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_eval_report_findings(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        {
+            "findings": [
+                {"code": "low_win_rate", "severity": "warning"},
+                {"code": "missing severity"},
+                "not an object",
+            ],
+        },
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "findings",
+            "indexes": [1, 2],
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_findings_malformed",
+        }
+    ]
 
 
 def test_release_evidence_verifier_reports_non_object_artifact_entries(
