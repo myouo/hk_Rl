@@ -61,3 +61,10 @@ length, SPS, reset status. The default CSV sink uses stable
 `type,step,key,value,record` columns; episode payloads are stored as compact JSON
 in `record`, while custom `fieldnames` can produce a fixed wide export. The
 stdout sink emits the same scalar/episode payloads as JSON lines.
+
+For Phase 8 fleet monitoring, `scripts/render_phase8_dashboard.py` renders a
+static HTML/JSON dashboard from `run_coordinator.py` or `run_phase8_smoke.py`
+summary JSON. The dashboard summarizes fleet SPS, crash/recovery counts,
+policy/checkpoint lag, worker table state, sampler weights, and evaluator
+win-rate inputs; `make phase8-dashboard` writes the default offline smoke
+dashboard to `runs/phase8-smoke/`.

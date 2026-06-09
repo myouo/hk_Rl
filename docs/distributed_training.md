@@ -196,6 +196,11 @@ canonical per-boss evaluator key.
 `make phase8-smoke` runs the same offline distributed wiring check with the
 default Phase 8 config/tasks; the Python test suite covers the script so CI can
 catch broken worker/learner/coordinator config contracts without a live game.
+`scripts/render_phase8_dashboard.py --summary SUMMARY --output-html DASHBOARD`
+turns either a coordinator summary or a Phase 8 smoke summary into a static
+monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
+`runs/phase8-smoke/dashboard.html` plus the normalized dashboard model JSON for
+CI artifacts or local inspection.
 
 ## 9. PyTorch + CUDA note
 

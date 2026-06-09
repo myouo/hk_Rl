@@ -124,11 +124,17 @@ python scripts/train.py \
 
 # 6. 分布式入口 dry-run（不连接真实游戏，用于验证配置/任务/worker 编排）
 make phase8-smoke
+make phase8-dashboard   # writes runs/phase8-smoke/dashboard.html + dashboard.json
 
 # 等价的显式入口会串联 learner/worker/coordinator 的离线 wiring 检查
 python scripts/run_phase8_smoke.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml
+
+python scripts/render_phase8_dashboard.py \
+  --summary runs/phase8-smoke/summary.json \
+  --output-html runs/phase8-smoke/dashboard.html \
+  --output-json runs/phase8-smoke/dashboard.json
 
 python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \
