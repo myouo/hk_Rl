@@ -27,10 +27,10 @@ The generated files under `runs/` are ignored by git and should be attached to a
 release note or CI artifact store when useful. `evidence.json` records the
 release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.json`
 records the result of re-hashing those files and checking the manifest aggregate
-counts. The verifier also rejects absolute artifact paths, unsupported
-`manifest_version` values, and duplicate artifact paths. Offline artifacts are
-always included in the hash manifest; live eval artifacts are included when they
-exist locally:
+counts. The verifier also rejects absolute, non-normalized, or duplicate
+artifact paths, plus unsupported `manifest_version` values. Offline artifacts
+are always included in the hash manifest; live eval artifacts are included when
+they exist locally:
 
 ```text
 runs/phase8-smoke/summary.json

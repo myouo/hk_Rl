@@ -382,6 +382,14 @@ def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
             "path": raw_path,
             "reason": "artifact_path_escapes_root",
         }
+    if raw_path != relative_path:
+        return {
+            "actual_path": relative_path,
+            "expected_path": raw_path,
+            "ok": False,
+            "path": raw_path,
+            "reason": "artifact_path_not_normalized",
+        }
 
     expected_bytes = item.get("bytes")
     if isinstance(expected_bytes, bool) or not isinstance(expected_bytes, int):

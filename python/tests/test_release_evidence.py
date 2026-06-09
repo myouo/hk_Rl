@@ -166,6 +166,30 @@ def test_release_evidence_verifier_reports_absolute_manifest_path(
     }
 
 
+def test_release_evidence_verifier_reports_non_normalized_manifest_path(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    manifest["artifacts"][0]["path"] = "./runs/phase8-smoke/summary.json"
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 0
+    assert result["failures"][0] == {
+        "actual_path": "runs/phase8-smoke/summary.json",
+        "expected_path": "./runs/phase8-smoke/summary.json",
+        "ok": False,
+        "path": "./runs/phase8-smoke/summary.json",
+        "reason": "artifact_path_not_normalized",
+    }
+
+
 def test_release_evidence_verifier_reports_sha_mismatch(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
     _write(artifact, "good\n")
