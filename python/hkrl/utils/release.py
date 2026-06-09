@@ -285,8 +285,8 @@ def verify_release_evidence_manifest(
         )
         artifacts = []
 
-    for artifact in artifacts:
-        result = _verify_artifact(root_path, artifact)
+    for index, artifact in enumerate(artifacts):
+        result = _verify_artifact(root_path, artifact, index=index)
         results.append(result)
         if not result["ok"]:
             failures.append(result)
@@ -371,8 +371,15 @@ def _resolve_artifact_path(root: Path, artifact: str | Path) -> tuple[Path, str]
     return resolved, relative_path.as_posix()
 
 
-def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
-    item = artifact if isinstance(artifact, Mapping) else {}
+def _verify_artifact(root: Path, artifact: Any, *, index: int) -> dict[str, Any]:
+    if not isinstance(artifact, Mapping):
+        return {
+            "index": index,
+            "ok": False,
+            "path": "<missing>",
+            "reason": "artifact_entry_invalid",
+        }
+    item = artifact
     raw_path = item.get("path")
     if not isinstance(raw_path, str) or not raw_path:
         return {

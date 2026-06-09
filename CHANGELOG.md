@@ -400,6 +400,8 @@ the project version tracks the **schema_version** + roadmap phase.
   release `version` values in manifests.
 - Phase 8 release evidence verification now rejects partial live eval artifact
   groups so `eval.json`, `eval-report.md`, and `eval-report.json` travel together.
+- Phase 8 release evidence verification now rejects non-object artifact entries
+  in manifests.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

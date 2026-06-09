@@ -160,6 +160,32 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     assert result["failures"] == []
 
 
+def test_release_evidence_verifier_reports_non_object_artifact_entries(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    manifest["artifacts"].append("runs/phase8-smoke/summary.json")
+    manifest["artifact_count"] = len(PHASE8_RELEASE_ARTIFACTS) + 1
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 1
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "index": len(PHASE8_RELEASE_ARTIFACTS),
+            "ok": False,
+            "path": "<missing>",
+            "reason": "artifact_entry_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_absolute_manifest_path(
     tmp_path: Path,
 ) -> None:
