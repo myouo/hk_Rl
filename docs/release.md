@@ -29,16 +29,16 @@ release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.js
 records the result of re-hashing those files and checking the manifest aggregate
 counts. The verifier also rejects absolute, non-normalized, or duplicate
 artifact paths, non-object artifact entries, missing or malformed full-length
-`git_sha` values, plus unsupported release `version` or `manifest_version`
-values. It also requires every offline Phase 8 artifact below to be listed in
-the manifest. Live eval artifacts are included only when the full live eval
-group exists locally; if any live eval artifact is listed, all three live eval
-artifacts must be listed. When the eval report JSON is listed, verification
-also requires a `run_eval` report with well-formed `summary`, `tasks`, and
-`findings` sections, task rows with `task_id`/`metrics_valid`, matching
-valid/malformed task counts, unique task IDs, at least one valid task row, and
-no critical eval findings so hash-valid but failed fixed-seed reports cannot
-pass as release evidence:
+`git_sha` values, mismatched release commit SHAs when `--git-sha` is provided,
+plus unsupported release `version` or `manifest_version` values. It also
+requires every offline Phase 8 artifact below to be listed in the manifest. Live
+eval artifacts are included only when the full live eval group exists locally;
+if any live eval artifact is listed, all three live eval artifacts must be
+listed. When the eval report JSON is listed, verification also requires a
+`run_eval` report with well-formed `summary`, `tasks`, and `findings` sections,
+task rows with `task_id`/`metrics_valid`, matching valid/malformed task counts,
+unique task IDs, at least one valid task row, and no critical eval findings so
+hash-valid but failed fixed-seed reports cannot pass as release evidence:
 
 ```text
 runs/phase8-smoke/summary.json
@@ -145,6 +145,7 @@ Verify the manifest before attaching artifacts:
 ```bash
 python scripts/verify_release_evidence.py \
   --manifest runs/release/evidence.json \
+  --git-sha "$(git rev-parse HEAD)" \
   --output-json runs/release/evidence-verification.json
 ```
 

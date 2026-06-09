@@ -90,10 +90,10 @@ phase8-release-evidence: ## Render Phase 8 release evidence bundle manifest
 	  --profile-md runs/phase8-smoke/profile.md
 	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
 	$(PY) scripts/render_release_evidence.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/evidence.json --output-md runs/release/evidence.md
-	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --output-json runs/release/evidence-verification.json
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --output-json runs/release/evidence-verification.json
 
 phase8-verify-release-evidence: ## Verify Phase 8 release evidence hashes
-	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --output-json runs/release/evidence-verification.json
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --output-json runs/release/evidence-verification.json
 
 clean: ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

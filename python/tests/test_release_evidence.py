@@ -19,6 +19,7 @@ from hkrl.utils.release import (
 )
 
 FULL_GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
+OTHER_FULL_GIT_SHA = "fedcba9876543210fedcba9876543210fedcba98"
 
 
 def test_release_evidence_manifest_hashes_artifacts(tmp_path: Path) -> None:
@@ -768,6 +769,63 @@ def test_release_evidence_verifier_reports_invalid_git_sha(tmp_path: Path) -> No
     ]
 
 
+def test_release_evidence_verifier_reports_expected_git_sha_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(
+        root=tmp_path,
+        manifest=manifest,
+        expected_git_sha=OTHER_FULL_GIT_SHA,
+    )
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_sha": FULL_GIT_SHA,
+            "expected_git_sha": OTHER_FULL_GIT_SHA,
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_invalid_expected_git_sha(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(
+        root=tmp_path,
+        manifest=manifest,
+        expected_git_sha="deadbeef",
+    )
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_sha": "deadbeef",
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "expected_git_sha_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_missing_required_artifacts(
     tmp_path: Path,
 ) -> None:
@@ -961,6 +1019,45 @@ def test_verify_release_evidence_script_writes_failure_report(tmp_path: Path) ->
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["ok"] is False
     assert report["failures"][0]["reason"] == "artifact_sha256_mismatch"
+
+
+def test_verify_release_evidence_script_checks_expected_git_sha(tmp_path: Path) -> None:
+    module = _load_script("verify_release_evidence.py")
+    _write_required_release_artifacts(tmp_path)
+    manifest_path = tmp_path / "runs" / "release" / "evidence.json"
+    report_path = tmp_path / "runs" / "release" / "verification.json"
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    _write(manifest_path, release_evidence_to_json(manifest))
+
+    exit_code = module.main(
+        [
+            "--manifest",
+            str(manifest_path),
+            "--root",
+            str(tmp_path),
+            "--git-sha",
+            OTHER_FULL_GIT_SHA,
+            "--output-json",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is False
+    assert report["failures"] == [
+        {
+            "actual_git_sha": FULL_GIT_SHA,
+            "expected_git_sha": OTHER_FULL_GIT_SHA,
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_mismatch",
+        }
+    ]
 
 
 def _write(path: Path, text: str) -> None:

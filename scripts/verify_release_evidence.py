@@ -18,6 +18,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Verify HKRL release evidence manifest")
     p.add_argument("--manifest", required=True, help="release evidence JSON manifest")
     p.add_argument("--root", default=".")
+    p.add_argument("--git-sha", help="expected full git SHA for this release")
     p.add_argument("--output-json", help="optional verification report path")
     return p
 
@@ -34,6 +35,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     result = verify_release_evidence_manifest(
         root=getattr(args, "root", "."),
         manifest=manifest,
+        expected_git_sha=getattr(args, "git_sha", None),
     )
     if getattr(args, "output_json", None):
         _write_text(Path(args.output_json), release_evidence_verification_to_json(result))

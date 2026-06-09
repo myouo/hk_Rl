@@ -296,6 +296,7 @@ def verify_release_evidence_manifest(
     *,
     root: str | Path = ".",
     manifest: Mapping[str, Any],
+    expected_git_sha: str | None = None,
 ) -> dict[str, Any]:
     """Verify release evidence artifact hashes against a manifest."""
     root_path = Path(root).expanduser().resolve()
@@ -329,6 +330,13 @@ def verify_release_evidence_manifest(
     git_sha_failure = _verify_manifest_git_sha(manifest)
     if git_sha_failure is not None:
         failures.append(git_sha_failure)
+
+    expected_git_sha_failure = _verify_manifest_expected_git_sha(
+        manifest,
+        expected_git_sha=expected_git_sha,
+    )
+    if expected_git_sha_failure is not None:
+        failures.append(expected_git_sha_failure)
 
     duplicate_paths_failure = _verify_manifest_unique_artifact_paths(results)
     if duplicate_paths_failure is not None:
@@ -550,6 +558,37 @@ def _verify_manifest_git_sha(manifest: Mapping[str, Any]) -> dict[str, Any] | No
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_git_sha_invalid",
+        }
+    return None
+
+
+def _verify_manifest_expected_git_sha(
+    manifest: Mapping[str, Any],
+    *,
+    expected_git_sha: str | None,
+) -> dict[str, Any] | None:
+    if expected_git_sha is None:
+        return None
+    if not _is_git_sha(expected_git_sha):
+        return {
+            "actual_git_sha": expected_git_sha,
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "expected_git_sha_invalid",
+        }
+
+    git_sha = manifest.get("git_sha")
+    if not _is_git_sha(git_sha):
+        return None
+    if git_sha != expected_git_sha:
+        return {
+            "actual_git_sha": git_sha,
+            "expected_git_sha": expected_git_sha,
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_mismatch",
         }
     return None
 
