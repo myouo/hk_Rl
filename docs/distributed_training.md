@@ -86,6 +86,9 @@ weights, and prints a JSON monitoring snapshot.
 smoke path. It builds the learner from task YAMLs, publishes a local checkpoint
 registry, runs a worker dry-run against that registry, writes synthetic
 heartbeats/evaluator metrics, and feeds them through the coordinator snapshot.
+When `--work-dir` is provided, the script resets its generated checkpoints,
+batches, heartbeat JSONL, and evaluator metrics before writing new artifacts so
+repeated dashboard/profile runs do not reuse stale registry state.
 It does not connect to a live game, start learner intake sockets, or exercise mod
 runtime behavior.
 
@@ -201,12 +204,13 @@ turns either a coordinator summary or a Phase 8 smoke summary into a static
 monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 `runs/phase8-smoke/dashboard.html` plus the normalized dashboard model JSON for
 CI artifacts or local inspection. Dashboard health is marked degraded when
-workers are lost/recovering, crash churn is visible, workers lag or omit policy
-or checkpoint versions, or active workers report zero fleet SPS.
+workers are lost/recovering, crash churn is visible, active workers are
+unassigned, workers lag or omit policy or checkpoint versions, or active workers
+report zero fleet SPS.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
-zero SPS, recovering/crashing workers, stale or missing policies/checkpoints, and
-missing rollout timing. `make phase8-profile` writes
+zero SPS, recovering/crashing workers, unassigned workers, stale or missing
+policies/checkpoints, and missing rollout timing. `make phase8-profile` writes
 `runs/phase8-smoke/profile.md` and `profile.json`; it is a stable report format
 for CI/local comparisons, not a replacement for Unity profiler captures on the
 game machine.

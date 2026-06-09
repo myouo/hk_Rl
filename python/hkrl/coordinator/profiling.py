@@ -22,9 +22,11 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         worker["rollout_steps"] for worker in workers if worker["rollout_steps"] is not None
     ]
     active_workers = _float(metrics.get("active_worker_count", 0.0))
+    assigned_workers = _float(metrics.get("assigned_worker_count", 0.0))
     sps = _float(metrics.get("sps", 0.0))
     report_metrics = {
         "active_worker_count": active_workers,
+        "assigned_worker_count": assigned_workers,
         "lost_worker_count": _float(metrics.get("lost_worker_count", 0.0)),
         "recovering_worker_count": _float(metrics.get("recovering_worker_count", 0.0)),
         "rollout_duration_s_max": max(rollout_durations, default=0.0),
@@ -34,6 +36,7 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         "sps_per_active_worker": sps / active_workers if active_workers > 0.0 else 0.0,
         "stale_checkpoint_worker_count": _float(metrics.get("stale_checkpoint_worker_count", 0.0)),
         "stale_policy_worker_count": _float(metrics.get("stale_policy_worker_count", 0.0)),
+        "unassigned_worker_count": max(0.0, active_workers - assigned_workers),
         "worker_checkpoint_lag_max": _float(metrics.get("worker_checkpoint_lag_max", 0.0)),
         "worker_count": _float(metrics.get("worker_count", 0.0)),
         "worker_crash_count": _float(metrics.get("worker_crash_count", 0.0)),
@@ -163,6 +166,15 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "zero_sps",
                 "Active workers report zero fleet SPS.",
                 "Profile reset readiness, env.step timeouts, and transport reconnect loops first.",
+            )
+        )
+    if metrics["unassigned_worker_count"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "unassigned_workers",
+                "Some active workers do not have assigned tasks.",
+                "Inspect coordinator registration, task sampler state, and worker assignment loop.",
             )
         )
     if metrics["recovering_worker_count"] > 0.0:

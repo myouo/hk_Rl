@@ -15,6 +15,7 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
     report = build_profile_report(_summary(include_timing=True))
 
     assert report["source"] == "phase8_smoke"
+    assert report["metrics"]["assigned_worker_count"] == 2.0
     assert report["metrics"]["sps"] == 32.0
     assert report["metrics"]["rollout_duration_s_mean"] == 2.0
     assert report["metrics"]["rollout_duration_s_max"] == 4.0
@@ -29,6 +30,18 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
     ]
     assert report["workers"][0]["worker_id"] == "worker-0"
     assert report["workers"][0]["rollout_duration_s"] == 4.0
+
+
+def test_profile_report_flags_unassigned_workers() -> None:
+    summary = _summary(include_timing=True)
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["assigned_worker_count"] = 1.0
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["unassigned_worker_count"] == 1.0
+    assert "unassigned_workers" in {finding["code"] for finding in report["findings"]}
 
 
 def test_profile_report_flags_missing_worker_timing() -> None:
@@ -104,6 +117,7 @@ def _summary(*, include_timing: bool) -> dict[str, object]:
         "coordinator": {
             "metrics": {
                 "active_worker_count": 2.0,
+                "assigned_worker_count": 2.0,
                 "lost_worker_count": 0.0,
                 "recovering_worker_count": 1.0,
                 "sps": 32.0,

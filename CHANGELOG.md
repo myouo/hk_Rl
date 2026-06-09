@@ -338,12 +338,17 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_phase8_smoke.py` and `make phase8-smoke` now run an offline
   distributed wiring smoke that validates learner, worker registry probing, and
   coordinator monitoring without a live game.
+- `scripts/run_phase8_smoke.py --work-dir` now resets generated checkpoints,
+  batches, heartbeats, and eval metrics before each run so repeated Phase 8
+  artifact targets do not reuse stale registry state.
 - `scripts/render_phase8_dashboard.py` and `make phase8-dashboard` now render a
   static Phase 8 fleet dashboard from coordinator or offline-smoke summary JSON.
 - Phase 8 dashboard health now marks worker crash churn as degraded even when no
   worker is currently in recovery.
 - Phase 8 dashboard health now surfaces workers that have not reported policy or
   checkpoint versions.
+- Phase 8 dashboard/profile reports now surface active workers that have not
+  been assigned tasks.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

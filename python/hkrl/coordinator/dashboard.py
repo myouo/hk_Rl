@@ -11,6 +11,8 @@ KEY_METRICS: tuple[str, ...] = (
     "worker_count",
     "active_worker_count",
     "lost_worker_count",
+    "assigned_worker_count",
+    "unassigned_worker_count",
     "recovering_worker_count",
     "sps",
     "sps_mean",
@@ -34,11 +36,12 @@ def build_dashboard_model(
     metrics = _metrics_payload(coordinator)
     workers = _worker_rows(coordinator.get("workers", {}), metrics)
     tasks = _task_rows(coordinator, eval_metrics=eval_metrics)
-    health = _health(metrics)
+    dashboard_metrics = _dashboard_metrics(metrics)
+    health = _health(dashboard_metrics)
 
     return {
         "health": health,
-        "metrics": {key: _float(metrics.get(key, 0.0)) for key in KEY_METRICS},
+        "metrics": dashboard_metrics,
         "sampler_mastered_tasks": sorted(
             str(task_id) for task_id in coordinator.get("sampler_mastered_tasks", [])
         ),
@@ -105,6 +108,15 @@ def _metrics_payload(coordinator: Mapping[str, Any]) -> Mapping[str, Any]:
     if not isinstance(metrics, Mapping):
         raise ValueError("dashboard input must contain a coordinator metrics object")
     return metrics
+
+
+def _dashboard_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
+    rows = {key: _float(metrics.get(key, 0.0)) for key in KEY_METRICS}
+    rows["unassigned_worker_count"] = max(
+        0.0,
+        rows["active_worker_count"] - rows["assigned_worker_count"],
+    )
+    return rows
 
 
 def _worker_rows(raw_workers: Any, metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -185,6 +197,8 @@ def _health(metrics: Mapping[str, Any]) -> dict[str, Any]:
     reasons: list[str] = []
     if _float(metrics.get("lost_worker_count", 0.0)) > 0.0:
         reasons.append("lost workers")
+    if _float(metrics.get("unassigned_worker_count", 0.0)) > 0.0:
+        reasons.append("unassigned workers")
     if _float(metrics.get("recovering_worker_count", 0.0)) > 0.0:
         reasons.append("workers recovering")
     if _float(metrics.get("worker_crash_count", 0.0)) > 0.0:

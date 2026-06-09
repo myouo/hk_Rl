@@ -47,6 +47,29 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     assert json.loads(output.read_text(encoding="utf-8"))["ok"] is True
 
 
+def test_run_phase8_smoke_resets_generated_work_dir(tmp_path: Path) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    root = Path(__file__).parents[2]
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        tasks=[
+            str(root / "configs/tasks/gruz_mother.yaml"),
+            str(root / "configs/tasks/hornet_protector.yaml"),
+        ],
+        work_dir=str(tmp_path / "smoke"),
+        num_workers=2,
+        seed=123,
+        output=None,
+    )
+
+    first = module.run_from_args(args)
+    second = module.run_from_args(args)
+
+    assert first["checkpoint_versions"] == [1, 2]
+    assert second["checkpoint_versions"] == [1, 2]
+    assert second["worker"]["latest_checkpoint"] == 2
+
+
 def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:
     module = _load_script("run_phase8_smoke.py")
     args = argparse.Namespace(

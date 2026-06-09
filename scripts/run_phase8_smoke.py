@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from types import ModuleType
@@ -63,6 +64,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("at least one task is required")
 
     work_dir = _work_dir(getattr(args, "work_dir", None))
+    _reset_generated_artifacts(work_dir)
     checkpoint_dir = work_dir / "checkpoints"
     heartbeat_jsonl = work_dir / "worker-heartbeats.jsonl"
     eval_metrics_json = work_dir / "eval-metrics.json"
@@ -217,6 +219,17 @@ def _work_dir(path: str | None) -> Path:
     target = Path(path).expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
     return target
+
+
+def _reset_generated_artifacts(work_dir: Path) -> None:
+    for dirname in ("batches", "checkpoints"):
+        path = work_dir / dirname
+        if path.exists():
+            shutil.rmtree(path)
+    for filename in ("eval-metrics.json", "worker-heartbeats.jsonl"):
+        path = work_dir / filename
+        if path.exists():
+            path.unlink()
 
 
 def _load_script_module(name: str) -> ModuleType:

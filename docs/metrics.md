@@ -73,11 +73,11 @@ policy/checkpoint lag, worker table state, sampler weights, and evaluator
 win-rate inputs; `make phase8-dashboard` writes the default offline smoke
 dashboard to `runs/phase8-smoke/`.
 Dashboard health is degraded for lost workers, recovering workers, crash churn,
-stale/missing policy or checkpoint versions, or active workers reporting zero
-fleet SPS.
+unassigned active workers, stale/missing policy or checkpoint versions, or active
+workers reporting zero fleet SPS.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
-crash/recovery counts, and stale/missing policy or checkpoint versions into
-bottleneck findings.
+crash/recovery counts, unassigned workers, and stale/missing policy or checkpoint
+versions into bottleneck findings.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

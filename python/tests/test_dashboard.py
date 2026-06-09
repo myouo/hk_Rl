@@ -19,6 +19,8 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
         "status": "degraded",
         "reasons": ["workers recovering", "worker crashes", "stale policy workers"],
     }
+    assert model["metrics"]["assigned_worker_count"] == 2.0
+    assert model["metrics"]["unassigned_worker_count"] == 0.0
     assert model["metrics"]["sps"] == 12.5
     assert model["metrics"]["worker_policy_lag_max"] == 2.0
     assert model["metrics"]["worker_without_policy_version_count"] == 0.0
@@ -102,6 +104,35 @@ def test_dashboard_health_flags_worker_crashes_without_active_recovery() -> None
     }
 
 
+def test_dashboard_health_flags_unassigned_workers() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "assigned_worker_count": 1.0,
+            "recovering_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_crash_count": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["assigned_task"] = None
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["metrics"]["unassigned_worker_count"] == 1.0
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["unassigned workers"],
+    }
+
+
 def test_dashboard_health_flags_workers_missing_versions() -> None:
     summary = _phase8_summary()
     metrics = summary["coordinator"]["metrics"]
@@ -163,6 +194,7 @@ def _phase8_summary() -> dict[str, object]:
             "eval_winrates": {"gruz": 0.9, "hornet": 0.2},
             "metrics": {
                 "active_worker_count": 2.0,
+                "assigned_worker_count": 2.0,
                 "lost_worker_count": 0.0,
                 "recovering_worker_count": 1.0,
                 "sps": 12.5,
