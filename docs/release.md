@@ -28,16 +28,17 @@ release note or CI artifact store when useful. `evidence.json` records the
 release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.json`
 records the result of re-hashing those files and checking the manifest aggregate
 counts. When `runs/release/evidence.md` exists, the verifier also checks that
-its release title, manifest metadata, and artifact rows match `evidence.json`.
-The verifier also rejects absolute, non-normalized, or duplicate artifact paths,
-non-object artifact entries, missing or malformed full-length `git_sha` values,
-mismatched release commit SHAs when `--git-sha` is provided, unsupported release
-`version` or `manifest_version` values, and Phase 8 smoke summaries that do not
-report `ok=true` with coordinator metrics plus learner, worker, task,
-checkpoint, worker-id, and worker-row sections. Dashboard JSON must include
-health, learner, metrics, task, and worker sections with well-formed task and
-worker rows, while dashboard HTML must have the HKRL dashboard title,
-learner/worker/task sections, and the JSON task/worker rows.
+its release title, manifest metadata, and artifact table exactly match
+`evidence.json` without missing, reordered, or extra artifact rows. The verifier
+also rejects absolute, non-normalized, or duplicate artifact paths, non-object
+artifact entries, missing or malformed full-length `git_sha` values, mismatched
+release commit SHAs when `--git-sha` is provided, unsupported release `version`
+or `manifest_version` values, and Phase 8 smoke summaries that do not report
+`ok=true` with coordinator metrics plus learner, worker, task, checkpoint,
+worker-id, and worker-row sections. Dashboard JSON must include health, learner,
+metrics, task, and worker sections with well-formed task and worker rows, while
+dashboard HTML must have the HKRL dashboard title, learner/worker/task sections,
+and the JSON task/worker rows.
 Profile JSON must come from the Phase 8 smoke source and include metrics,
 findings, and workers with well-formed finding and worker rows, while profile
 Markdown must have the HKRL profile title, worker table, and the JSON worker

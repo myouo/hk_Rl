@@ -731,13 +731,13 @@ def _verify_release_evidence_markdown(
             "reason": "release_evidence_markdown_title_missing",
         }
 
-    missing_metadata = [
-        line for line in _release_evidence_markdown_metadata(manifest) if line not in text
-    ]
-    if missing_metadata:
+    expected_metadata = _release_evidence_markdown_metadata(manifest)
+    actual_metadata = _release_evidence_markdown_metadata_lines(text)
+    if actual_metadata != expected_metadata:
         return {
+            "actual_metadata": list(actual_metadata),
             "field": "metadata",
-            "missing_metadata": missing_metadata,
+            "expected_metadata": list(expected_metadata),
             "ok": False,
             "path": "runs/release/evidence.md",
             "reason": "release_evidence_markdown_metadata_mismatch",
@@ -751,10 +751,13 @@ def _verify_release_evidence_markdown(
             "reason": "release_evidence_markdown_artifacts_missing",
         }
 
+    expected_artifacts = _release_evidence_markdown_artifacts(manifest)
+    expected_rows = [_release_evidence_markdown_artifact_row(item) for item in expected_artifacts]
+    actual_rows = _release_evidence_markdown_artifact_rows(text)
     missing_paths = [
         str(item.get("path", ""))
-        for item in _release_evidence_markdown_artifacts(manifest)
-        if _release_evidence_markdown_artifact_row(item) not in text
+        for item, row in zip(expected_artifacts, expected_rows, strict=True)
+        if row not in actual_rows
     ]
     if missing_paths:
         return {
@@ -765,7 +768,35 @@ def _verify_release_evidence_markdown(
             "reason": "release_evidence_markdown_artifact_rows_missing",
         }
 
+    unexpected_rows = [row for row in actual_rows if row not in expected_rows]
+    if unexpected_rows:
+        return {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifact_rows_unexpected",
+            "unexpected_rows": unexpected_rows,
+        }
+
+    if actual_rows != expected_rows:
+        return {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifact_rows_order_mismatch",
+        }
+
     return None
+
+
+def _release_evidence_markdown_metadata_lines(text: str) -> tuple[str, ...]:
+    prefixes = (
+        "- Version: `",
+        "- Git SHA: `",
+        "- Artifact count: `",
+        "- Total bytes: `",
+    )
+    return tuple(line for line in text.splitlines() if line.startswith(prefixes))
 
 
 def _release_evidence_markdown_metadata(manifest: Mapping[str, Any]) -> tuple[str, ...]:
@@ -785,6 +816,18 @@ def _release_evidence_markdown_artifacts(
         return []
     return [
         _artifact_markdown_item(artifact, index=index) for index, artifact in enumerate(artifacts)
+    ]
+
+
+def _release_evidence_markdown_artifact_rows(text: str) -> list[str]:
+    ignored_rows = {
+        "| Path | Bytes | SHA256 |",
+        "| --- | ---: | --- |",
+    }
+    return [
+        line
+        for line in text.splitlines()
+        if line.startswith("| ") and line.endswith(" |") and line not in ignored_rows
     ]
 
 

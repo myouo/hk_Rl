@@ -418,6 +418,8 @@ the project version tracks the **schema_version** + roadmap phase.
   Markdown, missing Phase 8 gate IDs, or checklist Markdown commit drift.
 - Phase 8 release evidence verification now rejects stale release evidence
   Markdown whose manifest metadata or artifact rows drift from `evidence.json`.
+- Phase 8 release evidence verification now rejects release evidence Markdown
+  with extra or reordered artifact rows.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static

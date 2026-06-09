@@ -245,8 +245,19 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_metadata_dr
     assert result["ok"] is False
     assert result["failures"] == [
         {
+            "actual_metadata": [
+                "- Version: `phase8`",
+                f"- Git SHA: `{OTHER_FULL_GIT_SHA}`",
+                f"- Artifact count: `{manifest['artifact_count']}`",
+                f"- Total bytes: `{manifest['total_bytes']}`",
+            ],
+            "expected_metadata": [
+                "- Version: `phase8`",
+                f"- Git SHA: `{FULL_GIT_SHA}`",
+                f"- Artifact count: `{manifest['artifact_count']}`",
+                f"- Total bytes: `{manifest['total_bytes']}`",
+            ],
             "field": "metadata",
-            "missing_metadata": [f"- Git SHA: `{FULL_GIT_SHA}`"],
             "ok": False,
             "path": "runs/release/evidence.md",
             "reason": "release_evidence_markdown_metadata_mismatch",
@@ -279,6 +290,70 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_missing_art
             "ok": False,
             "path": "runs/release/evidence.md",
             "reason": "release_evidence_markdown_artifact_rows_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_evidence_markdown_extra_artifact_row(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    unexpected_row = (
+        "| runs/old-artifact.json | 10 | "
+        "`0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef` |"
+    )
+    _write(
+        tmp_path / "runs" / "release" / "evidence.md",
+        render_release_evidence_markdown(manifest) + unexpected_row + "\n",
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifact_rows_unexpected",
+            "unexpected_rows": [unexpected_row],
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_evidence_markdown_reordered_rows(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    rows = [
+        f"| {artifact['path']} | {artifact['bytes']} | `{artifact['sha256']}` |"
+        for artifact in manifest["artifacts"]
+    ]
+    _write(
+        tmp_path / "runs" / "release" / "evidence.md",
+        render_release_evidence_markdown(manifest).replace(
+            rows[0] + "\n" + rows[1],
+            rows[1] + "\n" + rows[0],
+        ),
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "artifacts",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_artifact_rows_order_mismatch",
         }
     ]
 
