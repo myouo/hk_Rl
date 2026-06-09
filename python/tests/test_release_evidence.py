@@ -2273,6 +2273,36 @@ def test_release_evidence_verifier_rejects_release_checklist_markdown_missing_ga
     ]
 
 
+def test_release_evidence_verifier_rejects_release_checklist_markdown_row_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist()
+    text = render_release_markdown(checklist).replace(
+        "  - Command: `make phase8-profile`",
+        "  - Command: `make phase8-smoke`",
+    )
+    _write(tmp_path / "runs" / "release" / "checklist.md", text)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checks",
+            "missing_check_ids": ["offline_profile"],
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_required_checks_missing",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(

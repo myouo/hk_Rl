@@ -468,6 +468,8 @@ the project version tracks the **schema_version** + roadmap phase.
   JSON, missing Phase 8 gates, malformed check rows, or checklist commit drift.
 - Phase 8 release evidence verification now rejects malformed release checklist
   Markdown, missing Phase 8 gate IDs, or checklist Markdown commit drift.
+- Phase 8 release evidence verification now rejects release checklist Markdown
+  whose command/evidence rows drift from checklist JSON.
 - Phase 8 release evidence verification now rejects stale release evidence
   Markdown whose manifest metadata or artifact rows drift from `evidence.json`.
 - Phase 8 release evidence verification now rejects release evidence Markdown

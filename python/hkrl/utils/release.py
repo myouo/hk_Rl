@@ -1164,6 +1164,15 @@ def _verify_release_checklist_markdown_artifact(
     )
     if checklist_result is None or checklist_result.get("ok") is not True:
         return None
+    if (
+        _verify_release_checklist_artifact(
+            root,
+            results,
+            manifest_git_sha=manifest_git_sha,
+        )
+        is not None
+    ):
+        return None
 
     path = root / "runs/release/checklist.md"
     try:
@@ -1192,19 +1201,55 @@ def _verify_release_checklist_markdown_artifact(
             "reason": "release_checklist_markdown_git_sha_mismatch",
         }
 
-    missing_ids = sorted(
-        check.id for check in PHASE8_RELEASE_CHECKS if f"(`{check.id}`)" not in text
+    checks = _release_checklist_markdown_checks(root, results)
+    missing_check_ids = sorted(
+        str(check.get("id"))
+        for check in checks
+        if _release_checklist_markdown_check_row(check) not in text
     )
-    if missing_ids:
+    if missing_check_ids:
         return {
             "field": "checks",
-            "missing_check_ids": missing_ids,
+            "missing_check_ids": missing_check_ids,
             "ok": False,
             "path": "runs/release/checklist.md",
             "reason": "release_checklist_markdown_required_checks_missing",
         }
 
     return None
+
+
+def _release_checklist_markdown_checks(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    checklist_result = next(
+        (result for result in results if result.get("path") == "runs/release/checklist.json"),
+        None,
+    )
+    if checklist_result is None or checklist_result.get("ok") is not True:
+        return []
+    try:
+        payload = json.loads((root / "runs/release/checklist.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, Mapping):
+        return []
+    checks = payload.get("checks")
+    if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)):
+        return []
+    return [check for check in checks if isinstance(check, Mapping)]
+
+
+def _release_checklist_markdown_check_row(check: Mapping[str, Any]) -> str:
+    mark = "[ ]" if check.get("blocking", True) else "[-]"
+    return "\n".join(
+        (
+            f"- {mark} **{check.get('title', '')}** (`{check.get('id', '')}`)",
+            f"  - Command: `{check.get('command', '')}`",
+            f"  - Evidence: {check.get('evidence', '')}",
+        )
+    )
 
 
 def _verify_phase8_smoke_summary_artifact(
