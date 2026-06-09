@@ -16,6 +16,7 @@ from hkrl.utils.release import (
     build_release_evidence_manifest,
     release_evidence_to_json,
     render_release_evidence_markdown,
+    render_release_markdown,
     verify_release_evidence_manifest,
 )
 
@@ -691,6 +692,86 @@ def test_release_evidence_verifier_rejects_release_checklist_required_count_drif
             "ok": False,
             "path": "runs/release/checklist.json",
             "reason": "release_checklist_required_count_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_invalid_release_checklist_markdown(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "release" / "checklist.md", "not a checklist\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "title",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_title_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_markdown_git_sha_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist(git_sha=OTHER_FULL_GIT_SHA)
+    _write(tmp_path / "runs" / "release" / "checklist.md", render_release_markdown(checklist))
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "git_sha",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_git_sha_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_markdown_missing_gate(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist()
+    checks = checklist["checks"]
+    assert isinstance(checks, list)
+    checklist["checks"] = [
+        check for check in checks if isinstance(check, dict) and check["id"] != "offline_profile"
+    ]
+    _write(tmp_path / "runs" / "release" / "checklist.md", render_release_markdown(checklist))
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checks",
+            "missing_check_ids": ["offline_profile"],
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_required_checks_missing",
         }
     ]
 
@@ -1591,6 +1672,8 @@ def _write_required_release_artifacts(root: Path) -> None:
             _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
         elif artifact == "runs/phase8-smoke/profile.json":
             _write(root / artifact, json.dumps(_phase8_profile_report()) + "\n")
+        elif artifact == "runs/release/checklist.md":
+            _write(root / artifact, render_release_markdown(_release_checklist()))
         elif artifact == "runs/release/checklist.json":
             _write(root / artifact, json.dumps(_release_checklist()) + "\n")
         else:

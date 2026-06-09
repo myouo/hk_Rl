@@ -408,6 +408,8 @@ the project version tracks the **schema_version** + roadmap phase.
   malformed finding or worker rows.
 - Phase 8 release evidence verification now rejects malformed release checklist
   JSON, missing Phase 8 gates, malformed check rows, or checklist commit drift.
+- Phase 8 release evidence verification now rejects malformed release checklist
+  Markdown, missing Phase 8 gate IDs, or checklist Markdown commit drift.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static

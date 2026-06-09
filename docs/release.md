@@ -38,15 +38,16 @@ well-formed task and worker rows. Profile JSON must come from the Phase 8 smoke
 source and include metrics, findings, and workers with well-formed finding and
 worker rows. Checklist JSON must be a Phase 8 checklist with every required gate,
 well-formed check rows, a matching checklist `git_sha`, and a matching blocking
-check count. It also requires every offline Phase 8 artifact below to be listed
-in the manifest. Live eval artifacts are included only when the full live eval
-group exists locally; if any live eval artifact is listed, all three live eval
-artifacts must be listed. When the eval report JSON is listed, verification also
-requires a `run_eval` report with well-formed `summary`, `tasks`, and `findings`
-sections, task rows with `task_id`/`metrics_valid`, matching valid/malformed
-task counts, unique task IDs, at least one valid task row, and no critical eval
-findings so hash-valid but failed fixed-seed reports cannot pass as release
-evidence:
+check count; checklist Markdown must have the HKRL release title, matching
+`git_sha`, and every required gate ID. It also requires every offline Phase 8
+artifact below to be listed in the manifest. Live eval artifacts are included
+only when the full live eval group exists locally; if any live eval artifact is
+listed, all three live eval artifacts must be listed. When the eval report JSON
+is listed, verification also requires a `run_eval` report with well-formed
+`summary`, `tasks`, and `findings` sections, task rows with
+`task_id`/`metrics_valid`, matching valid/malformed task counts, unique task IDs,
+at least one valid task row, and no critical eval findings so hash-valid but
+failed fixed-seed reports cannot pass as release evidence:
 
 ```text
 runs/phase8-smoke/summary.json

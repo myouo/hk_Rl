@@ -370,6 +370,14 @@ def verify_release_evidence_manifest(
     if checklist_failure is not None:
         failures.append(checklist_failure)
 
+    checklist_markdown_failure = _verify_release_checklist_markdown_artifact(
+        root_path,
+        results,
+        manifest_git_sha=manifest.get("git_sha"),
+    )
+    if checklist_markdown_failure is not None:
+        failures.append(checklist_markdown_failure)
+
     eval_report_failure = _verify_eval_report_artifact(root_path, results)
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
@@ -897,6 +905,61 @@ def _valid_release_checklist_check(check: Any) -> bool:
         isinstance(check.get(field), str) and bool(check.get(field))
         for field in ("category", "command", "evidence", "id", "title")
     )
+
+
+def _verify_release_checklist_markdown_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+    *,
+    manifest_git_sha: Any,
+) -> dict[str, Any] | None:
+    checklist_result = next(
+        (result for result in results if result.get("path") == "runs/release/checklist.md"),
+        None,
+    )
+    if checklist_result is None or checklist_result.get("ok") is not True:
+        return None
+
+    path = root / "runs/release/checklist.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_invalid",
+        }
+
+    if not text.startswith("# HKRL Release Checklist\n"):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_title_missing",
+        }
+
+    if _is_git_sha(manifest_git_sha) and f"- Git SHA: `{manifest_git_sha}`" not in text:
+        return {
+            "field": "git_sha",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_git_sha_mismatch",
+        }
+
+    missing_ids = sorted(
+        check.id for check in PHASE8_RELEASE_CHECKS if f"(`{check.id}`)" not in text
+    )
+    if missing_ids:
+        return {
+            "field": "checks",
+            "missing_check_ids": missing_ids,
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_required_checks_missing",
+        }
+
+    return None
 
 
 def _verify_phase8_smoke_summary_artifact(
