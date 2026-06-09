@@ -206,14 +206,15 @@ monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 CI artifacts or local inspection. Dashboard health is marked degraded when
 workers are lost/recovering, crash churn is visible, active workers are
 unassigned, workers lag or omit policy or checkpoint versions, or active workers
-report zero fleet SPS.
+report zero fleet SPS. It also shows learner intake counters and flags rejected
+or still-queued learner batches.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, unassigned workers, stale or missing
-policies/checkpoints, and missing rollout timing. `make phase8-profile` writes
-`runs/phase8-smoke/profile.md` and `profile.json`; it is a stable report format
-for CI/local comparisons, not a replacement for Unity profiler captures on the
-game machine.
+policies/checkpoints, learner intake backpressure, and missing rollout timing.
+`make phase8-profile` writes `runs/phase8-smoke/profile.md` and `profile.json`;
+it is a stable report format for CI/local comparisons, not a replacement for
+Unity profiler captures on the game machine.
 Evaluator scale-out uses the same task isolation principle:
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` runs different task
 evaluations through a task-level worker pool while keeping training separate

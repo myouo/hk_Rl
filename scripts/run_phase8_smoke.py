@@ -225,7 +225,7 @@ def _reset_generated_artifacts(work_dir: Path) -> None:
     for dirname in ("batches", "checkpoints"):
         path = work_dir / dirname
         if path.exists():
-            shutil.rmtree(path)
+            shutil.rmtree(path, ignore_errors=True)
     for filename in ("eval-metrics.json", "worker-heartbeats.jsonl"):
         path = work_dir / filename
         if path.exists():

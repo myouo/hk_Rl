@@ -349,6 +349,8 @@ the project version tracks the **schema_version** + roadmap phase.
   checkpoint versions.
 - Phase 8 dashboard/profile reports now surface active workers that have not
   been assigned tasks.
+- Phase 8 dashboard/profile reports now surface learner intake counters and flag
+  rejected or still-queued learner batches.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

@@ -16,6 +16,8 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
 
     assert report["source"] == "phase8_smoke"
     assert report["metrics"]["assigned_worker_count"] == 2.0
+    assert report["metrics"]["learner_accepted_batches"] == 1.0
+    assert report["metrics"]["learner_rejected_batches"] == 0.0
     assert report["metrics"]["sps"] == 32.0
     assert report["metrics"]["rollout_duration_s_mean"] == 2.0
     assert report["metrics"]["rollout_duration_s_max"] == 4.0
@@ -42,6 +44,21 @@ def test_profile_report_flags_unassigned_workers() -> None:
 
     assert report["metrics"]["unassigned_worker_count"] == 1.0
     assert "unassigned_workers" in {finding["code"] for finding in report["findings"]}
+
+
+def test_profile_report_flags_learner_backpressure() -> None:
+    summary = _summary(include_timing=True)
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["queued_batches"] = 2
+    learner["rejected_batches"] = 1
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["learner_queued_batches"] == 2.0
+    assert report["metrics"]["learner_rejected_batches"] == 1.0
+    assert "learner_queued_batches" in {finding["code"] for finding in report["findings"]}
+    assert "learner_rejected_batches" in {finding["code"] for finding in report["findings"]}
 
 
 def test_profile_report_flags_missing_worker_timing() -> None:
@@ -131,7 +148,15 @@ def _summary(*, include_timing: bool) -> dict[str, object]:
                 "worker_without_policy_version_count": 0.0,
             },
             "workers": workers,
-        }
+        },
+        "learner": {
+            "accepted_batches": 1,
+            "network_accepted_batches": 1,
+            "network_submitted_batches": 1,
+            "queued_batches": 0,
+            "rejected_batches": 0,
+            "submitted_batches": 1,
+        },
     }
 
 

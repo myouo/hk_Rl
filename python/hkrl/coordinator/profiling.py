@@ -11,6 +11,7 @@ from typing import Any
 def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Build a normalized profiling report from coordinator or smoke summary JSON."""
     coordinator = _coordinator_payload(payload)
+    learner = _learner_payload(payload)
     metrics = _mapping(coordinator.get("metrics", {}))
     workers = _worker_profiles(coordinator.get("workers", {}))
     rollout_durations = [
@@ -27,6 +28,12 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
     report_metrics = {
         "active_worker_count": active_workers,
         "assigned_worker_count": assigned_workers,
+        "learner_accepted_batches": _float(learner.get("accepted_batches", 0.0)),
+        "learner_network_accepted_batches": _float(learner.get("network_accepted_batches", 0.0)),
+        "learner_network_submitted_batches": _float(learner.get("network_submitted_batches", 0.0)),
+        "learner_queued_batches": _float(learner.get("queued_batches", 0.0)),
+        "learner_rejected_batches": _float(learner.get("rejected_batches", 0.0)),
+        "learner_submitted_batches": _float(learner.get("submitted_batches", 0.0)),
         "lost_worker_count": _float(metrics.get("lost_worker_count", 0.0)),
         "recovering_worker_count": _float(metrics.get("recovering_worker_count", 0.0)),
         "rollout_duration_s_max": max(rollout_durations, default=0.0),
@@ -119,6 +126,13 @@ def _coordinator_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     return payload
 
 
+def _learner_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    learner = payload.get("learner")
+    if isinstance(learner, Mapping):
+        return learner
+    return {}
+
+
 def _source(payload: Mapping[str, Any]) -> str:
     if isinstance(payload.get("coordinator"), Mapping):
         return "phase8_smoke"
@@ -175,6 +189,24 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "unassigned_workers",
                 "Some active workers do not have assigned tasks.",
                 "Inspect coordinator registration, task sampler state, and worker assignment loop.",
+            )
+        )
+    if metrics["learner_rejected_batches"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "learner_rejected_batches",
+                "The learner rejected rollout batches.",
+                "Inspect policy-version staleness, batch schema, and worker upload health.",
+            )
+        )
+    if metrics["learner_queued_batches"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "learner_queued_batches",
+                "The learner still has queued rollout batches after serving.",
+                "Check learner update throughput and batch intake backpressure.",
             )
         )
     if metrics["recovering_worker_count"] > 0.0:

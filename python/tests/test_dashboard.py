@@ -25,6 +25,10 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
     assert model["metrics"]["worker_policy_lag_max"] == 2.0
     assert model["metrics"]["worker_without_policy_version_count"] == 0.0
     assert model["metrics"]["worker_without_checkpoint_version_count"] == 0.0
+    assert model["learner"]["accepted_batches"] == 1.0
+    assert model["learner"]["algorithm"] == "appo"
+    assert model["learner"]["latest_checkpoint"] == 3.0
+    assert model["learner"]["rejected_batches"] == 0.0
     assert model["workers"] == [
         {
             "alive": True,
@@ -78,6 +82,7 @@ def test_dashboard_html_escapes_worker_and_task_values() -> None:
 
     assert "&lt;worker&gt;" in html
     assert "&lt;task&gt;" in html
+    assert "<h2>Learner</h2>" in html
     assert "<worker>" not in html
 
 
@@ -130,6 +135,36 @@ def test_dashboard_health_flags_unassigned_workers() -> None:
     assert model["health"] == {
         "status": "degraded",
         "reasons": ["unassigned workers"],
+    }
+
+
+def test_dashboard_health_flags_learner_backpressure() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_crash_count": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["queued_batches"] = 2
+    learner["rejected_batches"] = 1
+
+    model = build_dashboard_model(summary)
+
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["learner rejected batches", "learner queued batches"],
     }
 
 
@@ -237,7 +272,19 @@ def _phase8_summary() -> dict[str, object]:
                     },
                 },
             },
-        }
+        },
+        "learner": {
+            "accepted_batches": 1,
+            "algorithm": "appo",
+            "latest_checkpoint": 3,
+            "model": "entity_attention_gru",
+            "network_accepted_batches": 1,
+            "network_submitted_batches": 1,
+            "policy_version": 3,
+            "queued_batches": 0,
+            "rejected_batches": 0,
+            "submitted_batches": 1,
+        },
     }
 
 

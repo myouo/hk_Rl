@@ -69,15 +69,17 @@ stdout sink emits the same scalar/episode payloads as JSON lines.
 For Phase 8 fleet monitoring, `scripts/render_phase8_dashboard.py` renders a
 static HTML/JSON dashboard from `run_coordinator.py` or `run_phase8_smoke.py`
 summary JSON. The dashboard summarizes fleet SPS, crash/recovery counts,
-policy/checkpoint lag, worker table state, sampler weights, and evaluator
-win-rate inputs; `make phase8-dashboard` writes the default offline smoke
-dashboard to `runs/phase8-smoke/`.
+policy/checkpoint lag, worker table state, learner intake counters, sampler
+weights, and evaluator win-rate inputs; `make phase8-dashboard` writes the
+default offline smoke dashboard to `runs/phase8-smoke/`.
 Dashboard health is degraded for lost workers, recovering workers, crash churn,
 unassigned active workers, stale/missing policy or checkpoint versions, or active
-workers reporting zero fleet SPS.
+workers reporting zero fleet SPS. Learner rejected/queued batches are also
+reported as dashboard health issues.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
 crash/recovery counts, unassigned workers, and stale/missing policy or checkpoint
-versions into bottleneck findings.
+versions into bottleneck findings, with learner rejected/queued batches reported
+as intake/backpressure findings.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

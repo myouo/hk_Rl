@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> None:
     module = _load_script("run_phase8_smoke.py")
@@ -68,6 +70,24 @@ def test_run_phase8_smoke_resets_generated_work_dir(tmp_path: Path) -> None:
     assert first["checkpoint_versions"] == [1, 2]
     assert second["checkpoint_versions"] == [1, 2]
     assert second["worker"]["latest_checkpoint"] == 2
+
+
+def test_run_phase8_smoke_ignores_directory_cleanup_races(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    calls: list[tuple[Path, bool]] = []
+
+    def fake_rmtree(path: Path, *, ignore_errors: bool = False) -> None:
+        calls.append((path, ignore_errors))
+
+    monkeypatch.setattr(module.shutil, "rmtree", fake_rmtree)
+
+    module._reset_generated_artifacts(tmp_path)
+
+    assert calls == [(checkpoints, True)]
 
 
 def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:

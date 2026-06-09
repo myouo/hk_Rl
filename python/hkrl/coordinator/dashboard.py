@@ -25,6 +25,15 @@ KEY_METRICS: tuple[str, ...] = (
     "worker_without_checkpoint_version_count",
 )
 
+LEARNER_METRICS: tuple[str, ...] = (
+    "accepted_batches",
+    "network_accepted_batches",
+    "network_submitted_batches",
+    "queued_batches",
+    "rejected_batches",
+    "submitted_batches",
+)
+
 
 def build_dashboard_model(
     payload: Mapping[str, Any],
@@ -37,10 +46,12 @@ def build_dashboard_model(
     workers = _worker_rows(coordinator.get("workers", {}), metrics)
     tasks = _task_rows(coordinator, eval_metrics=eval_metrics)
     dashboard_metrics = _dashboard_metrics(metrics)
-    health = _health(dashboard_metrics)
+    learner = _learner_summary(payload)
+    health = _health(dashboard_metrics, learner)
 
     return {
         "health": health,
+        "learner": learner,
         "metrics": dashboard_metrics,
         "sampler_mastered_tasks": sorted(
             str(task_id) for task_id in coordinator.get("sampler_mastered_tasks", [])
@@ -53,6 +64,7 @@ def build_dashboard_model(
 def render_dashboard_html(model: Mapping[str, Any]) -> str:
     """Render a standalone static HTML dashboard."""
     health = _mapping(model.get("health", {}))
+    learner = _mapping(model.get("learner", {}))
     metrics = _mapping(model.get("metrics", {}))
     tasks = list(model.get("tasks", []))
     workers = list(model.get("workers", []))
@@ -80,6 +92,10 @@ def render_dashboard_html(model: Mapping[str, Any]) -> str:
             _render_reasons(reasons),
             '<section class="metrics" aria-label="Fleet metrics">',
             *[_render_metric(key, metrics.get(key, 0.0)) for key in KEY_METRICS if key in metrics],
+            "</section>",
+            '<section aria-label="Learner">',
+            "<h2>Learner</h2>",
+            _render_learner_table(learner),
             "</section>",
             '<section aria-label="Workers">',
             "<h2>Workers</h2>",
@@ -117,6 +133,20 @@ def _dashboard_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
         rows["active_worker_count"] - rows["assigned_worker_count"],
     )
     return rows
+
+
+def _learner_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
+    learner = _mapping(payload.get("learner"))
+    summary: dict[str, Any] = {key: _float(learner.get(key, 0.0)) for key in LEARNER_METRICS}
+    summary.update(
+        {
+            "algorithm": _optional_str(learner.get("algorithm")),
+            "latest_checkpoint": _optional_float(learner.get("latest_checkpoint")),
+            "model": _optional_str(learner.get("model")),
+            "policy_version": _float(learner.get("policy_version", 0.0)),
+        }
+    )
+    return summary
 
 
 def _worker_rows(raw_workers: Any, metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -193,7 +223,7 @@ def _eval_winrates(
     return winrates
 
 
-def _health(metrics: Mapping[str, Any]) -> dict[str, Any]:
+def _health(metrics: Mapping[str, Any], learner: Mapping[str, Any]) -> dict[str, Any]:
     reasons: list[str] = []
     if _float(metrics.get("lost_worker_count", 0.0)) > 0.0:
         reasons.append("lost workers")
@@ -216,6 +246,10 @@ def _health(metrics: Mapping[str, Any]) -> dict[str, Any]:
         and _float(metrics.get("sps", 0.0)) <= 0.0
     ):
         reasons.append("zero fleet SPS")
+    if _float(learner.get("rejected_batches", 0.0)) > 0.0:
+        reasons.append("learner rejected batches")
+    if _float(learner.get("queued_batches", 0.0)) > 0.0:
+        reasons.append("learner queued batches")
 
     return {"reasons": reasons, "status": "degraded" if reasons else "healthy"}
 
@@ -264,6 +298,34 @@ def _render_worker_table(workers: list[Any]) -> str:
             row.get("worker_crash_count"),
         ]
         for row in (_mapping(item) for item in workers)
+    ]
+    return _render_table(headers, rows)
+
+
+def _render_learner_table(learner: Mapping[str, Any]) -> str:
+    headers = (
+        "algorithm",
+        "model",
+        "policy",
+        "checkpoint",
+        "accepted",
+        "rejected",
+        "queued",
+        "network accepted",
+        "network submitted",
+    )
+    rows = [
+        [
+            learner.get("algorithm"),
+            learner.get("model"),
+            learner.get("policy_version"),
+            learner.get("latest_checkpoint"),
+            learner.get("accepted_batches"),
+            learner.get("rejected_batches"),
+            learner.get("queued_batches"),
+            learner.get("network_accepted_batches"),
+            learner.get("network_submitted_batches"),
+        ]
     ]
     return _render_table(headers, rows)
 
