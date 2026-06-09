@@ -127,6 +127,7 @@ def test_release_evidence_markdown_contains_hash_table(tmp_path: Path) -> None:
     markdown = render_release_evidence_markdown(manifest)
 
     assert "# HKRL Release Evidence" in markdown
+    assert "- Manifest version: `1`" in markdown
     assert "| Path | Bytes | SHA256 |" in markdown
     assert "runs/release/checklist.json" in markdown
     assert _sha256(artifact) in markdown
@@ -248,12 +249,56 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_metadata_dr
             "actual_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{OTHER_FULL_GIT_SHA}`",
+                "- Manifest version: `1`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
             ],
             "expected_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{FULL_GIT_SHA}`",
+                "- Manifest version: `1`",
+                f"- Artifact count: `{manifest['artifact_count']}`",
+                f"- Total bytes: `{manifest['total_bytes']}`",
+            ],
+            "field": "metadata",
+            "ok": False,
+            "path": "runs/release/evidence.md",
+            "reason": "release_evidence_markdown_metadata_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_evidence_markdown_missing_manifest_version(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    _write(
+        tmp_path / "runs" / "release" / "evidence.md",
+        render_release_evidence_markdown(manifest).replace(
+            "- Manifest version: `1`\n",
+            "",
+        ),
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "actual_metadata": [
+                "- Version: `phase8`",
+                f"- Git SHA: `{FULL_GIT_SHA}`",
+                f"- Artifact count: `{manifest['artifact_count']}`",
+                f"- Total bytes: `{manifest['total_bytes']}`",
+            ],
+            "expected_metadata": [
+                "- Version: `phase8`",
+                f"- Git SHA: `{FULL_GIT_SHA}`",
+                "- Manifest version: `1`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
             ],

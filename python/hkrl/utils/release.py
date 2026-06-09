@@ -260,6 +260,7 @@ def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Version: `{payload.get('version', 'unknown')}`",
         f"- Git SHA: `{payload.get('git_sha') or 'unrecorded'}`",
+        f"- Manifest version: `{payload.get('manifest_version', 'unknown')}`",
         f"- Artifact count: `{payload.get('artifact_count', 0)}`",
         f"- Total bytes: `{payload.get('total_bytes', 0)}`",
         "",
@@ -793,6 +794,7 @@ def _release_evidence_markdown_metadata_lines(text: str) -> tuple[str, ...]:
     prefixes = (
         "- Version: `",
         "- Git SHA: `",
+        "- Manifest version: `",
         "- Artifact count: `",
         "- Total bytes: `",
     )
@@ -803,6 +805,7 @@ def _release_evidence_markdown_metadata(manifest: Mapping[str, Any]) -> tuple[st
     return (
         f"- Version: `{manifest.get('version', 'unknown')}`",
         f"- Git SHA: `{manifest.get('git_sha') or 'unrecorded'}`",
+        f"- Manifest version: `{manifest.get('manifest_version', 'unknown')}`",
         f"- Artifact count: `{manifest.get('artifact_count', 0)}`",
         f"- Total bytes: `{manifest.get('total_bytes', 0)}`",
     )

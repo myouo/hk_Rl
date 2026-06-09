@@ -28,9 +28,10 @@ release note or CI artifact store when useful. `evidence.json` records the
 release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.json`
 records the result of re-hashing those files and checking the manifest aggregate
 counts. When `runs/release/evidence.md` exists, the verifier also checks that
-its release title, manifest metadata, and artifact table exactly match
-`evidence.json` without missing, reordered, or extra artifact rows. The verifier
-also rejects absolute, non-normalized, or duplicate artifact paths, non-object
+its release title, manifest metadata including `manifest_version`, and artifact
+table exactly match `evidence.json` without missing, reordered, or extra
+artifact rows. The verifier also rejects absolute, non-normalized, or duplicate
+artifact paths, non-object
 artifact entries, missing or malformed full-length `git_sha` values, mismatched
 release commit SHAs when `--git-sha` is provided, unsupported release `version`
 or `manifest_version` values, and Phase 8 smoke summaries that do not report
