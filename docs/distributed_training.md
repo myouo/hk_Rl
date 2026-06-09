@@ -216,7 +216,9 @@ workers are lost/recovering, crash churn is visible, active workers are
 unassigned, workers lag or omit policy or checkpoint versions, or active workers
 report zero fleet SPS. It also shows worker-side learner upload counters and
 learner intake counters, and flags failed/rejected worker uploads plus rejected
-or still-queued learner batches.
+or still-queued learner batches. Lost-worker checks use both the aggregate
+`lost_worker_count` and per-worker `alive = false` rows, so partial summaries do
+not hide heartbeat-expired workers.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, unassigned workers, stale or missing

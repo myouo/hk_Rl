@@ -356,6 +356,9 @@ the project version tracks the **schema_version** + roadmap phase.
   learner upload counters and flag failed or rejected worker uploads.
 - Phase 8 dashboard/profile reports now flag policy/checkpoint lag from max-lag
   metrics even when stale-worker counts are absent or zero.
+- Phase 8 dashboard/profile reports now also identify lost workers from
+  per-worker `alive = false` rows when aggregate lost-worker counts are missing
+  or stale.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

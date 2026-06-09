@@ -51,7 +51,7 @@ def build_dashboard_model(
     tasks = _task_rows(coordinator, eval_metrics=eval_metrics)
     dashboard_metrics = _dashboard_metrics(metrics)
     learner = _learner_summary(payload)
-    health = _health(dashboard_metrics, learner)
+    health = _health(dashboard_metrics, learner, workers)
 
     return {
         "health": health,
@@ -168,7 +168,7 @@ def _worker_rows(raw_workers: Any, metrics: Mapping[str, Any]) -> list[dict[str,
         checkpoint_version = _optional_float(worker_metrics.get("checkpoint_version"))
         rows.append(
             {
-                "alive": bool(record.get("alive", False)),
+                "alive": _optional_bool(record.get("alive")),
                 "assigned_task": _optional_str(record.get("assigned_task")),
                 "checkpoint_lag": _lag(checkpoint_max, checkpoint_version),
                 "checkpoint_version": checkpoint_version,
@@ -239,9 +239,13 @@ def _eval_winrates(
     return winrates
 
 
-def _health(metrics: Mapping[str, Any], learner: Mapping[str, Any]) -> dict[str, Any]:
+def _health(
+    metrics: Mapping[str, Any],
+    learner: Mapping[str, Any],
+    workers: list[dict[str, Any]],
+) -> dict[str, Any]:
     reasons: list[str] = []
-    if _float(metrics.get("lost_worker_count", 0.0)) > 0.0:
+    if _float(metrics.get("lost_worker_count", 0.0)) > 0.0 or _has_dead_worker(workers):
         reasons.append("lost workers")
     if _float(metrics.get("unassigned_worker_count", 0.0)) > 0.0:
         reasons.append("unassigned workers")
@@ -278,6 +282,10 @@ def _health(metrics: Mapping[str, Any], learner: Mapping[str, Any]) -> dict[str,
         reasons.append("learner queued batches")
 
     return {"reasons": reasons, "status": "degraded" if reasons else "healthy"}
+
+
+def _has_dead_worker(workers: list[dict[str, Any]]) -> bool:
+    return any(worker.get("alive") is False for worker in workers)
 
 
 def _render_reasons(reasons: list[str]) -> str:
@@ -402,6 +410,14 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return _float(value)
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return bool(value)
 
 
 def _float(value: Any) -> float:

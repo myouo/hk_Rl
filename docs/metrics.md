@@ -85,6 +85,8 @@ Dashboard health is degraded for lost workers, recovering workers, crash churn,
 unassigned active workers, stale/missing policy or checkpoint versions, or active
 workers reporting zero fleet SPS. Worker learner upload failures/rejections and
 learner rejected/queued batches are also reported as dashboard health issues.
+Lost-worker health checks use both aggregate counts and per-worker `alive`
+state, so stale or partial summaries still surface heartbeat-expired workers.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
 per-worker alive/status state, lost/recovering workers, crash counts,

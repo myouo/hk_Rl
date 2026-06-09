@@ -165,6 +165,39 @@ def test_dashboard_health_flags_unassigned_workers() -> None:
     }
 
 
+def test_dashboard_health_flags_dead_worker_rows_as_lost() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "lost_worker_count": 0.0,
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["alive"] = False
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["metrics"]["lost_worker_count"] == 0.0
+    assert model["workers"][1]["alive"] is False
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["lost workers"],
+    }
+
+
 def test_dashboard_health_flags_learner_backpressure() -> None:
     summary = _phase8_summary()
     metrics = summary["coordinator"]["metrics"]

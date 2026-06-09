@@ -170,7 +170,7 @@ def _worker_profiles(raw_workers: Any) -> list[dict[str, Any]]:
         metrics = _mapping(record.get("metrics", {}))
         rows.append(
             {
-                "alive": bool(record.get("alive", False)),
+                "alive": _optional_bool(record.get("alive")),
                 "rollout_duration_s": _optional_float(metrics.get("rollout_duration_s")),
                 "rollout_steps": _optional_float(metrics.get("rollout_steps")),
                 "sps": _float(metrics.get("sps", 0.0)),
@@ -223,7 +223,7 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "Inspect coordinator registration, task sampler state, and worker assignment loop.",
             )
         )
-    if metrics["lost_worker_count"] > 0.0:
+    if metrics["lost_worker_count"] > 0.0 or _has_dead_worker(workers):
         findings.append(
             _finding(
                 "warning",
@@ -335,6 +335,10 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
     return findings
 
 
+def _has_dead_worker(workers: list[dict[str, Any]]) -> bool:
+    return any(worker.get("alive") is False for worker in workers)
+
+
 def _finding(severity: str, code: str, message: str, recommendation: str) -> dict[str, str]:
     return {
         "code": code,
@@ -358,6 +362,14 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return _float(value)
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return bool(value)
 
 
 def _float(value: Any) -> float:

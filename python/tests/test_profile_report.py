@@ -64,6 +64,40 @@ def test_profile_report_flags_lost_workers() -> None:
     assert "lost_workers" in {finding["code"] for finding in report["findings"]}
 
 
+def test_profile_report_flags_dead_worker_rows_as_lost() -> None:
+    summary = _summary(include_timing=True)
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "lost_worker_count": 0.0,
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["alive"] = False
+    worker_1["info"] = {"status": "running"}
+    worker_metrics = worker_1["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["lost_worker_count"] == 0.0
+    assert report["workers"][1]["alive"] is False
+    assert [finding["code"] for finding in report["findings"]] == ["lost_workers"]
+
+
 def test_profile_report_flags_learner_backpressure() -> None:
     summary = _summary(include_timing=True)
     learner = summary["learner"]
