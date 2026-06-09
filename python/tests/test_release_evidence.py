@@ -45,6 +45,53 @@ def test_release_evidence_manifest_hashes_artifacts(tmp_path: Path) -> None:
     }
 
 
+def test_release_evidence_manifest_includes_existing_eval_artifacts(tmp_path: Path) -> None:
+    required = [
+        "runs/phase8-smoke/summary.json",
+        "runs/phase8-smoke/dashboard.html",
+        "runs/phase8-smoke/dashboard.json",
+        "runs/phase8-smoke/profile.md",
+        "runs/phase8-smoke/profile.json",
+        "runs/release/checklist.md",
+        "runs/release/checklist.json",
+    ]
+    for path in required:
+        _write(tmp_path / path, "{}\n")
+    _write(tmp_path / "runs" / "eval.json", '{"metrics": {}}\n')
+    _write(tmp_path / "runs" / "eval-report.md", "# Eval\n")
+    _write(tmp_path / "runs" / "eval-report.json", '{"source": "run_eval"}\n')
+
+    manifest = build_release_evidence_manifest(root=tmp_path)
+
+    paths = [artifact["path"] for artifact in manifest["artifacts"]]
+    assert paths[-3:] == [
+        "runs/eval.json",
+        "runs/eval-report.md",
+        "runs/eval-report.json",
+    ]
+
+
+def test_release_evidence_manifest_skips_missing_eval_artifacts(tmp_path: Path) -> None:
+    required = [
+        "runs/phase8-smoke/summary.json",
+        "runs/phase8-smoke/dashboard.html",
+        "runs/phase8-smoke/dashboard.json",
+        "runs/phase8-smoke/profile.md",
+        "runs/phase8-smoke/profile.json",
+        "runs/release/checklist.md",
+        "runs/release/checklist.json",
+    ]
+    for path in required:
+        _write(tmp_path / path, "{}\n")
+
+    manifest = build_release_evidence_manifest(root=tmp_path)
+
+    paths = {artifact["path"] for artifact in manifest["artifacts"]}
+    assert "runs/eval.json" not in paths
+    assert "runs/eval-report.md" not in paths
+    assert "runs/eval-report.json" not in paths
+
+
 def test_release_evidence_markdown_contains_hash_table(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "release" / "checklist.json"
     _write(artifact, "{}\n")

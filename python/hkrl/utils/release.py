@@ -134,6 +134,12 @@ PHASE8_RELEASE_ARTIFACTS: tuple[str, ...] = (
     "runs/release/checklist.json",
 )
 
+PHASE8_OPTIONAL_RELEASE_ARTIFACTS: tuple[str, ...] = (
+    "runs/eval.json",
+    "runs/eval-report.md",
+    "runs/eval-report.json",
+)
+
 
 def build_release_checklist(
     *,
@@ -191,10 +197,15 @@ def build_release_evidence_manifest(
     version: str = "phase8",
     git_sha: str | None = None,
     artifacts: Sequence[str | Path] | None = None,
+    optional_artifacts: Sequence[str | Path] = PHASE8_OPTIONAL_RELEASE_ARTIFACTS,
 ) -> dict[str, Any]:
     """Return a hash manifest for release evidence artifacts."""
     root_path = Path(root).expanduser().resolve()
-    artifact_paths = PHASE8_RELEASE_ARTIFACTS if artifacts is None else artifacts
+    artifact_paths = (
+        _default_release_artifacts(root_path, optional_artifacts=optional_artifacts)
+        if artifacts is None
+        else artifacts
+    )
     artifact_rows = [_artifact_row(root_path, artifact) for artifact in artifact_paths]
     total_bytes = sum(int(row["bytes"]) for row in artifact_rows)
     return {
@@ -205,6 +216,17 @@ def build_release_evidence_manifest(
         "total_bytes": total_bytes,
         "version": version,
     }
+
+
+def _default_release_artifacts(
+    root: Path,
+    *,
+    optional_artifacts: Sequence[str | Path],
+) -> tuple[str | Path, ...]:
+    existing_optional = [
+        artifact for artifact in optional_artifacts if _artifact_exists(root, artifact)
+    ]
+    return (*PHASE8_RELEASE_ARTIFACTS, *existing_optional)
 
 
 def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
@@ -286,6 +308,17 @@ def _artifact_row(root: Path, artifact: str | Path) -> dict[str, Any]:
         "path": relative_path,
         "sha256": _sha256_file(path),
     }
+
+
+def _artifact_exists(root: Path, artifact: str | Path) -> bool:
+    artifact_path = Path(artifact).expanduser()
+    path = artifact_path if artifact_path.is_absolute() else root / artifact_path
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(root)
+    except ValueError:
+        return False
+    return resolved.is_file()
 
 
 def _resolve_artifact_path(root: Path, artifact: str | Path) -> tuple[Path, str]:

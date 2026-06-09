@@ -26,7 +26,8 @@ make phase8-verify-release-evidence
 The generated files under `runs/` are ignored by git and should be attached to a
 release note or CI artifact store when useful. `evidence.json` records the
 release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.json`
-records the result of re-hashing those files:
+records the result of re-hashing those files. Offline artifacts are always
+included; live eval artifacts are included when they exist locally:
 
 ```text
 runs/phase8-smoke/summary.json
@@ -39,6 +40,9 @@ runs/release/checklist.json
 runs/release/evidence.md
 runs/release/evidence.json
 runs/release/evidence-verification.json
+runs/eval.json
+runs/eval-report.md
+runs/eval-report.json
 ```
 
 ## 2. Remote CI

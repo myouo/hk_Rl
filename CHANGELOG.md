@@ -359,6 +359,8 @@ the project version tracks the **schema_version** + roadmap phase.
   env instances.
 - `scripts/render_eval_report.py` and `make phase8-eval-report` now render
   fixed-seed evaluator JSON into JSON/Markdown regression reports.
+- Phase 8 release evidence manifests now include live eval JSON/report artifacts
+  when those game-machine outputs exist locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
 - Phase 8 profile reports now flag workers that have not reported policy or
