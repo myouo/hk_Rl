@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from hkrl.coordinator.dashboard import render_dashboard_html
 from hkrl.coordinator.profiling import render_profile_markdown
 from hkrl.utils.release import (
     PHASE8_RELEASE_ARTIFACTS,
@@ -441,6 +442,121 @@ def test_release_evidence_verifier_rejects_malformed_phase8_dashboard_workers(
             "ok": False,
             "path": "runs/phase8-smoke/dashboard.json",
             "reason": "phase8_dashboard_workers_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_html(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.html", "not a dashboard\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_title_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_dashboard_html_without_sections(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(
+        tmp_path / "runs" / "phase8-smoke" / "dashboard.html",
+        "<title>HKRL Phase 8 Dashboard</title><h1>HKRL Phase 8 Dashboard</h1>\n",
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "sections",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_sections_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_dashboard_html_missing_worker_row(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    workers = dashboard["workers"]
+    assert isinstance(workers, list)
+    dashboard["workers"] = workers[:1]
+    _write(
+        tmp_path / "runs" / "phase8-smoke" / "dashboard.html",
+        render_dashboard_html(dashboard),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "missing_worker_ids": ["worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_worker_rows_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_dashboard_html_missing_task_row(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    tasks = dashboard["tasks"]
+    assert isinstance(tasks, list)
+    dashboard["tasks"] = tasks[:1]
+    _write(
+        tmp_path / "runs" / "phase8-smoke" / "dashboard.html",
+        render_dashboard_html(dashboard),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "missing_task_ids": ["hornet_protector_attuned"],
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_task_rows_missing",
         }
     ]
 
@@ -1749,6 +1865,8 @@ def _write_required_release_artifacts(root: Path) -> None:
     for artifact in PHASE8_RELEASE_ARTIFACTS:
         if artifact == "runs/phase8-smoke/summary.json":
             _write(root / artifact, json.dumps(_phase8_smoke_summary()) + "\n")
+        elif artifact == "runs/phase8-smoke/dashboard.html":
+            _write(root / artifact, render_dashboard_html(_phase8_dashboard_model()))
         elif artifact == "runs/phase8-smoke/dashboard.json":
             _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
         elif artifact == "runs/phase8-smoke/profile.md":

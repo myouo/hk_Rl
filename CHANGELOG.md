@@ -402,6 +402,8 @@ the project version tracks the **schema_version** + roadmap phase.
   JSON or dashboard models missing health/metrics/task/worker sections.
 - Phase 8 release evidence verification now rejects Phase 8 dashboard models
   with malformed task or worker rows.
+- Phase 8 release evidence verification now rejects malformed Phase 8 dashboard
+  HTML or dashboard HTML missing JSON task/worker rows.
 - Phase 8 release evidence verification now rejects malformed Phase 8 profile
   JSON or profile reports missing source/metrics/findings/workers.
 - Phase 8 release evidence verification now rejects Phase 8 profile reports with

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -357,6 +358,10 @@ def verify_release_evidence_manifest(
     dashboard_failure = _verify_phase8_dashboard_artifact(root_path, results)
     if dashboard_failure is not None:
         failures.append(dashboard_failure)
+
+    dashboard_html_failure = _verify_phase8_dashboard_html_artifact(root_path, results)
+    if dashboard_html_failure is not None:
+        failures.append(dashboard_html_failure)
 
     profile_failure = _verify_phase8_profile_artifact(root_path, results)
     if profile_failure is not None:
@@ -1203,6 +1208,166 @@ def _valid_phase8_dashboard_worker(worker: Any) -> bool:
             "worker_crash_count",
         )
     )
+
+
+def _verify_phase8_dashboard_html_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    dashboard_html = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/dashboard.html"),
+        None,
+    )
+    if dashboard_html is None or dashboard_html.get("ok") is not True:
+        return None
+    if _verify_phase8_dashboard_artifact(root, results) is not None:
+        return None
+
+    path = root / "runs/phase8-smoke/dashboard.html"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_invalid",
+        }
+
+    if (
+        "<title>HKRL Phase 8 Dashboard</title>" not in text
+        or "<h1>HKRL Phase 8 Dashboard</h1>" not in text
+    ):
+        return {
+            "field": "title",
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_title_missing",
+        }
+
+    for section in ('aria-label="Learner"', 'aria-label="Workers"', 'aria-label="Tasks"'):
+        if section not in text:
+            return {
+                "field": "sections",
+                "ok": False,
+                "path": "runs/phase8-smoke/dashboard.html",
+                "reason": "phase8_dashboard_html_sections_missing",
+            }
+
+    rows = _phase8_dashboard_rows(root, results)
+    missing_worker_ids = sorted(
+        str(worker.get("worker_id"))
+        for worker in rows["workers"]
+        if _phase8_dashboard_worker_html_row(worker) not in text
+    )
+    if missing_worker_ids:
+        return {
+            "field": "workers",
+            "missing_worker_ids": missing_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_worker_rows_missing",
+        }
+
+    missing_task_ids = sorted(
+        str(task.get("task_id"))
+        for task in rows["tasks"]
+        if _phase8_dashboard_task_html_row(task) not in text
+    )
+    if missing_task_ids:
+        return {
+            "field": "tasks",
+            "missing_task_ids": missing_task_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.html",
+            "reason": "phase8_dashboard_html_task_rows_missing",
+        }
+
+    return None
+
+
+def _phase8_dashboard_rows(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, list[Mapping[str, Any]]]:
+    dashboard_result = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/dashboard.json"),
+        None,
+    )
+    if dashboard_result is None or dashboard_result.get("ok") is not True:
+        return {"tasks": [], "workers": []}
+
+    try:
+        payload = json.loads(
+            (root / "runs/phase8-smoke/dashboard.json").read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"tasks": [], "workers": []}
+    if not isinstance(payload, Mapping):
+        return {"tasks": [], "workers": []}
+
+    tasks = payload.get("tasks")
+    workers = payload.get("workers")
+    return {
+        "tasks": _mapping_rows(tasks),
+        "workers": _mapping_rows(workers),
+    }
+
+
+def _mapping_rows(rows: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+        return []
+    return [row for row in rows if isinstance(row, Mapping)]
+
+
+def _phase8_dashboard_worker_html_row(worker: Mapping[str, Any]) -> str:
+    return _html_table_row(
+        (
+            worker.get("worker_id"),
+            worker.get("alive"),
+            worker.get("status"),
+            worker.get("assigned_task"),
+            worker.get("sps"),
+            worker.get("policy_version"),
+            worker.get("policy_lag"),
+            worker.get("checkpoint_version"),
+            worker.get("checkpoint_lag"),
+            worker.get("worker_crash_count"),
+            worker.get("learner_upload_submitted_batches"),
+            worker.get("learner_upload_accepted_batches"),
+            worker.get("learner_upload_rejected_batches"),
+            worker.get("learner_upload_failed_batches"),
+        )
+    )
+
+
+def _phase8_dashboard_task_html_row(task: Mapping[str, Any]) -> str:
+    return _html_table_row(
+        (
+            task.get("task_id"),
+            task.get("win_rate"),
+            task.get("sampler_weight"),
+            task.get("mastered"),
+        )
+    )
+
+
+def _html_table_row(values: Sequence[Any]) -> str:
+    return "<tr>" + "".join(_html_table_cell(value) for value in values) + "</tr>"
+
+
+def _html_dashboard_value(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, float):
+        return f"{value:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _html_table_cell(value: Any) -> str:
+    return f"<td>{html.escape(_html_dashboard_value(value), quote=True)}</td>"
 
 
 def _verify_phase8_profile_artifact(
