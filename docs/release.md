@@ -36,7 +36,9 @@ worker, task, checkpoint, worker-id, and worker-row sections. Dashboard JSON
 must include health, learner, metrics, task, and worker sections with
 well-formed task and worker rows. Profile JSON must come from the Phase 8 smoke
 source and include metrics, findings, and workers with well-formed finding and
-worker rows. It also requires every offline Phase 8 artifact below to be listed
+worker rows. Checklist JSON must be a Phase 8 checklist with every required gate,
+well-formed check rows, a matching checklist `git_sha`, and a matching blocking
+check count. It also requires every offline Phase 8 artifact below to be listed
 in the manifest. Live eval artifacts are included only when the full live eval
 group exists locally; if any live eval artifact is listed, all three live eval
 artifacts must be listed. When the eval report JSON is listed, verification also

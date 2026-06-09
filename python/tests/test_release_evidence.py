@@ -12,6 +12,7 @@ from types import ModuleType
 import pytest
 from hkrl.utils.release import (
     PHASE8_RELEASE_ARTIFACTS,
+    build_release_checklist,
     build_release_evidence_manifest,
     release_evidence_to_json,
     render_release_evidence_markdown,
@@ -546,6 +547,150 @@ def test_release_evidence_verifier_rejects_malformed_phase8_profile_workers(
             "ok": False,
             "path": "runs/phase8-smoke/profile.json",
             "reason": "phase8_profile_workers_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_invalid_release_checklist_json(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "release" / "checklist.json", "not json\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checks",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_json_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_release_checklist_checks(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist()
+    checks = checklist["checks"]
+    assert isinstance(checks, list)
+    check = checks[0]
+    assert isinstance(check, dict)
+    del check["command"]
+    _write(tmp_path / "runs" / "release" / "checklist.json", json.dumps(checklist) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checks",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_checks_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_missing_required_gate(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist()
+    checks = checklist["checks"]
+    assert isinstance(checks, list)
+    checklist["checks"] = [
+        check
+        for check in checks
+        if isinstance(check, dict) and check["id"] != "release_evidence_verification"
+    ]
+    checklist["required_count"] = len(checklist["checks"])
+    _write(tmp_path / "runs" / "release" / "checklist.json", json.dumps(checklist) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checks",
+            "missing_check_ids": ["release_evidence_verification"],
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_required_checks_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_git_sha_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist(git_sha=OTHER_FULL_GIT_SHA)
+    _write(tmp_path / "runs" / "release" / "checklist.json", json.dumps(checklist) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_sha": OTHER_FULL_GIT_SHA,
+            "expected_git_sha": FULL_GIT_SHA,
+            "field": "git_sha",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_sha_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_required_count_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist()
+    checklist["required_count"] = 1
+    _write(tmp_path / "runs" / "release" / "checklist.json", json.dumps(checklist) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_required_count": 13,
+            "expected_required_count": 1,
+            "field": "required_count",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_required_count_mismatch",
         }
     ]
 
@@ -1446,8 +1591,14 @@ def _write_required_release_artifacts(root: Path) -> None:
             _write(root / artifact, json.dumps(_phase8_dashboard_model()) + "\n")
         elif artifact == "runs/phase8-smoke/profile.json":
             _write(root / artifact, json.dumps(_phase8_profile_report()) + "\n")
+        elif artifact == "runs/release/checklist.json":
+            _write(root / artifact, json.dumps(_release_checklist()) + "\n")
         else:
             _write(root / artifact, f"{artifact}\n")
+
+
+def _release_checklist(*, git_sha: str = FULL_GIT_SHA) -> dict[str, object]:
+    return build_release_checklist(version="phase8", git_sha=git_sha)
 
 
 def _phase8_smoke_summary() -> dict[str, object]:

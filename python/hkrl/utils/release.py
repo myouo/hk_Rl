@@ -362,6 +362,14 @@ def verify_release_evidence_manifest(
     if profile_failure is not None:
         failures.append(profile_failure)
 
+    checklist_failure = _verify_release_checklist_artifact(
+        root_path,
+        results,
+        manifest_git_sha=manifest.get("git_sha"),
+    )
+    if checklist_failure is not None:
+        failures.append(checklist_failure)
+
     eval_report_failure = _verify_eval_report_artifact(root_path, results)
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
@@ -741,6 +749,154 @@ def _verify_eval_report_artifact(
             "reason": "eval_report_critical_findings",
         }
     return None
+
+
+def _verify_release_checklist_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+    *,
+    manifest_git_sha: Any,
+) -> dict[str, Any] | None:
+    checklist_result = next(
+        (result for result in results if result.get("path") == "runs/release/checklist.json"),
+        None,
+    )
+    if checklist_result is None or checklist_result.get("ok") is not True:
+        return None
+
+    path = root / "runs/release/checklist.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "field": "checks",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_json_invalid",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "field": "checks",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_not_object",
+        }
+    return _verify_release_checklist_structure(payload, manifest_git_sha=manifest_git_sha)
+
+
+def _verify_release_checklist_structure(
+    payload: Mapping[str, Any],
+    *,
+    manifest_git_sha: Any,
+) -> dict[str, Any] | None:
+    if payload.get("version") != "phase8":
+        return {
+            "field": "version",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_version_invalid",
+        }
+
+    git_sha = payload.get("git_sha")
+    if not _is_git_sha(git_sha):
+        return {
+            "field": "git_sha",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_sha_invalid",
+        }
+    if _is_git_sha(manifest_git_sha) and git_sha != manifest_git_sha:
+        return {
+            "actual_git_sha": git_sha,
+            "expected_git_sha": manifest_git_sha,
+            "field": "git_sha",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_sha_mismatch",
+        }
+
+    checks = payload.get("checks")
+    if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)) or not checks:
+        return {
+            "field": "checks",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_checks_invalid",
+        }
+    malformed_checks = [
+        index for index, check in enumerate(checks) if not _valid_release_checklist_check(check)
+    ]
+    if malformed_checks:
+        return {
+            "field": "checks",
+            "indexes": malformed_checks,
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_checks_malformed",
+        }
+
+    missing_ids = sorted(
+        check.id
+        for check in PHASE8_RELEASE_CHECKS
+        if check.id not in {str(item["id"]) for item in checks if isinstance(item, Mapping)}
+    )
+    if missing_ids:
+        return {
+            "field": "checks",
+            "missing_check_ids": missing_ids,
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_required_checks_missing",
+        }
+
+    required_count = payload.get("required_count")
+    blocking_count = sum(
+        1 for check in checks if isinstance(check, Mapping) and check.get("blocking") is True
+    )
+    if required_count != blocking_count:
+        return {
+            "actual_required_count": blocking_count,
+            "expected_required_count": required_count,
+            "field": "required_count",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_required_count_mismatch",
+        }
+
+    categories = payload.get("categories")
+    expected_categories = sorted(
+        {
+            str(check["category"])
+            for check in checks
+            if isinstance(check, Mapping) and isinstance(check.get("category"), str)
+        }
+    )
+    if (
+        not isinstance(categories, Sequence)
+        or isinstance(categories, (str, bytes))
+        or list(categories) != expected_categories
+    ):
+        return {
+            "actual_categories": categories,
+            "expected_categories": expected_categories,
+            "field": "categories",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_categories_mismatch",
+        }
+
+    return None
+
+
+def _valid_release_checklist_check(check: Any) -> bool:
+    if not isinstance(check, Mapping):
+        return False
+    if not isinstance(check.get("blocking"), bool):
+        return False
+    return all(
+        isinstance(check.get(field), str) and bool(check.get(field))
+        for field in ("category", "command", "evidence", "id", "title")
+    )
 
 
 def _verify_phase8_smoke_summary_artifact(
