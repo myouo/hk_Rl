@@ -133,6 +133,7 @@ make phase8-smoke
 make phase8-dashboard   # writes runs/phase8-smoke/dashboard.html + dashboard.json
 make phase8-profile     # writes runs/phase8-smoke/profile.md + profile.json
 make phase8-release-checklist
+make phase8-release-evidence
 
 # 等价的显式入口会串联 learner/worker/coordinator 的离线 wiring 检查
 python scripts/run_phase8_smoke.py \
@@ -153,6 +154,11 @@ python scripts/render_release_checklist.py \
   --version phase8 \
   --output-json runs/release/checklist.json \
   --output-md runs/release/checklist.md
+
+python scripts/render_release_evidence.py \
+  --version phase8 \
+  --output-json runs/release/evidence.json \
+  --output-md runs/release/evidence.md
 
 python scripts/run_coordinator.py \
   --config configs/train/remote_learner.yaml \
@@ -202,7 +208,8 @@ python scripts/run_worker.py \
 worker 的 `--registry`，worker 会在加载前验证 sha256。
 
 发布前检查见 [`docs/release.md`](./docs/release.md)，其中区分了 CI 可验证的
-Python/离线分布式门禁和必须在 Hollow Knight 机器上执行的 mod/live smoke 门禁。
+Python/离线分布式门禁和必须在 Hollow Knight 机器上执行的 mod/live smoke 门禁；
+`make phase8-release-evidence` 会生成包含 sha256 的发布证据 manifest。
 
 ## CI
 

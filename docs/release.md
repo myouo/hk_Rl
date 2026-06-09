@@ -19,10 +19,12 @@ make phase8-smoke
 make phase8-dashboard
 make phase8-profile
 make phase8-release-checklist
+make phase8-release-evidence
 ```
 
 The generated files under `runs/` are ignored by git and should be attached to a
-release note or CI artifact store when useful:
+release note or CI artifact store when useful. `evidence.json` records the
+release artifact paths, byte sizes, and sha256 hashes for later verification:
 
 ```text
 runs/phase8-smoke/summary.json
@@ -32,6 +34,8 @@ runs/phase8-smoke/profile.md
 runs/phase8-smoke/profile.json
 runs/release/checklist.md
 runs/release/checklist.json
+runs/release/evidence.md
+runs/release/evidence.json
 ```
 
 ## 2. Remote CI
@@ -91,6 +95,19 @@ python scripts/render_release_checklist.py \
   --output-json runs/release/checklist.json \
   --output-md runs/release/checklist.md
 ```
+
+After all local artifacts are generated, render the hash manifest:
+
+```bash
+python scripts/render_release_evidence.py \
+  --version phase8 \
+  --git-sha "$(git rev-parse HEAD)" \
+  --output-json runs/release/evidence.json \
+  --output-md runs/release/evidence.md
+```
+
+`make phase8-release-evidence` runs the offline Phase 8 artifact pipeline and
+writes the checklist plus evidence manifest with the current git SHA.
 
 The checklist is a release record, not an automated certification. The game
 machine gates still need to be executed on a configured Hollow Knight host.

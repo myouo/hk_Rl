@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -46,6 +48,13 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         title="Render the Phase 8 profile report",
         command="make phase8-profile",
         evidence="runs/phase8-smoke/profile.md and profile.json are generated",
+    ),
+    ReleaseCheck(
+        id="release_evidence_manifest",
+        category="local",
+        title="Render the release evidence manifest",
+        command="make phase8-release-evidence",
+        evidence="runs/release/evidence.json records sha256 hashes for release artifacts",
     ),
     ReleaseCheck(
         id="github_ci",
@@ -101,6 +110,17 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
 )
 
 
+PHASE8_RELEASE_ARTIFACTS: tuple[str, ...] = (
+    "runs/phase8-smoke/summary.json",
+    "runs/phase8-smoke/dashboard.html",
+    "runs/phase8-smoke/dashboard.json",
+    "runs/phase8-smoke/profile.md",
+    "runs/phase8-smoke/profile.json",
+    "runs/release/checklist.md",
+    "runs/release/checklist.json",
+)
+
+
 def build_release_checklist(
     *,
     version: str = "phase8",
@@ -149,3 +169,90 @@ def render_release_markdown(payload: dict[str, Any]) -> str:
 
 def release_checklist_to_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def build_release_evidence_manifest(
+    *,
+    root: str | Path = ".",
+    version: str = "phase8",
+    git_sha: str | None = None,
+    artifacts: Sequence[str | Path] | None = None,
+) -> dict[str, Any]:
+    """Return a hash manifest for release evidence artifacts."""
+    root_path = Path(root).expanduser().resolve()
+    artifact_paths = PHASE8_RELEASE_ARTIFACTS if artifacts is None else artifacts
+    artifact_rows = [_artifact_row(root_path, artifact) for artifact in artifact_paths]
+    total_bytes = sum(int(row["bytes"]) for row in artifact_rows)
+    return {
+        "artifact_count": len(artifact_rows),
+        "artifacts": artifact_rows,
+        "git_sha": git_sha,
+        "manifest_version": 1,
+        "total_bytes": total_bytes,
+        "version": version,
+    }
+
+
+def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
+    """Render a release evidence manifest as Markdown."""
+    artifacts = list(payload.get("artifacts", []))
+    lines = [
+        "# HKRL Release Evidence",
+        "",
+        f"- Version: `{payload.get('version', 'unknown')}`",
+        f"- Git SHA: `{payload.get('git_sha') or 'unrecorded'}`",
+        f"- Artifact count: `{payload.get('artifact_count', 0)}`",
+        f"- Total bytes: `{payload.get('total_bytes', 0)}`",
+        "",
+        "## Artifacts",
+        "",
+        "| Path | Bytes | SHA256 |",
+        "| --- | ---: | --- |",
+    ]
+    for artifact in artifacts:
+        item = dict(artifact)
+        lines.append(
+            "| "
+            f"{_markdown_cell(str(item.get('path', '')))} | "
+            f"{item.get('bytes', 0)} | "
+            f"`{item.get('sha256', '')}` |"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def release_evidence_to_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _artifact_row(root: Path, artifact: str | Path) -> dict[str, Any]:
+    path, relative_path = _resolve_artifact_path(root, artifact)
+    return {
+        "bytes": path.stat().st_size,
+        "path": relative_path,
+        "sha256": _sha256_file(path),
+    }
+
+
+def _resolve_artifact_path(root: Path, artifact: str | Path) -> tuple[Path, str]:
+    artifact_path = Path(artifact).expanduser()
+    path = artifact_path if artifact_path.is_absolute() else root / artifact_path
+    resolved = path.resolve()
+    try:
+        relative_path = resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"release artifact path escapes root: {artifact}") from exc
+    if not resolved.is_file():
+        raise FileNotFoundError(f"release artifact is missing: {relative_path.as_posix()}")
+    return resolved, relative_path.as_posix()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _markdown_cell(value: str) -> str:
+    return value.replace("|", "\\|")

@@ -347,6 +347,8 @@ the project version tracks the **schema_version** + roadmap phase.
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
 - `docs/release.md`, `scripts/render_release_checklist.py`, and
   `make phase8-release-checklist` now define a Phase 8 release evidence checklist.
+- `scripts/render_release_evidence.py` and `make phase8-release-evidence` now
+  produce a sha256 manifest for Phase 8 release artifacts.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
