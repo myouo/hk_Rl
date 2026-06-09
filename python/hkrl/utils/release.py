@@ -770,6 +770,40 @@ def _verify_phase8_smoke_summary_artifact(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_not_ok",
         }
+    return _verify_phase8_smoke_summary_structure(payload)
+
+
+def _verify_phase8_smoke_summary_structure(
+    payload: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    for field in ("coordinator", "learner", "worker"):
+        if not isinstance(payload.get(field), Mapping):
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/summary.json",
+                "reason": "phase8_smoke_summary_section_invalid",
+            }
+
+    coordinator = payload.get("coordinator")
+    assert isinstance(coordinator, Mapping)
+    if not isinstance(coordinator.get("metrics"), Mapping):
+        return {
+            "field": "coordinator.metrics",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metrics_invalid",
+        }
+
+    for field in ("checkpoint_versions", "task_ids", "worker_ids"):
+        value = payload.get(field)
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or not value:
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/summary.json",
+                "reason": "phase8_smoke_summary_list_invalid",
+            }
     return None
 
 

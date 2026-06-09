@@ -394,6 +394,8 @@ the project version tracks the **schema_version** + roadmap phase.
   differs from the expected release commit when provided.
 - Phase 8 release evidence verification now rejects hash-valid Phase 8 smoke
   summaries that are malformed or do not report `ok=true`.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  missing coordinator metrics or learner/worker/task/checkpoint sections.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
