@@ -185,6 +185,8 @@ def _health(metrics: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("lost workers")
     if _float(metrics.get("recovering_worker_count", 0.0)) > 0.0:
         reasons.append("workers recovering")
+    if _float(metrics.get("worker_crash_count", 0.0)) > 0.0:
+        reasons.append("worker crashes")
     if _float(metrics.get("stale_policy_worker_count", 0.0)) > 0.0:
         reasons.append("stale policy workers")
     if _float(metrics.get("stale_checkpoint_worker_count", 0.0)) > 0.0:

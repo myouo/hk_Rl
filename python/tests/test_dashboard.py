@@ -17,7 +17,7 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
 
     assert model["health"] == {
         "status": "degraded",
-        "reasons": ["workers recovering", "stale policy workers"],
+        "reasons": ["workers recovering", "worker crashes", "stale policy workers"],
     }
     assert model["metrics"]["sps"] == 12.5
     assert model["metrics"]["worker_policy_lag_max"] == 2.0
@@ -80,6 +80,24 @@ def test_dashboard_html_escapes_worker_and_task_values() -> None:
 def test_dashboard_rejects_summary_without_metrics() -> None:
     with pytest.raises(ValueError, match="metrics object"):
         build_dashboard_model({"coordinator": {}})
+
+
+def test_dashboard_health_flags_worker_crashes_without_active_recovery() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["recovering_worker_count"] = 0.0
+    metrics["stale_policy_worker_count"] = 0.0
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["info"] = {"status": "running"}
+
+    model = build_dashboard_model(summary)
+
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["worker crashes"],
+    }
 
 
 def test_render_phase8_dashboard_script_writes_html_and_json(tmp_path: Path) -> None:
