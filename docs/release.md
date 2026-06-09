@@ -29,8 +29,9 @@ release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.js
 records the result of re-hashing those files and checking the manifest aggregate
 counts. The verifier also rejects absolute, non-normalized, or duplicate
 artifact paths, missing or malformed full-length `git_sha` values, plus
-unsupported `manifest_version` values. Offline artifacts are always included in
-the hash manifest; live eval artifacts are included when they exist locally:
+unsupported `manifest_version` values. It also requires every offline Phase 8
+artifact below to be listed in the manifest. Live eval artifacts are included
+when they exist locally:
 
 ```text
 runs/phase8-smoke/summary.json

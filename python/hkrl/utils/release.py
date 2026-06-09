@@ -300,6 +300,10 @@ def verify_release_evidence_manifest(
     if duplicate_paths_failure is not None:
         failures.append(duplicate_paths_failure)
 
+    required_artifacts_failure = _verify_manifest_required_artifacts(results)
+    if required_artifacts_failure is not None:
+        failures.append(required_artifacts_failure)
+
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
         failures.append(count_failure)
@@ -500,6 +504,26 @@ def _verify_manifest_unique_artifact_paths(
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_artifact_paths_duplicate",
+        }
+    return None
+
+
+def _verify_manifest_required_artifacts(
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    paths = {
+        path
+        for result in results
+        if isinstance((path := result.get("path")), str) and path != "<missing>"
+    }
+    missing_paths = [path for path in PHASE8_RELEASE_ARTIFACTS if path not in paths]
+    if missing_paths:
+        return {
+            "field": "artifacts",
+            "missing_paths": missing_paths,
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_required_artifacts_missing",
         }
     return None
 

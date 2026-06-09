@@ -385,6 +385,8 @@ the project version tracks the **schema_version** + roadmap phase.
   aliases in manifests.
 - Phase 8 release evidence verification now rejects missing or malformed
   full-length `git_sha` values in manifests.
+- Phase 8 release evidence verification now rejects manifests that omit required
+  offline evidence artifacts.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.
