@@ -386,6 +386,8 @@ the project version tracks the **schema_version** + roadmap phase.
   missing summaries, task-count mismatches, or no valid task rows.
 - Phase 8 release evidence verification now rejects included eval reports with
   malformed task rows or valid-task count drift.
+- Phase 8 release evidence verification now rejects included eval reports with
+  duplicate task IDs.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static

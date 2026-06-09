@@ -742,6 +742,15 @@ def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] 
             "path": "runs/eval-report.json",
             "reason": "eval_report_tasks_malformed",
         }
+    duplicate_task_ids = _duplicate_eval_report_task_ids(tasks)
+    if duplicate_task_ids:
+        return {
+            "duplicate_task_ids": duplicate_task_ids,
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_task_ids_duplicate",
+        }
     if expected_task_count != len(tasks):
         return {
             "actual_task_count": len(tasks),
@@ -790,6 +799,21 @@ def _valid_eval_report_task(task: Any) -> bool:
         and bool(task.get("task_id"))
         and isinstance(task.get("metrics_valid"), bool)
     )
+
+
+def _duplicate_eval_report_task_ids(tasks: Sequence[Any]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for task in tasks:
+        if not isinstance(task, Mapping):
+            continue
+        task_id = task.get("task_id")
+        if not isinstance(task_id, str):
+            continue
+        if task_id in seen:
+            duplicates.add(task_id)
+        seen.add(task_id)
+    return sorted(duplicates)
 
 
 def _manifest_artifact_paths(results: Sequence[Mapping[str, Any]]) -> set[str]:

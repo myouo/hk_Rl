@@ -414,6 +414,48 @@ def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
     ]
 
 
+def test_release_evidence_verifier_rejects_duplicate_eval_report_task_ids(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 2.0,
+                "valid_task_count": 2.0,
+            },
+            tasks=[
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                },
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                },
+            ],
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "duplicate_task_ids": ["gruz_mother"],
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_task_ids_duplicate",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_non_object_artifact_entries(
     tmp_path: Path,
 ) -> None:
