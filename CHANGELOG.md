@@ -462,6 +462,8 @@ the project version tracks the **schema_version** + roadmap phase.
   duplicate worker rows.
 - Phase 8 release evidence verification now rejects malformed Phase 8 profile
   Markdown or profile Markdown missing JSON worker rows.
+- Phase 8 release evidence verification now rejects Phase 8 profile Markdown
+  whose worker row values drift from profile JSON.
 - Phase 8 release evidence verification now rejects malformed release checklist
   JSON, missing Phase 8 gates, malformed check rows, or checklist commit drift.
 - Phase 8 release evidence verification now rejects malformed release checklist

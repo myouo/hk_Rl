@@ -2019,6 +2019,36 @@ def test_release_evidence_verifier_rejects_phase8_profile_markdown_missing_worke
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_profile_markdown_worker_row_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    profile = _phase8_profile_report()
+    text = render_profile_markdown(profile).replace(
+        "| worker-0 | yes | running | 32 | 4 | 128 | 0 | 1 | 1 | 0 | 0 |",
+        "| worker-0 | yes | running | 0 | 4 | 128 | 0 | 1 | 1 | 0 | 0 |",
+    )
+    _write(tmp_path / "runs" / "phase8-smoke" / "profile.md", text)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "missing_worker_ids": ["worker-0"],
+            "ok": False,
+            "path": "runs/phase8-smoke/profile.md",
+            "reason": "phase8_profile_markdown_worker_rows_missing",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_release_checklist_json(
     tmp_path: Path,
 ) -> None:

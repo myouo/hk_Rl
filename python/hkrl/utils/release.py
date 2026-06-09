@@ -2700,6 +2700,8 @@ def _verify_phase8_profile_markdown_artifact(
     )
     if profile_markdown is None or profile_markdown.get("ok") is not True:
         return None
+    if _verify_phase8_profile_artifact(root, results) is not None:
+        return None
 
     path = root / "runs/phase8-smoke/profile.md"
     try:
@@ -2727,9 +2729,11 @@ def _verify_phase8_profile_markdown_artifact(
             "reason": "phase8_profile_markdown_workers_missing",
         }
 
-    worker_ids = _phase8_profile_worker_ids(root, results)
+    workers = _phase8_profile_workers(root, results)
     missing_worker_ids = sorted(
-        worker_id for worker_id in worker_ids if f"| {worker_id} |" not in text
+        str(worker.get("worker_id"))
+        for worker in workers
+        if _phase8_profile_worker_markdown_row(worker) not in text
     )
     if missing_worker_ids:
         return {
@@ -2743,7 +2747,10 @@ def _verify_phase8_profile_markdown_artifact(
     return None
 
 
-def _phase8_profile_worker_ids(root: Path, results: Sequence[Mapping[str, Any]]) -> list[str]:
+def _phase8_profile_workers(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
     profile_result = next(
         (result for result in results if result.get("path") == "runs/phase8-smoke/profile.json"),
         None,
@@ -2761,13 +2768,40 @@ def _phase8_profile_worker_ids(root: Path, results: Sequence[Mapping[str, Any]])
     workers = payload.get("workers")
     if not isinstance(workers, Sequence) or isinstance(workers, (str, bytes)):
         return []
-    return [
-        worker_id
-        for worker in workers
-        if isinstance(worker, Mapping)
-        and isinstance((worker_id := worker.get("worker_id")), str)
-        and worker_id
-    ]
+    return [worker for worker in workers if isinstance(worker, Mapping)]
+
+
+def _phase8_profile_worker_markdown_row(worker: Mapping[str, Any]) -> str:
+    return (
+        "| "
+        f"{worker.get('worker_id', '')} | "
+        f"{_markdown_profile_bool(worker.get('alive'))} | "
+        f"{worker.get('status', '')} | "
+        f"{_markdown_profile_value(worker.get('sps'))} | "
+        f"{_markdown_profile_value(worker.get('rollout_duration_s'))} | "
+        f"{_markdown_profile_value(worker.get('rollout_steps'))} | "
+        f"{_markdown_profile_value(worker.get('worker_crash_count'))} | "
+        f"{_markdown_profile_value(worker.get('learner_upload_submitted_batches'))} | "
+        f"{_markdown_profile_value(worker.get('learner_upload_accepted_batches'))} | "
+        f"{_markdown_profile_value(worker.get('learner_upload_rejected_batches'))} | "
+        f"{_markdown_profile_value(worker.get('learner_upload_failed_batches'))} |"
+    )
+
+
+def _markdown_profile_value(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        return f"{value:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _markdown_profile_bool(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
 
 
 def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] | None:

@@ -68,9 +68,9 @@ learner/worker/task sections, and the JSON task/worker rows.
 Profile JSON must come from the Phase 8 smoke source and include metrics,
 findings, and workers with well-formed finding rows and unique worker rows,
 while profile Markdown must have the HKRL profile title, worker table, and the
-JSON worker rows. Checklist JSON must be a Phase 8 checklist with every required gate,
-well-formed check rows, a matching checklist `git_sha`, and a matching blocking
-check count; checklist Markdown must have the HKRL release title, matching
+exact JSON worker rows. Checklist JSON must be a Phase 8 checklist with every
+required gate, well-formed check rows, a matching checklist `git_sha`, and a
+matching blocking check count; checklist Markdown must have the HKRL release title, matching
 `git_sha`, and every required gate ID. It also requires every offline Phase 8
 artifact below to be listed in the manifest. Live eval artifacts are included
 only when the full live eval group exists locally; if any live eval artifact is
