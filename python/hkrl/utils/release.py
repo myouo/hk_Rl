@@ -226,9 +226,11 @@ def _default_release_artifacts(
     *,
     optional_artifacts: Sequence[str | Path],
 ) -> tuple[str | Path, ...]:
-    existing_optional = [
+    existing_optional = tuple(
         artifact for artifact in optional_artifacts if _artifact_exists(root, artifact)
-    ]
+    )
+    if existing_optional and len(existing_optional) != len(optional_artifacts):
+        return PHASE8_RELEASE_ARTIFACTS
     return (*PHASE8_RELEASE_ARTIFACTS, *existing_optional)
 
 

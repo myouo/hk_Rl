@@ -96,6 +96,20 @@ def test_release_evidence_manifest_skips_missing_eval_artifacts(tmp_path: Path) 
     assert "runs/eval-report.json" not in paths
 
 
+def test_release_evidence_manifest_skips_partial_eval_artifacts(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "eval.json", '{"metrics": {}}\n')
+
+    manifest = build_release_evidence_manifest(root=tmp_path)
+
+    paths = {artifact["path"] for artifact in manifest["artifacts"]}
+    assert "runs/eval.json" not in paths
+    assert "runs/eval-report.md" not in paths
+    assert "runs/eval-report.json" not in paths
+
+
 def test_release_evidence_markdown_contains_hash_table(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "release" / "checklist.json"
     _write(artifact, "{}\n")
