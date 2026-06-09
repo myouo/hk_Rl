@@ -25,6 +25,7 @@ def test_release_checklist_contains_phase8_gates() -> None:
         "offline_dashboard",
         "offline_profile",
         "release_evidence_manifest",
+        "release_evidence_verification",
         "github_ci",
         "mod_build",
         "live_smoke",
@@ -37,6 +38,7 @@ def test_release_checklist_contains_phase8_gates() -> None:
     assert "make phase8-dashboard" in commands
     assert "make phase8-profile" in commands
     assert "make phase8-release-evidence" in commands
+    assert "make phase8-verify-release-evidence" in commands
 
 
 def test_release_checklist_markdown_groups_commands() -> None:

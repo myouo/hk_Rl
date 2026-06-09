@@ -10,7 +10,7 @@ CS_SCHEMA := mod/HKRLEnvMod/Schema
 GIT_SHA  ?= $(shell git rev-parse HEAD 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-release-checklist phase8-release-evidence
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -76,6 +76,10 @@ phase8-release-evidence: ## Render Phase 8 release evidence bundle manifest
 	$(PY) scripts/render_profile_report.py --summary runs/phase8-smoke/summary.json --output-json runs/phase8-smoke/profile.json --output-md runs/phase8-smoke/profile.md
 	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
 	$(PY) scripts/render_release_evidence.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/evidence.json --output-md runs/release/evidence.md
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --output-json runs/release/evidence-verification.json
+
+phase8-verify-release-evidence: ## Verify Phase 8 release evidence hashes
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --output-json runs/release/evidence-verification.json
 
 clean: ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

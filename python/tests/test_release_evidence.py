@@ -12,7 +12,9 @@ from types import ModuleType
 import pytest
 from hkrl.utils.release import (
     build_release_evidence_manifest,
+    release_evidence_to_json,
     render_release_evidence_markdown,
+    verify_release_evidence_manifest,
 )
 
 
@@ -67,6 +69,39 @@ def test_release_evidence_rejects_artifacts_outside_root(tmp_path: Path) -> None
         build_release_evidence_manifest(root=tmp_path, artifacts=[outside])
 
 
+def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is True
+    assert result["artifact_count"] == 1
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == []
+
+
+def test_release_evidence_verifier_reports_sha_mismatch(tmp_path: Path) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, "good\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    _write(artifact, "evil\n")
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 0
+    assert result["failures"][0]["path"] == "runs/phase8-smoke/summary.json"
+    assert result["failures"][0]["reason"] == "artifact_sha256_mismatch"
+
+
 def test_render_release_evidence_script_writes_json_and_markdown(tmp_path: Path) -> None:
     module = _load_script("render_release_evidence.py")
     artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
@@ -87,6 +122,36 @@ def test_render_release_evidence_script_writes_json_and_markdown(tmp_path: Path)
     assert manifest["git_sha"] == "deadbeef"
     assert json.loads(json_path.read_text(encoding="utf-8"))["artifact_count"] == 1
     assert "HKRL Release Evidence" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_verify_release_evidence_script_writes_failure_report(tmp_path: Path) -> None:
+    module = _load_script("verify_release_evidence.py")
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    manifest_path = tmp_path / "runs" / "release" / "evidence.json"
+    report_path = tmp_path / "runs" / "release" / "verification.json"
+    _write(artifact, "good\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+    _write(manifest_path, release_evidence_to_json(manifest))
+    _write(artifact, "evil\n")
+
+    exit_code = module.main(
+        [
+            "--manifest",
+            str(manifest_path),
+            "--root",
+            str(tmp_path),
+            "--output-json",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is False
+    assert report["failures"][0]["reason"] == "artifact_sha256_mismatch"
 
 
 def _write(path: Path, text: str) -> None:

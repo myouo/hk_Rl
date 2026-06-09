@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -55,6 +55,13 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         title="Render the release evidence manifest",
         command="make phase8-release-evidence",
         evidence="runs/release/evidence.json records sha256 hashes for release artifacts",
+    ),
+    ReleaseCheck(
+        id="release_evidence_verification",
+        category="local",
+        title="Verify the release evidence manifest",
+        command="make phase8-verify-release-evidence",
+        evidence="runs/release/evidence-verification.json reports ok=true",
     ),
     ReleaseCheck(
         id="github_ci",
@@ -224,6 +231,47 @@ def release_evidence_to_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
+def verify_release_evidence_manifest(
+    *,
+    root: str | Path = ".",
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify release evidence artifact hashes against a manifest."""
+    root_path = Path(root).expanduser().resolve()
+    artifacts = manifest.get("artifacts", [])
+    failures: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
+
+    if not isinstance(artifacts, Sequence) or isinstance(artifacts, (str, bytes)):
+        failures.append(
+            {
+                "path": "<manifest>",
+                "reason": "artifacts_not_a_list",
+            }
+        )
+        artifacts = []
+
+    for artifact in artifacts:
+        result = _verify_artifact(root_path, artifact)
+        results.append(result)
+        if not result["ok"]:
+            failures.append(result)
+
+    return {
+        "artifact_count": len(results),
+        "checked_artifact_count": sum(1 for result in results if result["ok"]),
+        "failures": failures,
+        "git_sha": manifest.get("git_sha"),
+        "manifest_version": manifest.get("manifest_version"),
+        "ok": not failures,
+        "version": manifest.get("version"),
+    }
+
+
+def release_evidence_verification_to_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
 def _artifact_row(root: Path, artifact: str | Path) -> dict[str, Any]:
     path, relative_path = _resolve_artifact_path(root, artifact)
     return {
@@ -246,6 +294,75 @@ def _resolve_artifact_path(root: Path, artifact: str | Path) -> tuple[Path, str]
     return resolved, relative_path.as_posix()
 
 
+def _verify_artifact(root: Path, artifact: Any) -> dict[str, Any]:
+    item = artifact if isinstance(artifact, Mapping) else {}
+    raw_path = item.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        return {
+            "ok": False,
+            "path": "<missing>",
+            "reason": "artifact_path_missing",
+        }
+
+    try:
+        path, relative_path = _resolve_artifact_path(root, raw_path)
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "path": raw_path,
+            "reason": "artifact_missing",
+        }
+    except ValueError:
+        return {
+            "ok": False,
+            "path": raw_path,
+            "reason": "artifact_path_escapes_root",
+        }
+
+    expected_bytes = item.get("bytes")
+    if isinstance(expected_bytes, bool) or not isinstance(expected_bytes, int):
+        return {
+            "ok": False,
+            "path": relative_path,
+            "reason": "artifact_bytes_invalid",
+        }
+
+    actual_bytes = path.stat().st_size
+    if actual_bytes != expected_bytes:
+        return {
+            "actual_bytes": actual_bytes,
+            "expected_bytes": expected_bytes,
+            "ok": False,
+            "path": relative_path,
+            "reason": "artifact_bytes_mismatch",
+        }
+
+    expected_sha256 = item.get("sha256")
+    if not _is_sha256(expected_sha256):
+        return {
+            "ok": False,
+            "path": relative_path,
+            "reason": "artifact_sha256_invalid",
+        }
+
+    actual_sha256 = _sha256_file(path)
+    if actual_sha256 != expected_sha256:
+        return {
+            "actual_sha256": actual_sha256,
+            "expected_sha256": expected_sha256,
+            "ok": False,
+            "path": relative_path,
+            "reason": "artifact_sha256_mismatch",
+        }
+
+    return {
+        "bytes": actual_bytes,
+        "ok": True,
+        "path": relative_path,
+        "sha256": actual_sha256,
+    }
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fh:
@@ -256,3 +373,11 @@ def _sha256_file(path: Path) -> str:
 
 def _markdown_cell(value: str) -> str:
     return value.replace("|", "\\|")
+
+
+def _is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
