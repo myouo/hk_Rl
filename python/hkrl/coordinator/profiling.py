@@ -276,7 +276,7 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "Inspect policy staleness, batch schema, and learner max-staleness settings.",
             )
         )
-    if metrics["stale_policy_worker_count"] > 0.0:
+    if metrics["stale_policy_worker_count"] > 0.0 or metrics["worker_policy_lag_max"] > 0.0:
         findings.append(
             _finding(
                 "warning",
@@ -285,7 +285,7 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "Check checkpoint polling cadence and learner publication frequency.",
             )
         )
-    if metrics["stale_checkpoint_worker_count"] > 0.0:
+    if metrics["stale_checkpoint_worker_count"] > 0.0 or metrics["worker_checkpoint_lag_max"] > 0.0:
         findings.append(
             _finding(
                 "warning",

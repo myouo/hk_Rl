@@ -253,9 +253,15 @@ def _health(metrics: Mapping[str, Any], learner: Mapping[str, Any]) -> dict[str,
         reasons.append("worker learner upload failures")
     if _float(metrics.get("worker_learner_upload_rejected_batches", 0.0)) > 0.0:
         reasons.append("worker learner upload rejections")
-    if _float(metrics.get("stale_policy_worker_count", 0.0)) > 0.0:
+    if (
+        _float(metrics.get("stale_policy_worker_count", 0.0)) > 0.0
+        or _float(metrics.get("worker_policy_lag_max", 0.0)) > 0.0
+    ):
         reasons.append("stale policy workers")
-    if _float(metrics.get("stale_checkpoint_worker_count", 0.0)) > 0.0:
+    if (
+        _float(metrics.get("stale_checkpoint_worker_count", 0.0)) > 0.0
+        or _float(metrics.get("worker_checkpoint_lag_max", 0.0)) > 0.0
+    ):
         reasons.append("stale checkpoint workers")
     if _float(metrics.get("worker_without_policy_version_count", 0.0)) > 0.0:
         reasons.append("workers missing policy version")

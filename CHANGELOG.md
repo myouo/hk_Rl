@@ -354,6 +354,8 @@ the project version tracks the **schema_version** + roadmap phase.
   rejected or still-queued learner batches.
 - Worker heartbeats and Phase 8 dashboard/profile reports now surface worker-side
   learner upload counters and flag failed or rejected worker uploads.
+- Phase 8 dashboard/profile reports now flag policy/checkpoint lag from max-lag
+  metrics even when stale-worker counts are absent or zero.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

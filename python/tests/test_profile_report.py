@@ -102,6 +102,39 @@ def test_profile_report_flags_missing_worker_versions() -> None:
     assert "missing_checkpoint_versions" in {finding["code"] for finding in report["findings"]}
 
 
+def test_profile_report_flags_version_lag_without_stale_counts() -> None:
+    summary = _summary(include_timing=True)
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 2.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 1.0,
+        }
+    )
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["info"] = {"status": "running"}
+    worker_metrics = worker_1["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    report = build_profile_report(summary)
+
+    assert [finding["code"] for finding in report["findings"]] == [
+        "stale_policy_workers",
+        "stale_checkpoint_workers",
+    ]
+
+
 def test_profile_report_markdown_contains_findings_and_worker_table() -> None:
     markdown = render_profile_markdown(build_profile_report(_summary(include_timing=True)))
 

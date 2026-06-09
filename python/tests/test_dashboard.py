@@ -17,7 +17,12 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
 
     assert model["health"] == {
         "status": "degraded",
-        "reasons": ["workers recovering", "worker crashes", "stale policy workers"],
+        "reasons": [
+            "workers recovering",
+            "worker crashes",
+            "stale policy workers",
+            "stale checkpoint workers",
+        ],
     }
     assert model["metrics"]["assigned_worker_count"] == 2.0
     assert model["metrics"]["unassigned_worker_count"] == 0.0
@@ -107,8 +112,15 @@ def test_dashboard_health_flags_worker_crashes_without_active_recovery() -> None
     summary = _phase8_summary()
     metrics = summary["coordinator"]["metrics"]
     assert isinstance(metrics, dict)
-    metrics["recovering_worker_count"] = 0.0
-    metrics["stale_policy_worker_count"] = 0.0
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
     worker_b = summary["coordinator"]["workers"]["worker-b"]
     assert isinstance(worker_b, dict)
     worker_b["info"] = {"status": "running"}
@@ -129,8 +141,11 @@ def test_dashboard_health_flags_unassigned_workers() -> None:
         {
             "assigned_worker_count": 1.0,
             "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
             "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
             "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
         }
     )
     worker_b = summary["coordinator"]["workers"]["worker-b"]
@@ -157,8 +172,11 @@ def test_dashboard_health_flags_learner_backpressure() -> None:
     metrics.update(
         {
             "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
             "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
             "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
         }
     )
     worker_b = summary["coordinator"]["workers"]["worker-b"]
@@ -187,8 +205,11 @@ def test_dashboard_health_flags_worker_learner_upload_issues() -> None:
     metrics.update(
         {
             "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
             "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
             "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
             "worker_learner_upload_failed_batches": 1.0,
             "worker_learner_upload_rejected_batches": 2.0,
         }
@@ -218,8 +239,11 @@ def test_dashboard_health_flags_workers_missing_versions() -> None:
     metrics.update(
         {
             "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
             "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
             "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
             "worker_without_checkpoint_version_count": 1.0,
             "worker_without_policy_version_count": 1.0,
         }
@@ -244,6 +268,33 @@ def test_dashboard_health_flags_workers_missing_versions() -> None:
     }
     assert model["workers"][1]["policy_version"] is None
     assert model["workers"][1]["checkpoint_version"] is None
+
+
+def test_dashboard_health_flags_version_lag_without_stale_counts() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_crash_count": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["stale policy workers", "stale checkpoint workers"],
+    }
 
 
 def test_render_phase8_dashboard_script_writes_html_and_json(tmp_path: Path) -> None:
