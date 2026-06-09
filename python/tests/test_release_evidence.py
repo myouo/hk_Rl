@@ -260,6 +260,56 @@ def test_release_evidence_verifier_reports_manifest_version_mismatch(
     ]
 
 
+def test_release_evidence_verifier_reports_missing_release_version(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    del manifest["version"]
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_release_version_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_unsupported_release_version(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        version="phase7",
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_version": "phase7",
+            "expected_versions": ["phase8"],
+            "field": "version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_release_version_unsupported",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_missing_git_sha(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     manifest = build_release_evidence_manifest(

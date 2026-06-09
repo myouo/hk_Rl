@@ -140,6 +140,7 @@ PHASE8_OPTIONAL_RELEASE_ARTIFACTS: tuple[str, ...] = (
     "runs/eval-report.json",
 )
 
+RELEASE_EVIDENCE_SUPPORTED_VERSIONS = frozenset({"phase8"})
 RELEASE_EVIDENCE_MANIFEST_VERSION = 1
 
 
@@ -291,6 +292,10 @@ def verify_release_evidence_manifest(
     version_failure = _verify_manifest_version(manifest)
     if version_failure is not None:
         failures.append(version_failure)
+
+    release_version_failure = _verify_manifest_release_version(manifest)
+    if release_version_failure is not None:
+        failures.append(release_version_failure)
 
     git_sha_failure = _verify_manifest_git_sha(manifest)
     if git_sha_failure is not None:
@@ -460,6 +465,27 @@ def _verify_manifest_version(manifest: Mapping[str, Any]) -> dict[str, Any] | No
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_version_mismatch",
+        }
+    return None
+
+
+def _verify_manifest_release_version(manifest: Mapping[str, Any]) -> dict[str, Any] | None:
+    version = manifest.get("version")
+    if not isinstance(version, str) or not version:
+        return {
+            "field": "version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_release_version_missing",
+        }
+    if version not in RELEASE_EVIDENCE_SUPPORTED_VERSIONS:
+        return {
+            "actual_version": version,
+            "expected_versions": sorted(RELEASE_EVIDENCE_SUPPORTED_VERSIONS),
+            "field": "version",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_release_version_unsupported",
         }
     return None
 
