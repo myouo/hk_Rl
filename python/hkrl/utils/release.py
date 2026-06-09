@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -643,6 +644,10 @@ def _verify_eval_report_artifact(
             "reason": "eval_report_not_object",
         }
 
+    structure_failure = _verify_eval_report_structure(payload)
+    if structure_failure is not None:
+        return structure_failure
+
     if "findings" not in payload:
         return {
             "field": "findings",
@@ -683,6 +688,64 @@ def _verify_eval_report_artifact(
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_critical_findings",
+        }
+    return None
+
+
+def _verify_eval_report_structure(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    if payload.get("source") != "run_eval":
+        return {
+            "field": "source",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_source_invalid",
+        }
+
+    summary = payload.get("summary")
+    if not isinstance(summary, Mapping):
+        return {
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_summary_invalid",
+        }
+    task_count = summary.get("task_count")
+    valid_task_count = summary.get("valid_task_count")
+    if not _is_non_negative_count(task_count) or not _is_non_negative_count(valid_task_count):
+        return {
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_summary_counts_invalid",
+        }
+    assert isinstance(task_count, (int, float))
+    assert isinstance(valid_task_count, (int, float))
+    expected_task_count = int(task_count)
+    valid_tasks = float(valid_task_count)
+
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)):
+        return {
+            "field": "tasks",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_tasks_invalid",
+        }
+    if expected_task_count != len(tasks):
+        return {
+            "actual_task_count": len(tasks),
+            "expected_task_count": task_count,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_task_count_mismatch",
+        }
+    if valid_tasks <= 0.0:
+        return {
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_no_valid_tasks",
         }
     return None
 
@@ -794,3 +857,13 @@ def _is_git_sha(value: Any) -> bool:
 
 def _invalid_non_negative_int(value: Any) -> bool:
     return isinstance(value, bool) or not isinstance(value, int) or value < 0
+
+
+def _is_non_negative_count(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and float(value).is_integer()
+        and value >= 0.0
+    )

@@ -180,14 +180,14 @@ def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> 
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
         tmp_path,
-        {
-            "findings": [
+        _eval_report(
+            findings=[
                 {
                     "code": "low_win_rate",
                     "severity": "warning",
                 }
             ],
-        },
+        ),
     )
     manifest = build_release_evidence_manifest(
         root=tmp_path,
@@ -205,7 +205,9 @@ def test_release_evidence_verifier_rejects_eval_report_without_findings(
     tmp_path: Path,
 ) -> None:
     _write_required_release_artifacts(tmp_path)
-    _write_eval_artifacts(tmp_path, {"source": "run_eval"})
+    report = _eval_report()
+    del report["findings"]
+    _write_eval_artifacts(tmp_path, report)
     manifest = build_release_evidence_manifest(
         root=tmp_path,
         git_sha=FULL_GIT_SHA,
@@ -230,13 +232,13 @@ def test_release_evidence_verifier_rejects_malformed_eval_report_findings(
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
         tmp_path,
-        {
-            "findings": [
+        _eval_report(
+            findings=[
                 {"code": "low_win_rate", "severity": "warning"},
                 {"code": "missing severity"},
                 "not an object",
             ],
-        },
+        ),
     )
     manifest = build_release_evidence_manifest(
         root=tmp_path,
@@ -253,6 +255,76 @@ def test_release_evidence_verifier_rejects_malformed_eval_report_findings(
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_findings_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_eval_report_without_valid_tasks(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 1.0,
+                "valid_task_count": 0.0,
+            },
+            tasks=[
+                {
+                    "metrics_valid": False,
+                    "task_id": "gruz_mother",
+                }
+            ],
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_no_valid_tasks",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_eval_report_task_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(
+            summary={
+                "task_count": 2.0,
+                "valid_task_count": 1.0,
+            },
+        ),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "actual_task_count": 1,
+            "expected_task_count": 2.0,
+            "field": "summary",
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_task_count_mismatch",
         }
     ]
 
@@ -549,8 +621,8 @@ def test_release_evidence_verifier_rejects_critical_eval_report_findings(
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
         tmp_path,
-        {
-            "findings": [
+        _eval_report(
+            findings=[
                 {
                     "code": "no_valid_eval_tasks",
                     "severity": "critical",
@@ -560,7 +632,7 @@ def test_release_evidence_verifier_rejects_critical_eval_report_findings(
                     "severity": "warning",
                 },
             ],
-        },
+        ),
     )
     manifest = build_release_evidence_manifest(
         root=tmp_path,
@@ -698,6 +770,37 @@ def _write_eval_artifacts(root: Path, report: dict[str, object]) -> None:
     _write(root / "runs" / "eval.json", '{"metrics": {}}\n')
     _write(root / "runs" / "eval-report.md", "# Eval\n")
     _write(root / "runs" / "eval-report.json", json.dumps(report) + "\n")
+
+
+def _eval_report(
+    *,
+    findings: list[object] | None = None,
+    summary: dict[str, object] | None = None,
+    tasks: list[object] | None = None,
+) -> dict[str, object]:
+    return {
+        "findings": [] if findings is None else findings,
+        "metadata": {},
+        "source": "run_eval",
+        "summary": (
+            {
+                "task_count": 1.0,
+                "valid_task_count": 1.0,
+            }
+            if summary is None
+            else summary
+        ),
+        "tasks": (
+            [
+                {
+                    "metrics_valid": True,
+                    "task_id": "gruz_mother",
+                }
+            ]
+            if tasks is None
+            else tasks
+        ),
+    }
 
 
 def _sha256(path: Path) -> str:
