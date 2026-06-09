@@ -1150,6 +1150,52 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_details
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_metric_totals_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["active_worker_count"] = 1.0
+    metrics["sps"] = 16.0
+    metrics["worker_crash_count"] = 0.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.metrics",
+            "metric_mismatches": {
+                "active_worker_count": {
+                    "actual": 1.0,
+                    "expected": 2.0,
+                },
+                "sps": {
+                    "actual": 16.0,
+                    "expected": 32.0,
+                },
+                "worker_crash_count": {
+                    "actual": 0.0,
+                    "expected": 1.0,
+                },
+            },
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metric_totals_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -3047,6 +3093,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "active_worker_count": 2.0,
                 "sps": 32.0,
                 "worker_count": 2.0,
+                "worker_crash_count": 1.0,
             },
             "num_workers": 2,
             "sampler_mastered_tasks": ["gruz_mother"],

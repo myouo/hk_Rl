@@ -53,7 +53,9 @@ coordinator eval win rates and sampler weights must exactly cover the listed
 task IDs, and mastered sampler tasks must be a subset of them. The
 dry-run `worker_id` must be listed in `worker_ids`, and coordinator worker rows
 plus assignments must match the listed worker IDs without extras; each worker
-row's assigned task and heartbeat metadata must be well formed. The dry-run
+row's assigned task and heartbeat metadata must be well formed. Coordinator
+aggregate `active_worker_count`, `sps`, and optional `worker_crash_count`
+metrics must match the coordinator worker rows. The dry-run
 worker `latest_checkpoint` must equal the latest listed checkpoint version, and
 coordinator worker checkpoint versions must come from the listed checkpoint
 versions. Smoke worker rows must include an `alive` flag and non-negative worker

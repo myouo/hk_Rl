@@ -1467,6 +1467,64 @@ def _verify_phase8_smoke_summary_structure(
     )
     if worker_detail_failure is not None:
         return worker_detail_failure
+    metric_total_failure = _verify_phase8_smoke_metric_totals(metrics, workers=workers)
+    if metric_total_failure is not None:
+        return metric_total_failure
+    return None
+
+
+def _verify_phase8_smoke_metric_totals(
+    metrics: Mapping[str, Any],
+    *,
+    workers: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    active_worker_count = sum(
+        1
+        for worker in workers.values()
+        if isinstance(worker, Mapping) and worker.get("alive") is True
+    )
+    sps = 0.0
+    worker_crash_count = 0.0
+    for worker in workers.values():
+        if not isinstance(worker, Mapping):
+            continue
+        worker_metrics = worker.get("metrics")
+        if not isinstance(worker_metrics, Mapping):
+            continue
+        sps += float(worker_metrics.get("sps", 0.0))
+        worker_crash_count += float(worker_metrics.get("worker_crash_count", 0.0))
+
+    expected: dict[str, float] = {
+        "active_worker_count": float(active_worker_count),
+        "sps": sps,
+    }
+    if "worker_crash_count" in metrics:
+        expected["worker_crash_count"] = worker_crash_count
+
+    metric_mismatches: dict[str, dict[str, Any]] = {}
+    for field, expected_value in expected.items():
+        actual_value = metrics.get(field)
+        if not _is_non_negative_number(actual_value):
+            metric_mismatches[field] = {
+                "actual": actual_value,
+                "expected": expected_value,
+            }
+            continue
+        assert isinstance(actual_value, (int, float))
+        if not math.isclose(float(actual_value), expected_value, abs_tol=1e-9):
+            metric_mismatches[field] = {
+                "actual": actual_value,
+                "expected": expected_value,
+            }
+
+    if metric_mismatches:
+        return {
+            "field": "coordinator.metrics",
+            "metric_mismatches": metric_mismatches,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metric_totals_mismatch",
+        }
     return None
 
 

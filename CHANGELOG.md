@@ -432,6 +432,8 @@ the project version tracks the **schema_version** + roadmap phase.
   whose coordinator worker rows disagree with assignments or have malformed
   heartbeat/status metadata.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  whose coordinator aggregate worker metrics disagree with worker rows.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   with missing, incomplete, duplicate, or task-invalid task wire IDs.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   whose worker latest checkpoint or coordinator worker checkpoint versions do
