@@ -205,10 +205,11 @@ workers are lost/recovering, crash churn is visible, workers lag or omit policy
 or checkpoint versions, or active workers report zero fleet SPS.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
-zero SPS, recovering/crashing workers, stale policies/checkpoints, and missing
-rollout timing. `make phase8-profile` writes `runs/phase8-smoke/profile.md` and
-`profile.json`; it is a stable report format for CI/local comparisons, not a
-replacement for Unity profiler captures on the game machine.
+zero SPS, recovering/crashing workers, stale or missing policies/checkpoints, and
+missing rollout timing. `make phase8-profile` writes
+`runs/phase8-smoke/profile.md` and `profile.json`; it is a stable report format
+for CI/local comparisons, not a replacement for Unity profiler captures on the
+game machine.
 Evaluator scale-out uses the same task isolation principle:
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` runs different task
 evaluations through a task-level worker pool while keeping training separate

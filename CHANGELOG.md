@@ -349,6 +349,8 @@ the project version tracks the **schema_version** + roadmap phase.
   env instances.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
+- Phase 8 profile reports now flag workers that have not reported policy or
+  checkpoint versions.
 - `docs/release.md`, `scripts/render_release_checklist.py`, and
   `make phase8-release-checklist` now define a Phase 8 release evidence checklist.
 - `scripts/render_release_evidence.py` and `make phase8-release-evidence` now

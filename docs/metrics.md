@@ -77,6 +77,7 @@ stale/missing policy or checkpoint versions, or active workers reporting zero
 fleet SPS.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
-crash/recovery counts, and policy/checkpoint lag into bottleneck findings.
+crash/recovery counts, and stale/missing policy or checkpoint versions into
+bottleneck findings.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

@@ -19,6 +19,8 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
     assert report["metrics"]["rollout_duration_s_mean"] == 2.0
     assert report["metrics"]["rollout_duration_s_max"] == 4.0
     assert report["metrics"]["rollout_steps_total"] == 128.0
+    assert report["metrics"]["worker_without_policy_version_count"] == 0.0
+    assert report["metrics"]["worker_without_checkpoint_version_count"] == 0.0
     assert [finding["code"] for finding in report["findings"]] == [
         "recovering_workers",
         "worker_crashes",
@@ -33,6 +35,21 @@ def test_profile_report_flags_missing_worker_timing() -> None:
     report = build_profile_report(_summary(include_timing=False))
 
     assert "missing_rollout_timing" in {finding["code"] for finding in report["findings"]}
+
+
+def test_profile_report_flags_missing_worker_versions() -> None:
+    summary = _summary(include_timing=True)
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["worker_without_checkpoint_version_count"] = 1.0
+    metrics["worker_without_policy_version_count"] = 1.0
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["worker_without_policy_version_count"] == 1.0
+    assert report["metrics"]["worker_without_checkpoint_version_count"] == 1.0
+    assert "missing_policy_versions" in {finding["code"] for finding in report["findings"]}
+    assert "missing_checkpoint_versions" in {finding["code"] for finding in report["findings"]}
 
 
 def test_profile_report_markdown_contains_findings_and_worker_table() -> None:
@@ -96,6 +113,8 @@ def _summary(*, include_timing: bool) -> dict[str, object]:
                 "worker_count": 2.0,
                 "worker_crash_count": 1.0,
                 "worker_policy_lag_max": 1.0,
+                "worker_without_checkpoint_version_count": 0.0,
+                "worker_without_policy_version_count": 0.0,
             },
             "workers": workers,
         }

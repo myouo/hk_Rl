@@ -37,6 +37,12 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         "worker_checkpoint_lag_max": _float(metrics.get("worker_checkpoint_lag_max", 0.0)),
         "worker_count": _float(metrics.get("worker_count", 0.0)),
         "worker_crash_count": _float(metrics.get("worker_crash_count", 0.0)),
+        "worker_without_checkpoint_version_count": _float(
+            metrics.get("worker_without_checkpoint_version_count", 0.0)
+        ),
+        "worker_without_policy_version_count": _float(
+            metrics.get("worker_without_policy_version_count", 0.0)
+        ),
         "worker_policy_lag_max": _float(metrics.get("worker_policy_lag_max", 0.0)),
     }
     return {
@@ -193,6 +199,24 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "stale_checkpoint_workers",
                 "Some workers are behind the newest active checkpoint version.",
                 "Verify checkpoint registry reachability and hash verification failures.",
+            )
+        )
+    if metrics["worker_without_policy_version_count"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "missing_policy_versions",
+                "Some active workers have not reported a policy version.",
+                "Check worker heartbeat payloads and policy hot-swap bookkeeping.",
+            )
+        )
+    if metrics["worker_without_checkpoint_version_count"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "missing_checkpoint_versions",
+                "Some active workers have not reported a checkpoint version.",
+                "Check checkpoint polling, registry probing, and heartbeat payloads.",
             )
         )
     if workers and all(worker["rollout_duration_s"] is None for worker in workers):
