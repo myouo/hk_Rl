@@ -51,6 +51,18 @@ def test_profile_report_flags_unassigned_workers() -> None:
     assert "unassigned_workers" in {finding["code"] for finding in report["findings"]}
 
 
+def test_profile_report_flags_lost_workers() -> None:
+    summary = _summary(include_timing=True)
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["lost_worker_count"] = 1.0
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["lost_worker_count"] == 1.0
+    assert "lost_workers" in {finding["code"] for finding in report["findings"]}
+
+
 def test_profile_report_flags_learner_backpressure() -> None:
     summary = _summary(include_timing=True)
     learner = summary["learner"]

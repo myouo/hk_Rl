@@ -222,6 +222,16 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "Inspect coordinator registration, task sampler state, and worker assignment loop.",
             )
         )
+    if metrics["lost_worker_count"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "lost_workers",
+                "Some workers missed the heartbeat timeout and are marked lost.",
+                "Inspect worker process health, transport connectivity, "
+                "and coordinator timeout settings.",
+            )
+        )
     if metrics["learner_rejected_batches"] > 0.0:
         findings.append(
             _finding(

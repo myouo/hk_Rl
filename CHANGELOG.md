@@ -369,6 +369,8 @@ the project version tracks the **schema_version** + roadmap phase.
   Phase 8 profiling reports from coordinator/offline-smoke summaries.
 - Phase 8 profile reports now flag workers that have not reported policy or
   checkpoint versions.
+- Phase 8 profile reports now flag workers marked lost by the coordinator
+  heartbeat timeout.
 - `docs/release.md`, `scripts/render_release_checklist.py`, and
   `make phase8-release-checklist` now define a Phase 8 release evidence checklist.
 - `scripts/render_release_evidence.py` and `make phase8-release-evidence` now
