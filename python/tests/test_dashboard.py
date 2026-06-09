@@ -22,6 +22,10 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
     assert model["metrics"]["assigned_worker_count"] == 2.0
     assert model["metrics"]["unassigned_worker_count"] == 0.0
     assert model["metrics"]["sps"] == 12.5
+    assert model["metrics"]["worker_learner_upload_accepted_batches"] == 1.0
+    assert model["metrics"]["worker_learner_upload_failed_batches"] == 0.0
+    assert model["metrics"]["worker_learner_upload_rejected_batches"] == 0.0
+    assert model["metrics"]["worker_learner_upload_submitted_batches"] == 1.0
     assert model["metrics"]["worker_policy_lag_max"] == 2.0
     assert model["metrics"]["worker_without_policy_version_count"] == 0.0
     assert model["metrics"]["worker_without_checkpoint_version_count"] == 0.0
@@ -35,6 +39,10 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
             "assigned_task": "gruz",
             "checkpoint_lag": 0.0,
             "checkpoint_version": 3.0,
+            "learner_upload_accepted_batches": 1.0,
+            "learner_upload_failed_batches": 0.0,
+            "learner_upload_rejected_batches": 0.0,
+            "learner_upload_submitted_batches": 1.0,
             "policy_lag": 0.0,
             "policy_version": 7.0,
             "sps": 12.5,
@@ -47,6 +55,10 @@ def test_dashboard_model_reports_degraded_worker_lag_and_tasks() -> None:
             "assigned_task": "hornet",
             "checkpoint_lag": 1.0,
             "checkpoint_version": 2.0,
+            "learner_upload_accepted_batches": 0.0,
+            "learner_upload_failed_batches": 0.0,
+            "learner_upload_rejected_batches": 0.0,
+            "learner_upload_submitted_batches": 0.0,
             "policy_lag": 2.0,
             "policy_version": 5.0,
             "sps": 0.0,
@@ -168,6 +180,37 @@ def test_dashboard_health_flags_learner_backpressure() -> None:
     }
 
 
+def test_dashboard_health_flags_worker_learner_upload_issues() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "recovering_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_learner_upload_failed_batches": 1.0,
+            "worker_learner_upload_rejected_batches": 2.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": [
+            "worker learner upload failures",
+            "worker learner upload rejections",
+        ],
+    }
+
+
 def test_dashboard_health_flags_workers_missing_versions() -> None:
     summary = _phase8_summary()
     metrics = summary["coordinator"]["metrics"]
@@ -237,6 +280,10 @@ def _phase8_summary() -> dict[str, object]:
                 "stale_checkpoint_worker_count": 0.0,
                 "stale_policy_worker_count": 1.0,
                 "worker_checkpoint_lag_max": 1.0,
+                "worker_learner_upload_accepted_batches": 1.0,
+                "worker_learner_upload_failed_batches": 0.0,
+                "worker_learner_upload_rejected_batches": 0.0,
+                "worker_learner_upload_submitted_batches": 1.0,
                 "worker_checkpoint_version_max": 3.0,
                 "worker_count": 2.0,
                 "worker_crash_count": 1.0,
@@ -255,6 +302,10 @@ def _phase8_summary() -> dict[str, object]:
                     "info": {"status": "running"},
                     "metrics": {
                         "checkpoint_version": 3,
+                        "learner_upload_accepted_batches": 1,
+                        "learner_upload_failed_batches": 0,
+                        "learner_upload_rejected_batches": 0,
+                        "learner_upload_submitted_batches": 1,
                         "policy_version": 7,
                         "sps": 12.5,
                         "worker_crash_count": 0,
@@ -266,6 +317,10 @@ def _phase8_summary() -> dict[str, object]:
                     "info": {"status": "recovering"},
                     "metrics": {
                         "checkpoint_version": 2,
+                        "learner_upload_accepted_batches": 0,
+                        "learner_upload_failed_batches": 0,
+                        "learner_upload_rejected_batches": 0,
+                        "learner_upload_submitted_batches": 0,
                         "policy_version": 5,
                         "sps": 0.0,
                         "worker_crash_count": 1,

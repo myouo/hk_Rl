@@ -62,6 +62,10 @@ def test_run_coordinator_builds_assignment_summary() -> None:
         "worker_checkpoint_lag_max": 0.0,
         "stale_checkpoint_worker_count": 0.0,
         "worker_without_checkpoint_version_count": 2.0,
+        "worker_learner_upload_accepted_batches": 0.0,
+        "worker_learner_upload_failed_batches": 0.0,
+        "worker_learner_upload_rejected_batches": 0.0,
+        "worker_learner_upload_submitted_batches": 0.0,
     }
     assert summary["workers"]["worker-0"]["assigned_task"] == "gruz_mother"
 

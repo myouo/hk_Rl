@@ -47,6 +47,18 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         "worker_checkpoint_lag_max": _float(metrics.get("worker_checkpoint_lag_max", 0.0)),
         "worker_count": _float(metrics.get("worker_count", 0.0)),
         "worker_crash_count": _float(metrics.get("worker_crash_count", 0.0)),
+        "worker_learner_upload_accepted_batches": _float(
+            metrics.get("worker_learner_upload_accepted_batches", 0.0)
+        ),
+        "worker_learner_upload_failed_batches": _float(
+            metrics.get("worker_learner_upload_failed_batches", 0.0)
+        ),
+        "worker_learner_upload_rejected_batches": _float(
+            metrics.get("worker_learner_upload_rejected_batches", 0.0)
+        ),
+        "worker_learner_upload_submitted_batches": _float(
+            metrics.get("worker_learner_upload_submitted_batches", 0.0)
+        ),
         "worker_without_checkpoint_version_count": _float(
             metrics.get("worker_without_checkpoint_version_count", 0.0)
         ),
@@ -97,8 +109,11 @@ def render_profile_markdown(report: Mapping[str, Any]) -> str:
             "",
             "## Workers",
             "",
-            "| Worker | Status | SPS | Rollout s | Steps | Crashes |",
-            "| --- | --- | ---: | ---: | ---: | ---: |",
+            (
+                "| Worker | Status | SPS | Rollout s | Steps | Crashes | "
+                "Upload Submitted | Upload Accepted | Upload Rejected | Upload Failed |"
+            ),
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for worker in (_mapping(item) for item in workers):
@@ -109,7 +124,11 @@ def render_profile_markdown(report: Mapping[str, Any]) -> str:
             f"{_format_value(worker.get('sps'))} | "
             f"{_format_value(worker.get('rollout_duration_s'))} | "
             f"{_format_value(worker.get('rollout_steps'))} | "
-            f"{_format_value(worker.get('worker_crash_count'))} |"
+            f"{_format_value(worker.get('worker_crash_count'))} | "
+            f"{_format_value(worker.get('learner_upload_submitted_batches'))} | "
+            f"{_format_value(worker.get('learner_upload_accepted_batches'))} | "
+            f"{_format_value(worker.get('learner_upload_rejected_batches'))} | "
+            f"{_format_value(worker.get('learner_upload_failed_batches'))} |"
         )
 
     return "\n".join(lines) + "\n"
@@ -156,6 +175,18 @@ def _worker_profiles(raw_workers: Any) -> list[dict[str, Any]]:
                 "sps": _float(metrics.get("sps", 0.0)),
                 "status": str(info.get("status", "unknown")),
                 "worker_crash_count": _float(metrics.get("worker_crash_count", 0.0)),
+                "learner_upload_accepted_batches": _float(
+                    metrics.get("learner_upload_accepted_batches", 0.0)
+                ),
+                "learner_upload_failed_batches": _float(
+                    metrics.get("learner_upload_failed_batches", 0.0)
+                ),
+                "learner_upload_rejected_batches": _float(
+                    metrics.get("learner_upload_rejected_batches", 0.0)
+                ),
+                "learner_upload_submitted_batches": _float(
+                    metrics.get("learner_upload_submitted_batches", 0.0)
+                ),
                 "worker_id": str(worker_id),
             }
         )
@@ -225,6 +256,24 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "worker_crashes",
                 "Worker crash/recovery churn is visible in the fleet.",
                 "Correlate crash count with learner intake, env transport, and reset failures.",
+            )
+        )
+    if metrics["worker_learner_upload_failed_batches"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "worker_learner_upload_failures",
+                "Workers failed to upload rollout batches to the learner.",
+                "Inspect learner reachability, auth tokens, and worker upload retry behavior.",
+            )
+        )
+    if metrics["worker_learner_upload_rejected_batches"] > 0.0:
+        findings.append(
+            _finding(
+                "warning",
+                "worker_learner_upload_rejections",
+                "The learner rejected batches submitted by workers.",
+                "Inspect policy staleness, batch schema, and learner max-staleness settings.",
             )
         )
     if metrics["stale_policy_worker_count"] > 0.0:

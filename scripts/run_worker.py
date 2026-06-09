@@ -294,7 +294,7 @@ def _make_batch_uploader(
     learner_endpoint: str | None = None,
     auth_token: str | None = None,
     uploaded: list[bool] | None = None,
-) -> Callable[[RolloutBatch], None] | None:
+) -> Callable[[RolloutBatch], bool | None] | None:
     if batch_dir is None and learner_endpoint is None:
         return None
 
@@ -307,7 +307,7 @@ def _make_batch_uploader(
     safe_worker = _safe_filename_component(worker_id)
     sequence = 0
 
-    def upload(batch: RolloutBatch) -> None:
+    def upload(batch: RolloutBatch) -> bool | None:
         nonlocal sequence
         sequence += 1
         if directory is not None:
@@ -321,6 +321,8 @@ def _make_batch_uploader(
             accepted = client.submit(batch)
             if uploaded is not None:
                 uploaded.append(accepted)
+            return accepted
+        return None
 
     return upload
 

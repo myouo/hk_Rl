@@ -340,7 +340,8 @@ the project version tracks the **schema_version** + roadmap phase.
   coordinator monitoring without a live game.
 - `scripts/run_phase8_smoke.py --work-dir` now resets generated checkpoints,
   batches, heartbeats, and eval metrics before each run so repeated Phase 8
-  artifact targets do not reuse stale registry state.
+  artifact targets do not reuse stale registry state, and holds a work-dir lock
+  so concurrent artifact targets do not mix generations.
 - `scripts/render_phase8_dashboard.py` and `make phase8-dashboard` now render a
   static Phase 8 fleet dashboard from coordinator or offline-smoke summary JSON.
 - Phase 8 dashboard health now marks worker crash churn as degraded even when no
@@ -351,6 +352,8 @@ the project version tracks the **schema_version** + roadmap phase.
   been assigned tasks.
 - Phase 8 dashboard/profile reports now surface learner intake counters and flag
   rejected or still-queued learner batches.
+- Worker heartbeats and Phase 8 dashboard/profile reports now surface worker-side
+  learner upload counters and flag failed or rejected worker uploads.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.

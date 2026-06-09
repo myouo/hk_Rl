@@ -65,6 +65,10 @@ def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
         "a",
         {
             "checkpoint_version": 2,
+            "learner_upload_accepted_batches": 1,
+            "learner_upload_failed_batches": 0,
+            "learner_upload_rejected_batches": 1,
+            "learner_upload_submitted_batches": 2,
             "learner_endpoint": "learner:5600",
             "policy_version": 7,
             "rollout_steps": 128,
@@ -77,6 +81,10 @@ def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
         "b",
         {
             "checkpoint_version": 2,
+            "learner_upload_accepted_batches": 0,
+            "learner_upload_failed_batches": 1,
+            "learner_upload_rejected_batches": 0,
+            "learner_upload_submitted_batches": 1,
             "policy_version": 7,
             "rollout_steps": 128,
             "sps": 7.5,
@@ -91,6 +99,7 @@ def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
     assert record.metrics["policy_version"] == 7.0
     assert record.metrics["sps"] == 12.5
     assert record.metrics["worker_crash_count"] == 1.0
+    assert record.metrics["learner_upload_submitted_batches"] == 2.0
 
     clock.advance(6.0)
     coordinator.ingest_heartbeat_payload(
@@ -124,6 +133,10 @@ def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
         "worker_checkpoint_lag_max": 0.0,
         "stale_checkpoint_worker_count": 0.0,
         "worker_without_checkpoint_version_count": 0.0,
+        "worker_learner_upload_accepted_batches": 1.0,
+        "worker_learner_upload_failed_batches": 1.0,
+        "worker_learner_upload_rejected_batches": 1.0,
+        "worker_learner_upload_submitted_batches": 3.0,
     }
     assert coordinator.lost_workers() == ["b"]
 

@@ -87,8 +87,10 @@ smoke path. It builds the learner from task YAMLs, publishes a local checkpoint
 registry, runs a worker dry-run against that registry, writes synthetic
 heartbeats/evaluator metrics, and feeds them through the coordinator snapshot.
 When `--work-dir` is provided, the script resets its generated checkpoints,
-batches, heartbeat JSONL, and evaluator metrics before writing new artifacts so
-repeated dashboard/profile runs do not reuse stale registry state.
+batches, heartbeat JSONL, and evaluator metrics before writing new artifacts and
+holds a work-directory lock while running, so repeated or concurrent
+dashboard/profile runs do not reuse stale registry state or mix artifact
+generations.
 It does not connect to a live game, start learner intake sockets, or exercise mod
 runtime behavior.
 
@@ -172,7 +174,11 @@ the same `{worker_id, payload}` JSONL envelope consumed by
 monitoring snapshots. Successful rollout heartbeats include
 `rollout_duration_s` and `sps = rollout_steps / rollout_duration_s`; recovering
 heartbeats report zero for both fields so dashboards do not treat a failed
-partial rollout as throughput.
+partial rollout as throughput. When a worker is configured with a learner
+endpoint, heartbeats also include `learner_upload_submitted_batches`,
+`learner_upload_accepted_batches`, `learner_upload_rejected_batches`, and
+`learner_upload_failed_batches` so upload failures remain visible even while the
+worker is recovering.
 
 ## 8. Monitoring snapshot
 
@@ -185,7 +191,9 @@ worker policy/checkpoint versions are summarized as min/max/lag fields, with
 `worker_without_*_version_count` counting active workers that have not reported a
 version yet. `recovering_worker_count` is derived from heartbeat
 `status = "recovering"` so dashboards can separate crash recovery from normal
-low-SPS workers.
+low-SPS workers. Worker-side learner upload counters are summed across the
+registry as `worker_learner_upload_*_batches`, including lost workers, so failed
+or rejected uploads are not hidden after heartbeat expiry.
 The `scripts/run_coordinator.py --heartbeat-jsonl FILE` entry point accepts one
 JSON object per line, either `{ "worker_id": "...", "payload": {...} }` or a flat
 object with `worker_id` plus heartbeat fields, and emits the same aggregate plus
@@ -206,12 +214,14 @@ monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 CI artifacts or local inspection. Dashboard health is marked degraded when
 workers are lost/recovering, crash churn is visible, active workers are
 unassigned, workers lag or omit policy or checkpoint versions, or active workers
-report zero fleet SPS. It also shows learner intake counters and flags rejected
+report zero fleet SPS. It also shows worker-side learner upload counters and
+learner intake counters, and flags failed/rejected worker uploads plus rejected
 or still-queued learner batches.
 `scripts/render_profile_report.py --summary SUMMARY --output-json PROFILE`
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, unassigned workers, stale or missing
-policies/checkpoints, learner intake backpressure, and missing rollout timing.
+policies/checkpoints, worker upload failures/rejections, learner intake
+backpressure, and missing rollout timing.
 `make phase8-profile` writes `runs/phase8-smoke/profile.md` and `profile.json`;
 it is a stable report format for CI/local comparisons, not a replacement for
 Unity profiler captures on the game machine.

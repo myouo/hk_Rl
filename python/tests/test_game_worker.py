@@ -265,6 +265,10 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
         {
             "checkpoint_version": -1,
             "learner_endpoint": "learner:5600",
+            "learner_upload_accepted_batches": 1,
+            "learner_upload_failed_batches": 0,
+            "learner_upload_rejected_batches": 0,
+            "learner_upload_submitted_batches": 1,
             "policy_version": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
@@ -275,6 +279,10 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
         {
             "checkpoint_version": -1,
             "learner_endpoint": "learner:5600",
+            "learner_upload_accepted_batches": 2,
+            "learner_upload_failed_batches": 0,
+            "learner_upload_rejected_batches": 0,
+            "learner_upload_submitted_batches": 2,
             "policy_version": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
@@ -320,6 +328,10 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
         "checkpoint_version": -1,
         "error": "TimeoutError: simulated transport timeout",
         "learner_endpoint": None,
+        "learner_upload_accepted_batches": 0,
+        "learner_upload_failed_batches": 0,
+        "learner_upload_rejected_batches": 0,
+        "learner_upload_submitted_batches": 0,
         "policy_version": 0,
         "rollout_duration_s": 0.0,
         "rollout_steps": 0,
@@ -329,6 +341,74 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
     }
     assert heartbeats[-1]["status"] == "running"
     assert heartbeats[-1]["worker_crash_count"] == 1
+
+
+def test_game_worker_reports_learner_upload_rejections() -> None:
+    env = FakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    heartbeats: list[dict[str, Any]] = []
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        learner_endpoint="learner:5600",
+        batch_uploader=lambda _batch: False,
+        heartbeat_sink=heartbeats.append,
+    )
+
+    worker.run(total_steps=2)
+
+    assert heartbeats[-1]["learner_upload_submitted_batches"] == 1
+    assert heartbeats[-1]["learner_upload_accepted_batches"] == 0
+    assert heartbeats[-1]["learner_upload_rejected_batches"] == 1
+    assert heartbeats[-1]["learner_upload_failed_batches"] == 0
+
+
+def test_game_worker_reports_learner_upload_failures_before_recovery() -> None:
+    env = FakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    heartbeats: list[dict[str, Any]] = []
+
+    def fail_upload(batch: Any) -> bool:
+        del batch
+        raise ConnectionError("learner unavailable")
+
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        learner_endpoint="learner:5600",
+        batch_uploader=fail_upload,
+        heartbeat_sink=heartbeats.append,
+        max_consecutive_failures=0,
+    )
+
+    with pytest.raises(RuntimeError, match="exceeded max_consecutive_failures=0"):
+        worker.run(total_steps=2)
+
+    assert heartbeats[-1]["status"] == "recovering"
+    assert heartbeats[-1]["learner_upload_submitted_batches"] == 1
+    assert heartbeats[-1]["learner_upload_accepted_batches"] == 0
+    assert heartbeats[-1]["learner_upload_rejected_batches"] == 0
+    assert heartbeats[-1]["learner_upload_failed_batches"] == 1
 
 
 def test_game_worker_recovery_reconnects_wrapped_env_transport() -> None:

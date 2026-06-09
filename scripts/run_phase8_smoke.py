@@ -13,8 +13,12 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -45,14 +49,16 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--output", help="optional path to write the summary JSON")
+    p.add_argument("--dashboard-html", help="optional path to write dashboard HTML")
+    p.add_argument("--dashboard-json", help="optional path to write dashboard JSON")
+    p.add_argument("--profile-json", help="optional path to write profile JSON")
+    p.add_argument("--profile-md", help="optional path to write profile Markdown")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_argparser().parse_args(argv)
     summary = run_from_args(args)
-    if args.output:
-        _write_json(Path(args.output), summary)
     print(json.dumps(summary, sort_keys=True))
     return 0
 
@@ -64,6 +70,15 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("at least one task is required")
 
     work_dir = _work_dir(getattr(args, "work_dir", None))
+    with _work_dir_lock(work_dir):
+        summary = _run_from_args_unlocked(args, work_dir)
+        if getattr(args, "output", None):
+            _write_json(Path(args.output), summary)
+        _write_requested_artifacts(summary, args)
+        return summary
+
+
+def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[str, Any]:
     _reset_generated_artifacts(work_dir)
     checkpoint_dir = work_dir / "checkpoints"
     heartbeat_jsonl = work_dir / "worker-heartbeats.jsonl"
@@ -182,6 +197,10 @@ def _write_heartbeat_jsonl(
             {
                 "payload": {
                     "checkpoint_version": latest_checkpoint if current else latest_checkpoint - 1,
+                    "learner_upload_accepted_batches": 0,
+                    "learner_upload_failed_batches": 0,
+                    "learner_upload_rejected_batches": 0,
+                    "learner_upload_submitted_batches": 0,
                     "policy_version": 2 if current else 1,
                     "rollout_duration_s": 4.0 if current else 0.0,
                     "rollout_steps": 128 if current else 0,
@@ -213,6 +232,39 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _write_requested_artifacts(summary: dict[str, Any], args: argparse.Namespace) -> None:
+    dashboard_html = getattr(args, "dashboard_html", None)
+    dashboard_json = getattr(args, "dashboard_json", None)
+    if dashboard_html or dashboard_json:
+        from hkrl.coordinator.dashboard import build_dashboard_model, render_dashboard_html
+
+        dashboard = build_dashboard_model(summary)
+        if dashboard_html:
+            _write_text(Path(dashboard_html), render_dashboard_html(dashboard))
+        if dashboard_json:
+            _write_json(Path(dashboard_json), dashboard)
+
+    profile_json = getattr(args, "profile_json", None)
+    profile_md = getattr(args, "profile_md", None)
+    if profile_json or profile_md:
+        from hkrl.coordinator.profiling import (
+            build_profile_report,
+            render_profile_markdown,
+            report_to_json,
+        )
+
+        profile = build_profile_report(summary)
+        if profile_json:
+            _write_text(Path(profile_json), report_to_json(profile))
+        if profile_md:
+            _write_text(Path(profile_md), render_profile_markdown(profile))
+
+
 def _work_dir(path: str | None) -> Path:
     if path is None:
         return Path(tempfile.mkdtemp(prefix="hkrl_phase8_smoke_")).resolve()
@@ -230,6 +282,35 @@ def _reset_generated_artifacts(work_dir: Path) -> None:
         path = work_dir / filename
         if path.exists():
             path.unlink()
+
+
+@contextmanager
+def _work_dir_lock(
+    work_dir: Path,
+    *,
+    timeout_s: float = 30.0,
+    poll_s: float = 0.05,
+) -> Iterator[None]:
+    lock_path = work_dir / ".phase8-smoke.lock"
+    deadline = time.monotonic() + timeout_s
+    fd: int | None = None
+    while fd is None:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"timed out waiting for smoke work-dir lock: {lock_path}")
+            time.sleep(poll_s)
+
+    try:
+        os.write(fd, str(os.getpid()).encode("ascii"))
+        yield
+    finally:
+        os.close(fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _load_script_module(name: str) -> ModuleType:

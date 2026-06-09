@@ -191,6 +191,18 @@ class Coordinator:
             "worker_without_checkpoint_version_count": float(
                 sum(1 for worker in active if "checkpoint_version" not in worker.metrics)
             ),
+            "worker_learner_upload_accepted_batches": _sum_metric(
+                records, "learner_upload_accepted_batches"
+            ),
+            "worker_learner_upload_failed_batches": _sum_metric(
+                records, "learner_upload_failed_batches"
+            ),
+            "worker_learner_upload_rejected_batches": _sum_metric(
+                records, "learner_upload_rejected_batches"
+            ),
+            "worker_learner_upload_submitted_batches": _sum_metric(
+                records, "learner_upload_submitted_batches"
+            ),
         }
 
     def _require_worker(self, worker_id: str) -> WorkerRecord:
@@ -202,3 +214,7 @@ class Coordinator:
 
 def _metric_values(workers: list[WorkerRecord], key: str) -> list[float]:
     return [float(worker.metrics[key]) for worker in workers if key in worker.metrics]
+
+
+def _sum_metric(workers: list[WorkerRecord], key: str) -> float:
+    return sum(float(worker.metrics.get(key, 0.0)) for worker in workers)

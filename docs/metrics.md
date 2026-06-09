@@ -12,6 +12,10 @@ time_to_kill          invalid_action_ratio  action_entropy
 policy_kl             value_loss            policy_loss
 explained_variance    SPS                   reset_success_rate
 reset_duration        worker_crash_count
+worker_learner_upload_submitted_batches
+worker_learner_upload_accepted_batches
+worker_learner_upload_rejected_batches
+worker_learner_upload_failed_batches
 worker_policy_lag_max worker_checkpoint_lag_max
 stale_policy_worker_count stale_checkpoint_worker_count
 recovering_worker_count
@@ -69,17 +73,18 @@ stdout sink emits the same scalar/episode payloads as JSON lines.
 For Phase 8 fleet monitoring, `scripts/render_phase8_dashboard.py` renders a
 static HTML/JSON dashboard from `run_coordinator.py` or `run_phase8_smoke.py`
 summary JSON. The dashboard summarizes fleet SPS, crash/recovery counts,
-policy/checkpoint lag, worker table state, learner intake counters, sampler
-weights, and evaluator win-rate inputs; `make phase8-dashboard` writes the
-default offline smoke dashboard to `runs/phase8-smoke/`.
+policy/checkpoint lag, worker table state, worker-side learner upload counters,
+learner intake counters, sampler weights, and evaluator win-rate inputs;
+`make phase8-dashboard` writes the default offline smoke dashboard to
+`runs/phase8-smoke/`.
 Dashboard health is degraded for lost workers, recovering workers, crash churn,
 unassigned active workers, stale/missing policy or checkpoint versions, or active
-workers reporting zero fleet SPS. Learner rejected/queued batches are also
-reported as dashboard health issues.
+workers reporting zero fleet SPS. Worker learner upload failures/rejections and
+learner rejected/queued batches are also reported as dashboard health issues.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
 crash/recovery counts, unassigned workers, and stale/missing policy or checkpoint
-versions into bottleneck findings, with learner rejected/queued batches reported
-as intake/backpressure findings.
+versions into bottleneck findings, with worker upload failures/rejections and
+learner rejected/queued batches reported as intake/backpressure findings.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

@@ -22,6 +22,10 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
     assert report["metrics"]["rollout_duration_s_mean"] == 2.0
     assert report["metrics"]["rollout_duration_s_max"] == 4.0
     assert report["metrics"]["rollout_steps_total"] == 128.0
+    assert report["metrics"]["worker_learner_upload_accepted_batches"] == 1.0
+    assert report["metrics"]["worker_learner_upload_failed_batches"] == 0.0
+    assert report["metrics"]["worker_learner_upload_rejected_batches"] == 0.0
+    assert report["metrics"]["worker_learner_upload_submitted_batches"] == 1.0
     assert report["metrics"]["worker_without_policy_version_count"] == 0.0
     assert report["metrics"]["worker_without_checkpoint_version_count"] == 0.0
     assert [finding["code"] for finding in report["findings"]] == [
@@ -31,6 +35,7 @@ def test_profile_report_summarizes_worker_timing_and_findings() -> None:
         "stale_checkpoint_workers",
     ]
     assert report["workers"][0]["worker_id"] == "worker-0"
+    assert report["workers"][0]["learner_upload_submitted_batches"] == 1.0
     assert report["workers"][0]["rollout_duration_s"] == 4.0
 
 
@@ -61,6 +66,21 @@ def test_profile_report_flags_learner_backpressure() -> None:
     assert "learner_rejected_batches" in {finding["code"] for finding in report["findings"]}
 
 
+def test_profile_report_flags_worker_learner_upload_issues() -> None:
+    summary = _summary(include_timing=True)
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["worker_learner_upload_failed_batches"] = 1.0
+    metrics["worker_learner_upload_rejected_batches"] = 2.0
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["worker_learner_upload_failed_batches"] == 1.0
+    assert report["metrics"]["worker_learner_upload_rejected_batches"] == 2.0
+    assert "worker_learner_upload_failures" in {finding["code"] for finding in report["findings"]}
+    assert "worker_learner_upload_rejections" in {finding["code"] for finding in report["findings"]}
+
+
 def test_profile_report_flags_missing_worker_timing() -> None:
     report = build_profile_report(_summary(include_timing=False))
 
@@ -87,7 +107,7 @@ def test_profile_report_markdown_contains_findings_and_worker_table() -> None:
 
     assert "# HKRL Phase 8 Profile" in markdown
     assert "`recovering_workers`" in markdown
-    assert "| worker-0 | running | 32 | 4 | 128 | 0 |" in markdown
+    assert "| worker-0 | running | 32 | 4 | 128 | 0 | 1 | 1 | 0 | 0 |" in markdown
 
 
 def test_render_profile_report_script_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -143,6 +163,10 @@ def _summary(*, include_timing: bool) -> dict[str, object]:
                 "worker_checkpoint_lag_max": 1.0,
                 "worker_count": 2.0,
                 "worker_crash_count": 1.0,
+                "worker_learner_upload_accepted_batches": 1.0,
+                "worker_learner_upload_failed_batches": 0.0,
+                "worker_learner_upload_rejected_batches": 0.0,
+                "worker_learner_upload_submitted_batches": 1.0,
                 "worker_policy_lag_max": 1.0,
                 "worker_without_checkpoint_version_count": 0.0,
                 "worker_without_policy_version_count": 0.0,
@@ -172,6 +196,10 @@ def _worker(
 ) -> dict[str, object]:
     metrics: dict[str, object] = {
         "checkpoint_version": checkpoint_version,
+        "learner_upload_accepted_batches": 1 if status == "running" else 0,
+        "learner_upload_failed_batches": 0,
+        "learner_upload_rejected_batches": 0,
+        "learner_upload_submitted_batches": 1 if status == "running" else 0,
         "policy_version": policy_version,
         "rollout_steps": rollout_steps,
         "sps": sps,

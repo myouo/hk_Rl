@@ -136,8 +136,9 @@ def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:
     uploader = module._make_batch_uploader(str(tmp_path), "game/pc:1", written)
     assert uploader is not None
 
-    uploader(_sample_batch(policy_version=4))
+    accepted = uploader(_sample_batch(policy_version=4))
 
+    assert accepted is None
     assert len(written) == 1
     path = Path(written[0])
     assert path.name == "game_pc_1_00000001_v000004.npz"
@@ -199,8 +200,9 @@ def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None
     )
     assert uploader is not None
 
-    uploader(_sample_batch(policy_version=7))
+    accepted = uploader(_sample_batch(policy_version=7))
 
+    assert accepted is True
     assert clients == [("127.0.0.1:5600", "secret")]
     assert written == []
     assert submitted_versions == [7]

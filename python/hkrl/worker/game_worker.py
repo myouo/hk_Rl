@@ -39,7 +39,7 @@ class GameWorker:
         config: TrainConfig,
         checkpoint_client: CheckpointClient | None = None,
         learner_endpoint: str | None = None,
-        batch_uploader: Callable[[RolloutBatch], None] | None = None,
+        batch_uploader: Callable[[RolloutBatch], bool | None] | None = None,
         heartbeat_sink: Callable[[dict[str, Any]], None] | None = None,
         task_provider: Callable[[], Any | None] | None = None,
         max_consecutive_failures: int = 3,
@@ -102,6 +102,10 @@ class GameWorker:
         self.last_error: str | None = None
         self.last_rollout_duration_s = 0.0
         self.last_sps = 0.0
+        self.learner_upload_submitted_batches = 0
+        self.learner_upload_accepted_batches = 0
+        self.learner_upload_rejected_batches = 0
+        self.learner_upload_failed_batches = 0
 
     def run(self, total_steps: int | None = None) -> None:
         """Sampling loop. Handles reset failures, reconnect, and weight reloads.
@@ -259,8 +263,24 @@ class GameWorker:
         return True
 
     def _upload_batch(self, batch: RolloutBatch) -> None:
-        if self.batch_uploader is not None:
-            self.batch_uploader(batch)
+        if self.batch_uploader is None:
+            return
+
+        track_learner_upload = self.learner_endpoint is not None
+        if track_learner_upload:
+            self.learner_upload_submitted_batches += 1
+        try:
+            accepted = self.batch_uploader(batch)
+        except Exception:
+            if track_learner_upload:
+                self.learner_upload_failed_batches += 1
+            raise
+        if not track_learner_upload:
+            return
+        if accepted is False:
+            self.learner_upload_rejected_batches += 1
+        else:
+            self.learner_upload_accepted_batches += 1
 
     def _emit_heartbeat(self, batch: RolloutBatch) -> None:
         if self.heartbeat_sink is None:
@@ -269,6 +289,7 @@ class GameWorker:
             {
                 "checkpoint_version": self.checkpoint_version,
                 "learner_endpoint": self.learner_endpoint,
+                **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
                 "rollout_duration_s": self.last_rollout_duration_s,
                 "rollout_steps": int(batch.rewards.size),
@@ -286,6 +307,7 @@ class GameWorker:
                 "checkpoint_version": self.checkpoint_version,
                 "error": f"{type(exc).__name__}: {exc}",
                 "learner_endpoint": self.learner_endpoint,
+                **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
                 "rollout_duration_s": 0.0,
                 "rollout_steps": 0,
@@ -294,6 +316,14 @@ class GameWorker:
                 "worker_crash_count": self.worker_crash_count,
             }
         )
+
+    def _learner_upload_metrics(self) -> dict[str, int]:
+        return {
+            "learner_upload_accepted_batches": self.learner_upload_accepted_batches,
+            "learner_upload_failed_batches": self.learner_upload_failed_batches,
+            "learner_upload_rejected_batches": self.learner_upload_rejected_batches,
+            "learner_upload_submitted_batches": self.learner_upload_submitted_batches,
+        }
 
     def _handle_runtime_failure(self, exc: Exception) -> None:
         self.worker_crash_count += 1

@@ -15,6 +15,10 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     module = _load_script("run_phase8_smoke.py")
     root = Path(__file__).parents[2]
     output = tmp_path / "summary.json"
+    dashboard_html = tmp_path / "dashboard.html"
+    dashboard_json = tmp_path / "dashboard.json"
+    profile_json = tmp_path / "profile.json"
+    profile_md = tmp_path / "profile.md"
     args = argparse.Namespace(
         config=str(root / "configs/train/remote_learner.yaml"),
         tasks=[
@@ -25,10 +29,13 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
         num_workers=2,
         seed=123,
         output=str(output),
+        dashboard_html=str(dashboard_html),
+        dashboard_json=str(dashboard_json),
+        profile_json=str(profile_json),
+        profile_md=str(profile_md),
     )
 
     summary = module.run_from_args(args)
-    module._write_json(output, summary)
 
     assert summary["ok"] is True
     assert summary["checkpoint_versions"] == [1, 2]
@@ -47,6 +54,10 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     assert summary["coordinator"]["metrics"]["worker_policy_lag_max"] == 1.0
     assert Path(summary["artifacts"]["heartbeat_jsonl"]).exists()
     assert json.loads(output.read_text(encoding="utf-8"))["ok"] is True
+    assert "HKRL Phase 8 Dashboard" in dashboard_html.read_text(encoding="utf-8")
+    assert json.loads(dashboard_json.read_text(encoding="utf-8"))["metrics"]["sps"] == 32.0
+    assert json.loads(profile_json.read_text(encoding="utf-8"))["metrics"]["sps"] == 32.0
+    assert "HKRL Phase 8 Profile" in profile_md.read_text(encoding="utf-8")
 
 
 def test_run_phase8_smoke_resets_generated_work_dir(tmp_path: Path) -> None:
@@ -88,6 +99,27 @@ def test_run_phase8_smoke_ignores_directory_cleanup_races(
     module._reset_generated_artifacts(tmp_path)
 
     assert calls == [(checkpoints, True)]
+
+
+def test_run_phase8_smoke_work_dir_lock_releases(tmp_path: Path) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    lock_path = tmp_path / ".phase8-smoke.lock"
+
+    with module._work_dir_lock(tmp_path):
+        assert lock_path.exists()
+
+    assert not lock_path.exists()
+
+
+def test_run_phase8_smoke_work_dir_lock_times_out(tmp_path: Path) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    (tmp_path / ".phase8-smoke.lock").write_text("other", encoding="ascii")
+
+    with (
+        pytest.raises(TimeoutError, match="work-dir lock"),
+        module._work_dir_lock(tmp_path, timeout_s=0.0, poll_s=0.0),
+    ):
+        pass
 
 
 def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:

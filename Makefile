@@ -57,13 +57,19 @@ phase8-smoke: ## Run offline distributed wiring smoke (no live game required)
 
 phase8-dashboard: ## Render offline Phase 8 smoke dashboard under runs/phase8-smoke
 	mkdir -p runs/phase8-smoke
-	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json
-	$(PY) scripts/render_phase8_dashboard.py --summary runs/phase8-smoke/summary.json --output-html runs/phase8-smoke/dashboard.html --output-json runs/phase8-smoke/dashboard.json
+	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml \
+	  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+	  --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json \
+	  --dashboard-html runs/phase8-smoke/dashboard.html \
+	  --dashboard-json runs/phase8-smoke/dashboard.json
 
 phase8-profile: ## Render offline Phase 8 profiling report under runs/phase8-smoke
 	mkdir -p runs/phase8-smoke
-	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json
-	$(PY) scripts/render_profile_report.py --summary runs/phase8-smoke/summary.json --output-json runs/phase8-smoke/profile.json --output-md runs/phase8-smoke/profile.md
+	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml \
+	  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+	  --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json \
+	  --profile-json runs/phase8-smoke/profile.json \
+	  --profile-md runs/phase8-smoke/profile.md
 
 phase8-release-checklist: ## Render Phase 8 release checklist under runs/release
 	mkdir -p runs/release
@@ -71,9 +77,13 @@ phase8-release-checklist: ## Render Phase 8 release checklist under runs/release
 
 phase8-release-evidence: ## Render Phase 8 release evidence bundle manifest
 	mkdir -p runs/phase8-smoke runs/release
-	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json
-	$(PY) scripts/render_phase8_dashboard.py --summary runs/phase8-smoke/summary.json --output-html runs/phase8-smoke/dashboard.html --output-json runs/phase8-smoke/dashboard.json
-	$(PY) scripts/render_profile_report.py --summary runs/phase8-smoke/summary.json --output-json runs/phase8-smoke/profile.json --output-md runs/phase8-smoke/profile.md
+	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml \
+	  --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
+	  --work-dir runs/phase8-smoke --output runs/phase8-smoke/summary.json \
+	  --dashboard-html runs/phase8-smoke/dashboard.html \
+	  --dashboard-json runs/phase8-smoke/dashboard.json \
+	  --profile-json runs/phase8-smoke/profile.json \
+	  --profile-md runs/phase8-smoke/profile.md
 	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
 	$(PY) scripts/render_release_evidence.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/evidence.json --output-md runs/release/evidence.md
 	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --output-json runs/release/evidence-verification.json

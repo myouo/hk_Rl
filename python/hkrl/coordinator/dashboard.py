@@ -17,6 +17,10 @@ KEY_METRICS: tuple[str, ...] = (
     "sps",
     "sps_mean",
     "worker_crash_count",
+    "worker_learner_upload_submitted_batches",
+    "worker_learner_upload_accepted_batches",
+    "worker_learner_upload_rejected_batches",
+    "worker_learner_upload_failed_batches",
     "worker_policy_lag_max",
     "worker_checkpoint_lag_max",
     "stale_policy_worker_count",
@@ -168,6 +172,18 @@ def _worker_rows(raw_workers: Any, metrics: Mapping[str, Any]) -> list[dict[str,
                 "assigned_task": _optional_str(record.get("assigned_task")),
                 "checkpoint_lag": _lag(checkpoint_max, checkpoint_version),
                 "checkpoint_version": checkpoint_version,
+                "learner_upload_accepted_batches": _float(
+                    worker_metrics.get("learner_upload_accepted_batches", 0.0)
+                ),
+                "learner_upload_failed_batches": _float(
+                    worker_metrics.get("learner_upload_failed_batches", 0.0)
+                ),
+                "learner_upload_rejected_batches": _float(
+                    worker_metrics.get("learner_upload_rejected_batches", 0.0)
+                ),
+                "learner_upload_submitted_batches": _float(
+                    worker_metrics.get("learner_upload_submitted_batches", 0.0)
+                ),
                 "policy_lag": _lag(policy_max, policy_version),
                 "policy_version": policy_version,
                 "sps": _float(worker_metrics.get("sps", 0.0)),
@@ -233,6 +249,10 @@ def _health(metrics: Mapping[str, Any], learner: Mapping[str, Any]) -> dict[str,
         reasons.append("workers recovering")
     if _float(metrics.get("worker_crash_count", 0.0)) > 0.0:
         reasons.append("worker crashes")
+    if _float(metrics.get("worker_learner_upload_failed_batches", 0.0)) > 0.0:
+        reasons.append("worker learner upload failures")
+    if _float(metrics.get("worker_learner_upload_rejected_batches", 0.0)) > 0.0:
+        reasons.append("worker learner upload rejections")
     if _float(metrics.get("stale_policy_worker_count", 0.0)) > 0.0:
         reasons.append("stale policy workers")
     if _float(metrics.get("stale_checkpoint_worker_count", 0.0)) > 0.0:
@@ -283,6 +303,10 @@ def _render_worker_table(workers: list[Any]) -> str:
         "checkpoint",
         "checkpoint lag",
         "crashes",
+        "upload submitted",
+        "upload accepted",
+        "upload rejected",
+        "upload failed",
     )
     rows = [
         [
@@ -296,6 +320,10 @@ def _render_worker_table(workers: list[Any]) -> str:
             row.get("checkpoint_version"),
             row.get("checkpoint_lag"),
             row.get("worker_crash_count"),
+            row.get("learner_upload_submitted_batches"),
+            row.get("learner_upload_accepted_batches"),
+            row.get("learner_upload_rejected_batches"),
+            row.get("learner_upload_failed_batches"),
         ]
         for row in (_mapping(item) for item in workers)
     ]
