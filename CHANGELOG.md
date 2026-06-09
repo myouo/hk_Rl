@@ -377,6 +377,8 @@ the project version tracks the **schema_version** + roadmap phase.
   or `total_bytes` drift from the listed artifact rows.
 - Phase 8 release evidence verification now rejects unsupported
   `manifest_version` values.
+- Phase 8 release evidence verification now rejects duplicate artifact paths in
+  manifests.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

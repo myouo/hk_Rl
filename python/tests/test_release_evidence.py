@@ -204,6 +204,35 @@ def test_release_evidence_verifier_reports_manifest_version_mismatch(
     ]
 
 
+def test_release_evidence_verifier_reports_duplicate_artifact_paths(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=[
+            "runs/phase8-smoke/summary.json",
+            "runs/phase8-smoke/summary.json",
+        ],
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["artifact_count"] == 2
+    assert result["checked_artifact_count"] == 2
+    assert result["failures"] == [
+        {
+            "duplicate_paths": ["runs/phase8-smoke/summary.json"],
+            "field": "artifacts",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_artifact_paths_duplicate",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_total_bytes_mismatch(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
     _write(artifact, '{"ok": true}\n')

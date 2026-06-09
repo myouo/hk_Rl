@@ -292,6 +292,10 @@ def verify_release_evidence_manifest(
     if version_failure is not None:
         failures.append(version_failure)
 
+    duplicate_paths_failure = _verify_manifest_unique_artifact_paths(results)
+    if duplicate_paths_failure is not None:
+        failures.append(duplicate_paths_failure)
+
     count_failure = _verify_manifest_artifact_count(manifest, actual_count=len(results))
     if count_failure is not None:
         failures.append(count_failure)
@@ -434,6 +438,30 @@ def _verify_manifest_version(manifest: Mapping[str, Any]) -> dict[str, Any] | No
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_version_mismatch",
+        }
+    return None
+
+
+def _verify_manifest_unique_artifact_paths(
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for result in results:
+        path = result.get("path")
+        if not isinstance(path, str) or path == "<missing>":
+            continue
+        if path in seen:
+            duplicates.add(path)
+        seen.add(path)
+
+    if duplicates:
+        return {
+            "duplicate_paths": sorted(duplicates),
+            "field": "artifacts",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_artifact_paths_duplicate",
         }
     return None
 
