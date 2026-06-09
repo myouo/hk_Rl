@@ -1348,6 +1348,13 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_checkpoint_versions_malformed",
             }
+    task_ids = payload.get("task_ids")
+    worker_ids = payload.get("worker_ids")
+    assert isinstance(task_ids, Sequence)
+    assert isinstance(worker_ids, Sequence)
+    task_ids_failure = _verify_phase8_smoke_coordinator_task_ids(coordinator, task_ids=task_ids)
+    if task_ids_failure is not None:
+        return task_ids_failure
     task_wire_ids = coordinator.get("task_wire_ids")
     if not isinstance(task_wire_ids, Mapping) or not task_wire_ids:
         return {
@@ -1362,8 +1369,6 @@ def _verify_phase8_smoke_summary_structure(
     )
     if task_wire_failure is not None:
         return task_wire_failure
-    worker_ids = payload.get("worker_ids")
-    assert isinstance(worker_ids, Sequence)
     missing_worker_ids = sorted(
         str(worker_id) for worker_id in worker_ids if worker_id not in workers
     )
@@ -1386,6 +1391,13 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_worker_rows_unexpected",
         }
+    worker_count_failure = _verify_phase8_smoke_worker_count(
+        coordinator,
+        metrics=metrics,
+        worker_ids=worker_ids,
+    )
+    if worker_count_failure is not None:
+        return worker_count_failure
     worker_id = worker.get("worker_id")
     if worker_id not in worker_ids:
         return {
@@ -1410,6 +1422,63 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_coordinator_task_ids(
+    coordinator: Mapping[str, Any],
+    *,
+    task_ids: Sequence[Any],
+) -> dict[str, Any] | None:
+    coordinator_task_ids = coordinator.get("task_ids")
+    if (
+        not isinstance(coordinator_task_ids, Sequence)
+        or isinstance(coordinator_task_ids, (str, bytes))
+        or not all(isinstance(task_id, str) and task_id for task_id in coordinator_task_ids)
+        or list(coordinator_task_ids) != list(task_ids)
+    ):
+        return {
+            "coordinator_task_ids": (
+                list(coordinator_task_ids)
+                if isinstance(coordinator_task_ids, Sequence)
+                and not isinstance(coordinator_task_ids, (str, bytes))
+                else coordinator_task_ids
+            ),
+            "expected_task_ids": list(task_ids),
+            "field": "coordinator.task_ids",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_ids_mismatch",
+        }
+    return None
+
+
+def _verify_phase8_smoke_worker_count(
+    coordinator: Mapping[str, Any],
+    *,
+    metrics: Mapping[str, Any],
+    worker_ids: Sequence[Any],
+) -> dict[str, Any] | None:
+    expected_worker_count = len(worker_ids)
+    num_workers = coordinator.get("num_workers")
+    worker_count = metrics.get("worker_count")
+    failure = {
+        "expected_worker_count": expected_worker_count,
+        "field": "coordinator.num_workers",
+        "num_workers": num_workers,
+        "ok": False,
+        "path": "runs/phase8-smoke/summary.json",
+        "reason": "phase8_smoke_summary_worker_count_mismatch",
+        "worker_count": worker_count,
+    }
+    if not _is_non_negative_count(num_workers) or not _is_non_negative_count(worker_count):
+        return failure
+    assert isinstance(num_workers, (int, float))
+    assert isinstance(worker_count, (int, float))
+    if int(float(num_workers)) != expected_worker_count or float(worker_count) != float(
+        expected_worker_count
+    ):
+        return failure
     return None
 
 

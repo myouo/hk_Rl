@@ -614,6 +614,70 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_metrics(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_task_ids(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["task_ids"] = ["gruz_mother", "unknown_task"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "coordinator_task_ids": ["gruz_mother", "unknown_task"],
+            "expected_task_ids": ["gruz_mother", "hornet_protector_attuned"],
+            "field": "coordinator.task_ids",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_ids_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_worker_count(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["num_workers"] = 1
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["worker_count"] = 3.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "expected_worker_count": 2,
+            "field": "coordinator.num_workers",
+            "num_workers": 1,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_count_mismatch",
+            "worker_count": 3.0,
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -2589,6 +2653,8 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "sps": 32.0,
                 "worker_count": 2.0,
             },
+            "num_workers": 2,
+            "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "task_wire_ids": {
                 "gruz_mother": 0,
                 "hornet_protector_attuned": 1,

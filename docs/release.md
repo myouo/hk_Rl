@@ -38,10 +38,12 @@ summaries that do not report `ok=true` with non-negative coordinator
 `worker_count`, `active_worker_count`, and `sps` metrics, learner
 `policy_version`, coordinator assignments, a dry-run worker section with
 `worker_id`, task and worker-id sections, and non-negative integer checkpoint
-versions. Coordinator task wire IDs must exactly cover the listed task IDs with
-unique non-negative wire IDs. The dry-run `worker_id` must be listed in
-`worker_ids`, and coordinator worker rows plus assignments must match the listed
-worker IDs without extras. Smoke worker rows must include an `alive` flag and
+versions. Coordinator task IDs must match the top-level `task_ids`, and
+coordinator worker counts must match the listed `worker_ids`. Coordinator task
+wire IDs must exactly cover the listed task IDs with unique non-negative wire
+IDs. The dry-run `worker_id` must be listed in `worker_ids`, and coordinator
+worker rows plus assignments must match the listed worker IDs without extras.
+Smoke worker rows must include an `alive` flag and
 non-negative worker `sps`/`worker_crash_count` metrics. Dashboard JSON must
 include health, learner, metrics, task, and worker sections with well-formed
 task and worker rows, while dashboard HTML must have the HKRL dashboard title,
