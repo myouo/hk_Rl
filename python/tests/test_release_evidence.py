@@ -2432,6 +2432,48 @@ def test_release_evidence_verifier_rejects_eval_report_markdown_missing_task_row
     ]
 
 
+def test_release_evidence_verifier_rejects_eval_report_markdown_task_row_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    task = {
+        "damage_taken": 3.0,
+        "death_rate": 0.0,
+        "invalid_action_ratio": 0.01,
+        "metrics_valid": True,
+        "regression_delta": 0.1,
+        "regression_valid": True,
+        "task_id": "gruz_mother",
+        "time_to_kill": 12.5,
+        "win_rate": 0.9,
+    }
+    report = _eval_report(tasks=[task])
+    _write_eval_artifacts(tmp_path, report)
+    text = render_eval_report_markdown(report).replace(
+        "| gruz_mother | yes | yes | 0.9 | 0.1 | 3 | 12.5 | 0.01 | 0 |",
+        "| gruz_mother | yes | yes | 0.1 | 0.1 | 3 | 12.5 | 0.01 | 0 |",
+    )
+    _write(tmp_path / "runs" / "eval-report.md", text)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS) + 3
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "missing_task_ids": ["gruz_mother"],
+            "ok": False,
+            "path": "runs/eval-report.md",
+            "reason": "eval_report_markdown_task_rows_missing",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_eval_report_without_findings(
     tmp_path: Path,
 ) -> None:

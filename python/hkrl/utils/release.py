@@ -961,9 +961,9 @@ def _verify_eval_report_markdown_artifact(
         }
 
     missing_task_ids = sorted(
-        task_id
-        for task_id in _eval_report_task_ids(root, results)
-        if f"| {_markdown_cell(task_id)} |" not in text
+        str(task.get("task_id"))
+        for task in _eval_report_tasks(root, results)
+        if _eval_report_markdown_task_row(task) not in text
     )
     if missing_task_ids:
         return {
@@ -977,7 +977,10 @@ def _verify_eval_report_markdown_artifact(
     return None
 
 
-def _eval_report_task_ids(root: Path, results: Sequence[Mapping[str, Any]]) -> list[str]:
+def _eval_report_tasks(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
     eval_report = next(
         (result for result in results if result.get("path") == "runs/eval-report.json"),
         None,
@@ -995,13 +998,40 @@ def _eval_report_task_ids(root: Path, results: Sequence[Mapping[str, Any]]) -> l
     tasks = payload.get("tasks")
     if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)):
         return []
-    return [
-        task_id
-        for task in tasks
-        if isinstance(task, Mapping)
-        and isinstance((task_id := task.get("task_id")), str)
-        and task_id
-    ]
+    return [task for task in tasks if isinstance(task, Mapping)]
+
+
+def _eval_report_markdown_task_row(task: Mapping[str, Any]) -> str:
+    return (
+        "| "
+        f"{_eval_report_markdown_cell(str(task.get('task_id', '')))} | "
+        f"{_eval_report_markdown_value(task.get('metrics_valid'))} | "
+        f"{_eval_report_markdown_value(task.get('regression_valid'))} | "
+        f"{_eval_report_markdown_value(task.get('win_rate'))} | "
+        f"{_eval_report_markdown_value(task.get('regression_delta'))} | "
+        f"{_eval_report_markdown_value(task.get('damage_taken'))} | "
+        f"{_eval_report_markdown_value(task.get('time_to_kill'))} | "
+        f"{_eval_report_markdown_value(task.get('invalid_action_ratio'))} | "
+        f"{_eval_report_markdown_value(task.get('death_rate'))} |"
+    )
+
+
+def _eval_report_markdown_value(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _eval_report_markdown_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", " ")
 
 
 def _verify_release_checklist_artifact(

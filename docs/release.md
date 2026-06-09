@@ -79,8 +79,9 @@ is listed, verification also requires a `run_eval` report with well-formed
 `summary`, `tasks`, and `findings` sections, task rows with
 `task_id`/`metrics_valid`, matching valid/malformed task counts, unique task IDs,
 at least one valid task row, and no critical eval findings; eval report Markdown
-must have the HKRL eval title, summary/task sections, and the JSON task rows so
-hash-valid but failed fixed-seed reports cannot pass as release evidence:
+must have the HKRL eval title, summary/task sections, and the exact JSON task
+rows so hash-valid but failed fixed-seed reports cannot pass as release
+evidence:
 
 ```text
 runs/phase8-smoke/summary.json
