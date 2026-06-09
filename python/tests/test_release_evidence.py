@@ -177,6 +177,54 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     assert result["failures"] == []
 
 
+def test_release_evidence_verifier_rejects_failed_phase8_smoke_summary(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", '{"ok": false}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "ok",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_not_ok",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_invalid_phase8_smoke_summary_json(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", "not json\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "ok",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_json_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
@@ -1067,7 +1115,10 @@ def _write(path: Path, text: str) -> None:
 
 def _write_required_release_artifacts(root: Path) -> None:
     for artifact in PHASE8_RELEASE_ARTIFACTS:
-        _write(root / artifact, f"{artifact}\n")
+        if artifact == "runs/phase8-smoke/summary.json":
+            _write(root / artifact, json.dumps({"ok": True}) + "\n")
+        else:
+            _write(root / artifact, f"{artifact}\n")
 
 
 def _write_eval_artifacts(root: Path, report: dict[str, object]) -> None:

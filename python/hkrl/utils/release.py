@@ -350,6 +350,10 @@ def verify_release_evidence_manifest(
     if optional_artifacts_failure is not None:
         failures.append(optional_artifacts_failure)
 
+    smoke_summary_failure = _verify_phase8_smoke_summary_artifact(root_path, results)
+    if smoke_summary_failure is not None:
+        failures.append(smoke_summary_failure)
+
     eval_report_failure = _verify_eval_report_artifact(root_path, results)
     if eval_report_failure is not None:
         failures.append(eval_report_failure)
@@ -727,6 +731,44 @@ def _verify_eval_report_artifact(
             "ok": False,
             "path": "runs/eval-report.json",
             "reason": "eval_report_critical_findings",
+        }
+    return None
+
+
+def _verify_phase8_smoke_summary_artifact(
+    root: Path,
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    summary_result = next(
+        (result for result in results if result.get("path") == "runs/phase8-smoke/summary.json"),
+        None,
+    )
+    if summary_result is None or summary_result.get("ok") is not True:
+        return None
+
+    path = root / "runs/phase8-smoke/summary.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "field": "ok",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_json_invalid",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "field": "ok",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_not_object",
+        }
+    if payload.get("ok") is not True:
+        return {
+            "field": "ok",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_not_ok",
         }
     return None
 

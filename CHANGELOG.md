@@ -392,6 +392,8 @@ the project version tracks the **schema_version** + roadmap phase.
   malformed-task counts do not match task rows.
 - Phase 8 release evidence verification now rejects manifests whose `git_sha`
   differs from the expected release commit when provided.
+- Phase 8 release evidence verification now rejects hash-valid Phase 8 smoke
+  summaries that are malformed or do not report `ok=true`.
 - Phase 8 release evidence manifest generation now only includes live eval
   artifacts when the full eval JSON/report group exists locally.
 - `scripts/render_profile_report.py` and `make phase8-profile` now render static
