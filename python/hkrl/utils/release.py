@@ -292,6 +292,10 @@ def verify_release_evidence_manifest(
     if version_failure is not None:
         failures.append(version_failure)
 
+    git_sha_failure = _verify_manifest_git_sha(manifest)
+    if git_sha_failure is not None:
+        failures.append(git_sha_failure)
+
     duplicate_paths_failure = _verify_manifest_unique_artifact_paths(results)
     if duplicate_paths_failure is not None:
         failures.append(duplicate_paths_failure)
@@ -456,6 +460,26 @@ def _verify_manifest_version(manifest: Mapping[str, Any]) -> dict[str, Any] | No
     return None
 
 
+def _verify_manifest_git_sha(manifest: Mapping[str, Any]) -> dict[str, Any] | None:
+    git_sha = manifest.get("git_sha")
+    if not isinstance(git_sha, str) or not git_sha:
+        return {
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_missing",
+        }
+    if not _is_git_sha(git_sha):
+        return {
+            "actual_git_sha": git_sha,
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_invalid",
+        }
+    return None
+
+
 def _verify_manifest_unique_artifact_paths(
     results: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any] | None:
@@ -555,6 +579,14 @@ def _is_sha256(value: Any) -> bool:
     return (
         isinstance(value, str)
         and len(value) == 64
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
+def _is_git_sha(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
         and all(char in "0123456789abcdefABCDEF" for char in value)
     )
 

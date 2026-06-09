@@ -383,6 +383,8 @@ the project version tracks the **schema_version** + roadmap phase.
   manifests while generation still normalizes absolute inputs under the repo root.
 - Phase 8 release evidence verification now rejects non-normalized artifact path
   aliases in manifests.
+- Phase 8 release evidence verification now rejects missing or malformed
+  full-length `git_sha` values in manifests.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

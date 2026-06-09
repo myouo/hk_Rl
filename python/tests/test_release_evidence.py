@@ -17,6 +17,8 @@ from hkrl.utils.release import (
     verify_release_evidence_manifest,
 )
 
+FULL_GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
+
 
 def test_release_evidence_manifest_hashes_artifacts(tmp_path: Path) -> None:
     summary = tmp_path / "runs" / "phase8-smoke" / "summary.json"
@@ -133,6 +135,7 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
 
@@ -151,6 +154,7 @@ def test_release_evidence_verifier_reports_absolute_manifest_path(
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     manifest["artifacts"][0]["path"] = str(artifact)
@@ -173,6 +177,7 @@ def test_release_evidence_verifier_reports_non_normalized_manifest_path(
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     manifest["artifacts"][0]["path"] = "./runs/phase8-smoke/summary.json"
@@ -195,6 +200,7 @@ def test_release_evidence_verifier_reports_sha_mismatch(tmp_path: Path) -> None:
     _write(artifact, "good\n")
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     _write(artifact, "evil\n")
@@ -214,6 +220,7 @@ def test_release_evidence_verifier_reports_artifact_count_mismatch(
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     manifest["artifact_count"] = 2
@@ -241,6 +248,7 @@ def test_release_evidence_verifier_reports_manifest_version_mismatch(
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     manifest["manifest_version"] = 2
@@ -261,6 +269,52 @@ def test_release_evidence_verifier_reports_manifest_version_mismatch(
     ]
 
 
+def test_release_evidence_verifier_reports_missing_git_sha(tmp_path: Path) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == [
+        {
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_missing",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_invalid_git_sha(tmp_path: Path) -> None:
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha="deadbeef",
+        artifacts=["runs/phase8-smoke/summary.json"],
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == 1
+    assert result["failures"] == [
+        {
+            "actual_git_sha": "deadbeef",
+            "field": "git_sha",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_sha_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_duplicate_artifact_paths(
     tmp_path: Path,
 ) -> None:
@@ -268,6 +322,7 @@ def test_release_evidence_verifier_reports_duplicate_artifact_paths(
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=[
             "runs/phase8-smoke/summary.json",
             "runs/phase8-smoke/summary.json",
@@ -295,6 +350,7 @@ def test_release_evidence_verifier_reports_total_bytes_mismatch(tmp_path: Path) 
     _write(artifact, '{"ok": true}\n')
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     manifest["total_bytes"] = int(manifest["total_bytes"]) + 1
@@ -345,6 +401,7 @@ def test_verify_release_evidence_script_writes_failure_report(tmp_path: Path) ->
     _write(artifact, "good\n")
     manifest = build_release_evidence_manifest(
         root=tmp_path,
+        git_sha=FULL_GIT_SHA,
         artifacts=["runs/phase8-smoke/summary.json"],
     )
     _write(manifest_path, release_evidence_to_json(manifest))
