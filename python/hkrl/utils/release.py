@@ -1319,6 +1319,15 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_list_invalid",
             }
+        if field == "checkpoint_versions" and not all(
+            _is_non_negative_count(item) for item in value
+        ):
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/summary.json",
+                "reason": "phase8_smoke_summary_checkpoint_versions_malformed",
+            }
     worker_ids = payload.get("worker_ids")
     assert isinstance(worker_ids, Sequence)
     missing_worker_ids = sorted(

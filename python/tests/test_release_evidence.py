@@ -655,6 +655,32 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_checkpoint_versions(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    summary["checkpoint_versions"] = [1, -1, "latest"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "checkpoint_versions",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_checkpoint_versions_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_json(
     tmp_path: Path,
 ) -> None:
