@@ -734,6 +734,64 @@ def test_release_evidence_verifier_rejects_phase8_smoke_model_layout_mismatch(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_security_malformed(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["bind"] = "0.0.0.0:5600"
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["bind"] = "0.0.0.0:5610"
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["auth_token_configured"] = "false"
+    worker["auth_token_env"] = ""
+    worker["auth_token_required"] = False
+    worker["learner"] = "tcp://127.0.0.1:5600"
+    worker["learner_upload_enabled"] = True
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "binds": {
+                "coordinator": "0.0.0.0:5610",
+                "learner": "0.0.0.0:5600",
+            },
+            "field": "security",
+            "malformed_fields": [
+                "learner.bind",
+                "coordinator.bind",
+                "worker.auth_token_required",
+                "worker.auth_token_env",
+                "worker.auth_token_configured",
+                "worker.learner_upload_enabled",
+                "worker.learner",
+            ],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_security_malformed",
+            "worker_security": {
+                "auth_token_configured": "false",
+                "auth_token_env": "",
+                "auth_token_required": False,
+                "learner": "tcp://127.0.0.1:5600",
+                "learner_upload_enabled": True,
+            },
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_worker_count(
     tmp_path: Path,
 ) -> None:
@@ -2827,6 +2885,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "worker-0": "hornet_protector_attuned",
                 "worker-1": "gruz_mother",
             },
+            "bind": "127.0.0.1:0",
             "eval_winrates": {
                 "gruz_mother": 0.9,
                 "hornet_protector_attuned": 0.2,
@@ -2868,6 +2927,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
         },
         "learner": {
             "algorithm": "appo",
+            "bind": "127.0.0.1:0",
             "enable_macro_actions": True,
             "model": "entity_attention_gru",
             "n_macro_actions": 11,
@@ -2878,9 +2938,14 @@ def _phase8_smoke_summary() -> dict[str, object]:
         "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         "worker": {
             "algorithm": "appo",
+            "auth_token_configured": False,
+            "auth_token_env": "HKRL_AUTH_TOKEN",
+            "auth_token_required": True,
             "dry_run": True,
             "enable_macro_actions": True,
             "latest_checkpoint": 2,
+            "learner": None,
+            "learner_upload_enabled": False,
             "model": "entity_attention_gru",
             "n_macro_actions": 11,
             "task_id": "gruz_mother",

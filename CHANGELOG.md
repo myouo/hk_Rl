@@ -409,6 +409,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   whose learner and worker algorithm, model, or macro-action layout disagree.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
+  whose learner/coordinator binds are not loopback-only or whose dry-run worker
+  security/upload fields drift from the offline smoke contract.
+- Phase 8 release evidence verification now rejects Phase 8 smoke summaries
   whose coordinator eval win rates, sampler weights, or mastered-task sampler
   state disagree with the listed task IDs.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries

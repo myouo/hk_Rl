@@ -1362,6 +1362,9 @@ def _verify_phase8_smoke_summary_structure(
     model_layout_failure = _verify_phase8_smoke_model_layout(learner, worker)
     if model_layout_failure is not None:
         return model_layout_failure
+    security_failure = _verify_phase8_smoke_security(learner, worker, coordinator)
+    if security_failure is not None:
+        return security_failure
     task_ids_failure = _verify_phase8_smoke_coordinator_task_ids(coordinator, task_ids=task_ids)
     if task_ids_failure is not None:
         return task_ids_failure
@@ -1446,6 +1449,65 @@ def _verify_phase8_smoke_summary_structure(
     if assignment_failure is not None:
         return assignment_failure
     return None
+
+
+def _verify_phase8_smoke_security(
+    learner: Mapping[str, Any],
+    worker: Mapping[str, Any],
+    coordinator: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    malformed_fields: list[str] = []
+    learner_bind = learner.get("bind")
+    coordinator_bind = coordinator.get("bind")
+    if not _valid_loopback_bind(learner_bind):
+        malformed_fields.append("learner.bind")
+    if not _valid_loopback_bind(coordinator_bind):
+        malformed_fields.append("coordinator.bind")
+
+    auth_token_env = worker.get("auth_token_env")
+    if worker.get("auth_token_required") is not True:
+        malformed_fields.append("worker.auth_token_required")
+    if not isinstance(auth_token_env, str) or not auth_token_env:
+        malformed_fields.append("worker.auth_token_env")
+    if not isinstance(worker.get("auth_token_configured"), bool):
+        malformed_fields.append("worker.auth_token_configured")
+    if worker.get("learner_upload_enabled") is not False:
+        malformed_fields.append("worker.learner_upload_enabled")
+    if worker.get("learner") is not None:
+        malformed_fields.append("worker.learner")
+
+    if malformed_fields:
+        return {
+            "binds": {
+                "coordinator": coordinator_bind,
+                "learner": learner_bind,
+            },
+            "field": "security",
+            "malformed_fields": malformed_fields,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_security_malformed",
+            "worker_security": {
+                "auth_token_configured": worker.get("auth_token_configured"),
+                "auth_token_env": auth_token_env,
+                "auth_token_required": worker.get("auth_token_required"),
+                "learner": worker.get("learner"),
+                "learner_upload_enabled": worker.get("learner_upload_enabled"),
+            },
+        }
+    return None
+
+
+def _valid_loopback_bind(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    if value.startswith("[::1]:"):
+        port = value.removeprefix("[::1]:")
+        return port.isdigit()
+    if ":" not in value:
+        return False
+    host, port = value.rsplit(":", 1)
+    return host in {"127.0.0.1", "localhost", "::1"} and port.isdigit()
 
 
 def _verify_phase8_smoke_model_layout(
