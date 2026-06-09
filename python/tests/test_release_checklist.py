@@ -53,6 +53,21 @@ def test_release_checklist_markdown_groups_commands() -> None:
     assert "`gh run list --branch main --limit 1`" in markdown
 
 
+def test_release_checklist_markdown_tolerates_non_object_checks() -> None:
+    markdown = render_release_markdown(
+        {
+            "checks": ["make check"],
+            "git_sha": "abc123",
+            "required_count": 1,
+            "version": "phase8",
+        }
+    )
+
+    assert "## Uncategorized" in markdown
+    assert "Invalid release check entry 0" in markdown
+    assert "Checklist entry is not an object." in markdown
+
+
 def test_render_release_checklist_script_writes_json_and_markdown(tmp_path: Path) -> None:
     module = _load_script("render_release_checklist.py")
     json_path = tmp_path / "release.json"

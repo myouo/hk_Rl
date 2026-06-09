@@ -380,6 +380,8 @@ the project version tracks the **schema_version** + roadmap phase.
   heartbeat timeout.
 - `docs/release.md`, `scripts/render_release_checklist.py`, and
   `make phase8-release-checklist` now define a Phase 8 release evidence checklist.
+- Phase 8 release checklist Markdown rendering now tolerates malformed check rows
+  so checklist artifacts can still be inspected.
 - `scripts/render_release_evidence.py` and `make phase8-release-evidence` now
   produce a sha256 manifest for Phase 8 release artifacts.
 - `scripts/verify_release_evidence.py` and `make phase8-verify-release-evidence`

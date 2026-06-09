@@ -163,7 +163,10 @@ def build_release_checklist(
 
 def render_release_markdown(payload: dict[str, Any]) -> str:
     """Render a release checklist payload as Markdown."""
-    checks = list(payload.get("checks", []))
+    checks = [
+        _release_check_markdown_item(check, index=index)
+        for index, check in enumerate(list(payload.get("checks", [])))
+    ]
     lines = [
         "# HKRL Release Checklist",
         "",
@@ -188,6 +191,19 @@ def render_release_markdown(payload: dict[str, Any]) -> str:
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _release_check_markdown_item(check: Any, *, index: int) -> Mapping[str, Any]:
+    if isinstance(check, Mapping):
+        return check
+    return {
+        "blocking": True,
+        "category": "uncategorized",
+        "command": "",
+        "evidence": "Checklist entry is not an object.",
+        "id": f"invalid_check_{index}",
+        "title": f"Invalid release check entry {index}",
+    }
 
 
 def release_checklist_to_json(payload: dict[str, Any]) -> str:
