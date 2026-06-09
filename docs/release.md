@@ -33,17 +33,18 @@ artifact paths, non-object artifact entries, missing or malformed full-length
 unsupported release `version` or `manifest_version` values, and Phase 8 smoke
 summaries that do not report `ok=true` with coordinator metrics plus learner,
 worker, task, checkpoint, worker-id, and worker-row sections. Dashboard JSON
-must include health, learner, metrics, task, and worker sections. Profile JSON
-must come from the Phase 8 smoke source and include metrics, findings, and
-workers with well-formed finding and worker rows. It also requires every offline
-Phase 8 artifact below to be listed in the manifest. Live eval artifacts are
-included only when the full live eval group exists locally; if any live eval
-artifact is listed, all three live eval artifacts must be listed. When the eval
-report JSON is listed, verification also requires a `run_eval` report with
-well-formed `summary`, `tasks`, and `findings` sections, task rows with
-`task_id`/`metrics_valid`, matching valid/malformed task counts, unique task IDs,
-at least one valid task row, and no critical eval findings so hash-valid but
-failed fixed-seed reports cannot pass as release evidence:
+must include health, learner, metrics, task, and worker sections with
+well-formed task and worker rows. Profile JSON must come from the Phase 8 smoke
+source and include metrics, findings, and workers with well-formed finding and
+worker rows. It also requires every offline Phase 8 artifact below to be listed
+in the manifest. Live eval artifacts are included only when the full live eval
+group exists locally; if any live eval artifact is listed, all three live eval
+artifacts must be listed. When the eval report JSON is listed, verification also
+requires a `run_eval` report with well-formed `summary`, `tasks`, and `findings`
+sections, task rows with `task_id`/`metrics_valid`, matching valid/malformed
+task counts, unique task IDs, at least one valid task row, and no critical eval
+findings so hash-valid but failed fixed-seed reports cannot pass as release
+evidence:
 
 ```text
 runs/phase8-smoke/summary.json

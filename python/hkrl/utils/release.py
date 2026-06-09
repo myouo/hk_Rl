@@ -901,7 +901,85 @@ def _verify_phase8_dashboard_artifact(
                 "path": "runs/phase8-smoke/dashboard.json",
                 "reason": "phase8_dashboard_list_invalid",
             }
+    tasks = payload.get("tasks")
+    assert isinstance(tasks, Sequence)
+    malformed_tasks = [
+        index for index, task in enumerate(tasks) if not _valid_phase8_dashboard_task(task)
+    ]
+    if malformed_tasks:
+        return {
+            "field": "tasks",
+            "indexes": malformed_tasks,
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_tasks_malformed",
+        }
+    workers = payload.get("workers")
+    assert isinstance(workers, Sequence)
+    malformed_workers = [
+        index for index, worker in enumerate(workers) if not _valid_phase8_dashboard_worker(worker)
+    ]
+    if malformed_workers:
+        return {
+            "field": "workers",
+            "indexes": malformed_workers,
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_workers_malformed",
+        }
     return None
+
+
+def _valid_phase8_dashboard_task(task: Any) -> bool:
+    if not isinstance(task, Mapping):
+        return False
+    if not isinstance(task.get("task_id"), str) or not task.get("task_id"):
+        return False
+    if not isinstance(task.get("mastered"), bool):
+        return False
+    if not _is_non_negative_number(task.get("sampler_weight")):
+        return False
+    if "win_rate" not in task:
+        return False
+    win_rate = task.get("win_rate")
+    return win_rate is None or _is_probability(win_rate)
+
+
+def _valid_phase8_dashboard_worker(worker: Any) -> bool:
+    if not isinstance(worker, Mapping):
+        return False
+    if not isinstance(worker.get("worker_id"), str) or not worker.get("worker_id"):
+        return False
+    if not isinstance(worker.get("status"), str) or not worker.get("status"):
+        return False
+    if not isinstance(worker.get("alive"), bool):
+        return False
+
+    assigned_task = worker.get("assigned_task")
+    if "assigned_task" not in worker or (
+        assigned_task is not None and (not isinstance(assigned_task, str) or not assigned_task)
+    ):
+        return False
+    for field in ("checkpoint_version", "policy_version"):
+        if field not in worker:
+            return False
+        value = worker.get(field)
+        if value is not None and not _is_non_negative_number(value):
+            return False
+
+    return all(
+        _is_non_negative_number(worker.get(field))
+        for field in (
+            "checkpoint_lag",
+            "learner_upload_accepted_batches",
+            "learner_upload_failed_batches",
+            "learner_upload_rejected_batches",
+            "learner_upload_submitted_batches",
+            "policy_lag",
+            "sps",
+            "worker_crash_count",
+        )
+    )
 
 
 def _verify_phase8_profile_artifact(
@@ -1283,3 +1361,7 @@ def _is_non_negative_number(value: Any) -> bool:
         and math.isfinite(float(value))
         and value >= 0.0
     )
+
+
+def _is_probability(value: Any) -> bool:
+    return _is_non_negative_number(value) and float(value) <= 1.0

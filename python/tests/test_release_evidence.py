@@ -380,6 +380,68 @@ def test_release_evidence_verifier_rejects_incomplete_phase8_dashboard(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_phase8_dashboard_tasks(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    tasks = dashboard["tasks"]
+    assert isinstance(tasks, list)
+    task = tasks[0]
+    assert isinstance(task, dict)
+    del task["mastered"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", json.dumps(dashboard) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_tasks_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_dashboard_workers(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    dashboard = _phase8_dashboard_model()
+    workers = dashboard["workers"]
+    assert isinstance(workers, list)
+    worker = workers[0]
+    assert isinstance(worker, dict)
+    worker["sps"] = -1.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "dashboard.json", json.dumps(dashboard) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "workers",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/phase8-smoke/dashboard.json",
+            "reason": "phase8_dashboard_workers_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_profile_json(
     tmp_path: Path,
 ) -> None:
@@ -1435,17 +1497,49 @@ def _phase8_dashboard_model() -> dict[str, object]:
         },
         "tasks": [
             {
+                "mastered": True,
+                "sampler_weight": 0.1,
                 "task_id": "gruz_mother",
+                "win_rate": 0.9,
             },
             {
+                "mastered": False,
+                "sampler_weight": 0.8,
                 "task_id": "hornet_protector_attuned",
+                "win_rate": 0.2,
             },
         ],
         "workers": [
             {
+                "alive": True,
+                "assigned_task": "hornet_protector_attuned",
+                "checkpoint_lag": 0.0,
+                "checkpoint_version": 2.0,
+                "learner_upload_accepted_batches": 0.0,
+                "learner_upload_failed_batches": 0.0,
+                "learner_upload_rejected_batches": 0.0,
+                "learner_upload_submitted_batches": 0.0,
+                "policy_lag": 0.0,
+                "policy_version": 2.0,
+                "sps": 32.0,
+                "status": "running",
+                "worker_crash_count": 0.0,
                 "worker_id": "worker-0",
             },
             {
+                "alive": True,
+                "assigned_task": "gruz_mother",
+                "checkpoint_lag": 1.0,
+                "checkpoint_version": 1.0,
+                "learner_upload_accepted_batches": 0.0,
+                "learner_upload_failed_batches": 0.0,
+                "learner_upload_rejected_batches": 0.0,
+                "learner_upload_submitted_batches": 0.0,
+                "policy_lag": 1.0,
+                "policy_version": 1.0,
+                "sps": 0.0,
+                "status": "recovering",
+                "worker_crash_count": 1.0,
                 "worker_id": "worker-1",
             },
         ],
