@@ -1414,6 +1414,13 @@ def _verify_phase8_smoke_summary_structure(
             "reason": "phase8_smoke_summary_worker_id_unlisted",
             "worker_id": worker_id,
         }
+    checkpoint_failure = _verify_phase8_smoke_checkpoint_versions(
+        worker,
+        workers=workers,
+        checkpoint_versions=payload.get("checkpoint_versions"),
+    )
+    if checkpoint_failure is not None:
+        return checkpoint_failure
     assignments = coordinator.get("assignments")
     if not isinstance(assignments, Mapping) or not assignments:
         return {
@@ -1429,6 +1436,61 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_checkpoint_versions(
+    worker: Mapping[str, Any],
+    *,
+    workers: Mapping[str, Any],
+    checkpoint_versions: Any,
+) -> dict[str, Any] | None:
+    assert isinstance(checkpoint_versions, Sequence)
+    known_versions = {
+        int(float(version)) for version in checkpoint_versions if _is_non_negative_count(version)
+    }
+    expected_latest_checkpoint = max(known_versions)
+    latest_checkpoint = worker.get("latest_checkpoint")
+    worker_id = worker.get("worker_id")
+    current_worker_checkpoint = None
+    malformed_worker_ids: list[str] = []
+    for coordinator_worker_id, coordinator_worker in workers.items():
+        checkpoint_version = None
+        if isinstance(coordinator_worker, Mapping) and isinstance(
+            (metrics := coordinator_worker.get("metrics")), Mapping
+        ):
+            checkpoint_version = metrics.get("checkpoint_version")
+        if not _is_non_negative_count(checkpoint_version):
+            malformed_worker_ids.append(str(coordinator_worker_id))
+            continue
+        assert isinstance(checkpoint_version, (int, float))
+        checkpoint_value = int(float(checkpoint_version))
+        if checkpoint_value not in known_versions:
+            malformed_worker_ids.append(str(coordinator_worker_id))
+        if coordinator_worker_id == worker_id:
+            current_worker_checkpoint = checkpoint_value
+
+    latest_checkpoint_value = None
+    if _is_non_negative_count(latest_checkpoint):
+        assert isinstance(latest_checkpoint, (int, float))
+        latest_checkpoint_value = int(float(latest_checkpoint))
+
+    if (
+        latest_checkpoint_value != expected_latest_checkpoint
+        or current_worker_checkpoint != expected_latest_checkpoint
+        or malformed_worker_ids
+    ):
+        return {
+            "current_worker_checkpoint": current_worker_checkpoint,
+            "expected_latest_checkpoint": expected_latest_checkpoint,
+            "field": "checkpoint_versions",
+            "latest_checkpoint": latest_checkpoint,
+            "malformed_worker_ids": sorted(malformed_worker_ids),
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_checkpoint_versions_mismatch",
+            "worker_id": worker_id,
+        }
     return None
 
 

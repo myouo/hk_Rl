@@ -961,6 +961,53 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_checkpoint_ver
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_mismatched_checkpoint_versions(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    worker = summary["worker"]
+    assert isinstance(worker, dict)
+    worker["latest_checkpoint"] = 1
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_0 = workers["worker-0"]
+    assert isinstance(worker_0, dict)
+    metrics_0 = worker_0["metrics"]
+    assert isinstance(metrics_0, dict)
+    metrics_0["checkpoint_version"] = 1.0
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    metrics_1 = worker_1["metrics"]
+    assert isinstance(metrics_1, dict)
+    metrics_1["checkpoint_version"] = 3.0
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "current_worker_checkpoint": 1,
+            "expected_latest_checkpoint": 2,
+            "field": "checkpoint_versions",
+            "latest_checkpoint": 1,
+            "malformed_worker_ids": ["worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_checkpoint_versions_mismatch",
+            "worker_id": "worker-0",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_phase8_smoke_without_task_wire_ids(
     tmp_path: Path,
 ) -> None:
@@ -2701,11 +2748,19 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "workers": {
                 "worker-0": {
                     "alive": True,
-                    "metrics": {"sps": 32.0, "worker_crash_count": 0.0},
+                    "metrics": {
+                        "checkpoint_version": 2.0,
+                        "sps": 32.0,
+                        "worker_crash_count": 0.0,
+                    },
                 },
                 "worker-1": {
                     "alive": True,
-                    "metrics": {"sps": 0.0, "worker_crash_count": 1.0},
+                    "metrics": {
+                        "checkpoint_version": 1.0,
+                        "sps": 0.0,
+                        "worker_crash_count": 1.0,
+                    },
                 },
             },
         },
@@ -2717,6 +2772,7 @@ def _phase8_smoke_summary() -> dict[str, object]:
         "task_ids": ["gruz_mother", "hornet_protector_attuned"],
         "worker": {
             "dry_run": True,
+            "latest_checkpoint": 2,
             "task_id": "gruz_mother",
             "task_ids": ["gruz_mother", "hornet_protector_attuned"],
             "worker_id": "worker-0",

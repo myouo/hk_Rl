@@ -43,12 +43,14 @@ versions. Learner, worker, and coordinator task IDs must match the top-level
 worker counts must match the listed `worker_ids`. Coordinator task wire IDs
 must exactly cover the listed task IDs with unique non-negative wire IDs. The
 dry-run `worker_id` must be listed in `worker_ids`, and coordinator worker rows
-plus assignments must match the listed worker IDs without extras. Smoke worker
-rows must include an `alive` flag and
-non-negative worker `sps`/`worker_crash_count` metrics. Dashboard JSON must
-include health, learner, metrics, task, and worker sections with well-formed
-task and worker rows, while dashboard HTML must have the HKRL dashboard title,
-learner/worker/task sections, and the JSON task/worker rows.
+plus assignments must match the listed worker IDs without extras. The dry-run
+worker `latest_checkpoint` must equal the latest listed checkpoint version, and
+coordinator worker checkpoint versions must come from the listed checkpoint
+versions. Smoke worker rows must include an `alive` flag and non-negative worker
+`sps`/`worker_crash_count` metrics. Dashboard JSON must include health, learner,
+metrics, task, and worker sections with well-formed task and worker rows, while
+dashboard HTML must have the HKRL dashboard title, learner/worker/task sections,
+and the JSON task/worker rows.
 Profile JSON must come from the Phase 8 smoke source and include metrics,
 findings, and workers with well-formed finding and worker rows, while profile
 Markdown must have the HKRL profile title, worker table, and the JSON worker
