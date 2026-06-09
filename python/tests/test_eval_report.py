@@ -51,6 +51,29 @@ def test_eval_report_marks_empty_metrics_critical() -> None:
     ]
 
 
+def test_eval_report_flags_malformed_task_metrics() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": "not an object",
+            }
+        },
+        min_win_rate=0.5,
+    )
+
+    assert report["summary"]["task_count"] == 1.0
+    assert report["tasks"][0]["metrics_valid"] is False
+    assert report["tasks"][0]["win_rate"] == 0.0
+    assert report["findings"] == [
+        {
+            "code": "malformed_task_metrics",
+            "message": "gruz_mother has a non-object metric payload.",
+            "recommendation": "Re-run fixed-seed eval and check the evaluator JSON writer.",
+            "severity": "critical",
+        }
+    ]
+
+
 def test_eval_report_uses_per_boss_win_rate_fallback() -> None:
     report = build_eval_report(
         {

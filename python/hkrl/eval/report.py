@@ -133,8 +133,10 @@ def _task_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for task_id, raw_metrics in sorted(metrics.items()):
-        task_metrics = _mapping(raw_metrics)
+        metrics_valid = isinstance(raw_metrics, Mapping)
+        task_metrics = raw_metrics if metrics_valid else {}
         row: dict[str, Any] = {key: _task_metric(task_metrics, key) for key in TASK_METRICS}
+        row["metrics_valid"] = metrics_valid
         row["task_id"] = str(task_id)
         row["regression_delta"] = _optional_float(regression.get(str(task_id)))
         rows.append(row)
@@ -198,8 +200,21 @@ def _findings(
         )
         return findings
 
+    for task in tasks:
+        if task.get("metrics_valid") is False:
+            findings.append(
+                _finding(
+                    "critical",
+                    "malformed_task_metrics",
+                    f"{task['task_id']} has a non-object metric payload.",
+                    "Re-run fixed-seed eval and check the evaluator JSON writer.",
+                )
+            )
+
     if min_win_rate is not None:
         for task in tasks:
+            if task.get("metrics_valid") is False:
+                continue
             if _float(task.get("win_rate", 0.0)) < min_win_rate:
                 findings.append(
                     _finding(
@@ -211,6 +226,8 @@ def _findings(
                 )
 
     for task in tasks:
+        if task.get("metrics_valid") is False:
+            continue
         delta = task.get("regression_delta")
         if delta is not None and float(delta) < -max_regression_drop:
             findings.append(

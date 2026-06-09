@@ -368,6 +368,8 @@ the project version tracks the **schema_version** + roadmap phase.
   fixed-seed evaluator JSON into JSON/Markdown regression reports.
 - Phase 8 eval reports now use `per_boss_win_rate` as the task win-rate fallback
   when evaluator output omits `win_rate` or reports an invalid value.
+- Phase 8 eval reports now flag non-object per-task metric payloads as critical
+  findings instead of treating them as valid zero metrics.
 - Phase 8 release evidence manifests now include live eval JSON/report artifacts
   when those game-machine outputs exist locally.
 - Phase 8 release evidence manifest generation now only includes live eval
