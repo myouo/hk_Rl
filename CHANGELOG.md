@@ -332,6 +332,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,
   emits one-shot task assignments, ingests heartbeat JSONL, and reports a JSON
   monitoring snapshot for Phase 8 smoke checks.
+- Coordinator monitoring snapshots now report active worker policy/checkpoint
+  version lag, stale-version counts, missing-version counts, and recovering
+  worker counts for Phase 8 dashboard health checks.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

@@ -192,7 +192,7 @@ class EntityAttentionRecurrentAC(ActorCritic):
             dtype=global_seq.dtype,
         )
         scale = self._prev_action_scale.to(device=prev_action.device, dtype=prev_action.dtype)
-        prev_action = prev_action / scale.clamp_min(1.0)
+        prev_action = prev_action / torch.clamp_min(scale, 1.0)
         prev_action_emb = self.prev_action_encoder(prev_action.reshape(batch_size * seq_len, -1))
         prev_reward = prev_reward.reshape(batch_size * seq_len, 1)
 

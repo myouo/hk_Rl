@@ -140,7 +140,10 @@ class Coordinator:
         ``sps`` is summed across active workers because SPS is a fleet throughput
         metric; ``sps_mean`` is included for per-worker health inspection.
         Lost workers still contribute to ``worker_crash_count`` so restarts are
-        not hidden once a worker is expired.
+        not hidden once a worker is expired. Version lag metrics are calculated
+        across active workers that reported a numeric version; missing-version
+        counts stay explicit so dashboards can distinguish unknown from up to
+        date workers.
         """
         self.expire_workers()
         records = list(self._workers.values())
@@ -148,6 +151,12 @@ class Coordinator:
         lost = [worker for worker in records if not worker.alive]
         active_sps = [worker.metrics.get("sps", 0.0) for worker in active]
         sps_total = sum(active_sps)
+        policy_versions = _metric_values(active, "policy_version")
+        checkpoint_versions = _metric_values(active, "checkpoint_version")
+        policy_version_max = max(policy_versions, default=0.0)
+        policy_version_min = min(policy_versions, default=0.0)
+        checkpoint_version_max = max(checkpoint_versions, default=0.0)
+        checkpoint_version_min = min(checkpoint_versions, default=0.0)
 
         return {
             "worker_count": float(len(records)),
@@ -161,6 +170,27 @@ class Coordinator:
             "worker_crash_count": sum(
                 worker.metrics.get("worker_crash_count", 0.0) for worker in records
             ),
+            "recovering_worker_count": float(
+                sum(1 for worker in active if worker.info.get("status") == "recovering")
+            ),
+            "worker_policy_version_min": policy_version_min,
+            "worker_policy_version_max": policy_version_max,
+            "worker_policy_lag_max": policy_version_max - policy_version_min,
+            "stale_policy_worker_count": float(
+                sum(1 for version in policy_versions if version < policy_version_max)
+            ),
+            "worker_without_policy_version_count": float(
+                sum(1 for worker in active if "policy_version" not in worker.metrics)
+            ),
+            "worker_checkpoint_version_min": checkpoint_version_min,
+            "worker_checkpoint_version_max": checkpoint_version_max,
+            "worker_checkpoint_lag_max": checkpoint_version_max - checkpoint_version_min,
+            "stale_checkpoint_worker_count": float(
+                sum(1 for version in checkpoint_versions if version < checkpoint_version_max)
+            ),
+            "worker_without_checkpoint_version_count": float(
+                sum(1 for worker in active if "checkpoint_version" not in worker.metrics)
+            ),
         }
 
     def _require_worker(self, worker_id: str) -> WorkerRecord:
@@ -168,3 +198,7 @@ class Coordinator:
             return self._workers[worker_id]
         except KeyError as exc:
             raise KeyError(f"unknown worker {worker_id!r}") from exc
+
+
+def _metric_values(workers: list[WorkerRecord], key: str) -> list[float]:
+    return [float(worker.metrics[key]) for worker in workers if key in worker.metrics]

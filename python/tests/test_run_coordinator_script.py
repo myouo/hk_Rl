@@ -51,6 +51,17 @@ def test_run_coordinator_builds_assignment_summary() -> None:
         "sps": 0.0,
         "sps_mean": 0.0,
         "worker_crash_count": 0.0,
+        "recovering_worker_count": 0.0,
+        "worker_policy_version_min": 0.0,
+        "worker_policy_version_max": 0.0,
+        "worker_policy_lag_max": 0.0,
+        "stale_policy_worker_count": 0.0,
+        "worker_without_policy_version_count": 2.0,
+        "worker_checkpoint_version_min": 0.0,
+        "worker_checkpoint_version_max": 0.0,
+        "worker_checkpoint_lag_max": 0.0,
+        "stale_checkpoint_worker_count": 0.0,
+        "worker_without_checkpoint_version_count": 2.0,
     }
     assert summary["workers"]["worker-0"]["assigned_task"] == "gruz_mother"
 

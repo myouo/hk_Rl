@@ -170,7 +170,13 @@ partial rollout as throughput.
 Coordinator ingests raw worker heartbeat payloads, splits numeric metrics from
 status fields, and exposes a `metrics_snapshot()` aggregate for dashboards and
 JSONL logging. Fleet SPS is the sum across active workers; lost workers still
-count toward `worker_crash_count` so crash/restart churn remains visible.
+count toward `worker_crash_count` so crash/restart churn remains visible. Active
+worker policy/checkpoint versions are summarized as min/max/lag fields, with
+`stale_*_worker_count` counting workers below the active max version and
+`worker_without_*_version_count` counting active workers that have not reported a
+version yet. `recovering_worker_count` is derived from heartbeat
+`status = "recovering"` so dashboards can separate crash recovery from normal
+low-SPS workers.
 The `scripts/run_coordinator.py --heartbeat-jsonl FILE` entry point accepts one
 JSON object per line, either `{ "worker_id": "...", "payload": {...} }` or a flat
 object with `worker_id` plus heartbeat fields, and emits the same aggregate plus

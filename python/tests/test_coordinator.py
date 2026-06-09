@@ -113,8 +113,59 @@ def test_coordinator_ingests_heartbeat_payload_and_aggregates_metrics() -> None:
         "sps": 10.0,
         "sps_mean": 10.0,
         "worker_crash_count": 1.0,
+        "recovering_worker_count": 0.0,
+        "worker_policy_version_min": 7.0,
+        "worker_policy_version_max": 7.0,
+        "worker_policy_lag_max": 0.0,
+        "stale_policy_worker_count": 0.0,
+        "worker_without_policy_version_count": 0.0,
+        "worker_checkpoint_version_min": 2.0,
+        "worker_checkpoint_version_max": 2.0,
+        "worker_checkpoint_lag_max": 0.0,
+        "stale_checkpoint_worker_count": 0.0,
+        "worker_without_checkpoint_version_count": 0.0,
     }
     assert coordinator.lost_workers() == ["b"]
+
+
+def test_coordinator_metrics_snapshot_reports_version_lag_and_recovery() -> None:
+    coordinator = Coordinator(TaskSampler(["gruz"], seed=0), clock=FakeClock())
+    coordinator.register_worker("current", {})
+    coordinator.register_worker("stale", {})
+    coordinator.register_worker("unknown", {})
+
+    coordinator.ingest_heartbeat_payload(
+        "current",
+        {
+            "checkpoint_version": 5,
+            "policy_version": 10,
+            "sps": 12.0,
+            "status": "running",
+        },
+    )
+    coordinator.ingest_heartbeat_payload(
+        "stale",
+        {
+            "checkpoint_version": 4,
+            "policy_version": 8,
+            "sps": 6.0,
+            "status": "recovering",
+        },
+    )
+
+    snapshot = coordinator.metrics_snapshot()
+
+    assert snapshot["recovering_worker_count"] == 1.0
+    assert snapshot["worker_policy_version_min"] == 8.0
+    assert snapshot["worker_policy_version_max"] == 10.0
+    assert snapshot["worker_policy_lag_max"] == 2.0
+    assert snapshot["stale_policy_worker_count"] == 1.0
+    assert snapshot["worker_without_policy_version_count"] == 1.0
+    assert snapshot["worker_checkpoint_version_min"] == 4.0
+    assert snapshot["worker_checkpoint_version_max"] == 5.0
+    assert snapshot["worker_checkpoint_lag_max"] == 1.0
+    assert snapshot["stale_checkpoint_worker_count"] == 1.0
+    assert snapshot["worker_without_checkpoint_version_count"] == 1.0
 
 
 def test_coordinator_rejects_unknown_or_dead_worker_assignment() -> None:

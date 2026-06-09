@@ -31,6 +31,11 @@ CORE_METRICS: tuple[str, ...] = (
     "reset_success_rate",
     "reset_duration",
     "worker_crash_count",
+    "worker_policy_lag_max",
+    "worker_checkpoint_lag_max",
+    "stale_policy_worker_count",
+    "stale_checkpoint_worker_count",
+    "recovering_worker_count",
     "per_boss_win_rate",
     "per_boss_damage_ratio",
 )
