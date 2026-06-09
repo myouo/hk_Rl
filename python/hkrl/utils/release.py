@@ -1348,6 +1348,20 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_checkpoint_versions_malformed",
             }
+    task_wire_ids = coordinator.get("task_wire_ids")
+    if not isinstance(task_wire_ids, Mapping) or not task_wire_ids:
+        return {
+            "field": "coordinator.task_wire_ids",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_wire_ids_invalid",
+        }
+    task_wire_failure = _verify_phase8_smoke_task_wire_ids(
+        task_wire_ids,
+        task_ids=payload.get("task_ids"),
+    )
+    if task_wire_failure is not None:
+        return task_wire_failure
     worker_ids = payload.get("worker_ids")
     assert isinstance(worker_ids, Sequence)
     missing_worker_ids = sorted(
@@ -1396,6 +1410,40 @@ def _verify_phase8_smoke_summary_structure(
     )
     if assignment_failure is not None:
         return assignment_failure
+    return None
+
+
+def _verify_phase8_smoke_task_wire_ids(
+    task_wire_ids: Mapping[str, Any],
+    *,
+    task_ids: Any,
+) -> dict[str, Any] | None:
+    task_id_set = {str(task_id) for task_id in task_ids if isinstance(task_id, str)}
+    wire_task_ids = {str(task_id) for task_id in task_wire_ids}
+    missing_task_ids = sorted(task_id_set - wire_task_ids)
+    unexpected_task_ids = sorted(wire_task_ids - task_id_set)
+    malformed_task_ids = sorted(
+        str(task_id)
+        for task_id, wire_id in task_wire_ids.items()
+        if not _is_non_negative_count(wire_id)
+    )
+    valid_wire_ids = [
+        int(float(wire_id)) for wire_id in task_wire_ids.values() if _is_non_negative_count(wire_id)
+    ]
+    duplicate_wire_ids = sorted(
+        wire_id for wire_id in set(valid_wire_ids) if valid_wire_ids.count(wire_id) > 1
+    )
+    if missing_task_ids or unexpected_task_ids or malformed_task_ids or duplicate_wire_ids:
+        return {
+            "duplicate_wire_ids": duplicate_wire_ids,
+            "field": "coordinator.task_wire_ids",
+            "malformed_task_ids": malformed_task_ids,
+            "missing_task_ids": missing_task_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_wire_ids_malformed",
+            "unexpected_task_ids": unexpected_task_ids,
+        }
     return None
 
 

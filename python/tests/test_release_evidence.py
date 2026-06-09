@@ -858,6 +858,69 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_checkpoint_ver
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_without_task_wire_ids(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator.pop("task_wire_ids")
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.task_wire_ids",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_wire_ids_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_task_wire_ids(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator["task_wire_ids"] = {
+        "gruz_mother": 0,
+        "unknown_task": 0,
+    }
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "duplicate_wire_ids": [0],
+            "field": "coordinator.task_wire_ids",
+            "malformed_task_ids": [],
+            "missing_task_ids": ["hornet_protector_attuned"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_task_wire_ids_malformed",
+            "unexpected_task_ids": ["unknown_task"],
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_invalid_phase8_dashboard_json(
     tmp_path: Path,
 ) -> None:
@@ -2525,6 +2588,10 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "active_worker_count": 2.0,
                 "sps": 32.0,
                 "worker_count": 2.0,
+            },
+            "task_wire_ids": {
+                "gruz_mother": 0,
+                "hornet_protector_attuned": 1,
             },
             "workers": {
                 "worker-0": {
