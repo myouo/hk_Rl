@@ -404,6 +404,8 @@ the project version tracks the **schema_version** + roadmap phase.
   groups so `eval.json`, `eval-report.md`, and `eval-report.json` travel together.
 - Phase 8 release evidence verification now rejects non-object artifact entries
   in manifests.
+- Phase 8 release evidence Markdown rendering now tolerates malformed artifact
+  rows so the verifier can still report structured failures.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

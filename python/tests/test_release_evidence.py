@@ -126,6 +126,22 @@ def test_release_evidence_markdown_contains_hash_table(tmp_path: Path) -> None:
     assert _sha256(artifact) in markdown
 
 
+def test_release_evidence_markdown_tolerates_non_object_artifacts() -> None:
+    manifest = {
+        "artifact_count": 1,
+        "artifacts": ["runs/phase8-smoke/summary.json"],
+        "git_sha": FULL_GIT_SHA,
+        "total_bytes": 0,
+        "version": "phase8",
+    }
+
+    markdown = render_release_evidence_markdown(manifest)
+
+    assert "HKRL Release Evidence" in markdown
+    assert "&lt;invalid" not in markdown
+    assert "<invalid artifact 0>" in markdown
+
+
 def test_release_evidence_rejects_artifacts_outside_root(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside-release-artifact.txt"
     outside.write_text("bad\n", encoding="utf-8")

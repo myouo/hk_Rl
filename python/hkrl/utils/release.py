@@ -250,8 +250,8 @@ def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
         "| Path | Bytes | SHA256 |",
         "| --- | ---: | --- |",
     ]
-    for artifact in artifacts:
-        item = dict(artifact)
+    for index, artifact in enumerate(artifacts):
+        item = _artifact_markdown_item(artifact, index=index)
         lines.append(
             "| "
             f"{_markdown_cell(str(item.get('path', '')))} | "
@@ -263,6 +263,16 @@ def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
 
 def release_evidence_to_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _artifact_markdown_item(artifact: Any, *, index: int) -> Mapping[str, Any]:
+    if isinstance(artifact, Mapping):
+        return artifact
+    return {
+        "bytes": 0,
+        "path": f"<invalid artifact {index}>",
+        "sha256": "",
+    }
 
 
 def verify_release_evidence_manifest(
