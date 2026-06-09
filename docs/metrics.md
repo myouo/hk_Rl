@@ -53,7 +53,7 @@ env instances when available. The default is `1` worker and the single `--port`
 value to preserve deterministic single-instance behavior.
 `scripts/render_eval_report.py --eval-json runs/eval.json` renders the fixed-seed
 metrics and optional regression deltas into stable JSON/Markdown release
-artifacts. If `win_rate` is absent for a task, the report uses
+artifacts. If `win_rate` is absent or invalid for a task, the report uses
 `per_boss_win_rate` as the canonical win-rate fallback. `make
 phase8-eval-report` writes `runs/eval-report.json` and `runs/eval-report.md`
 from the most recent evaluator output.

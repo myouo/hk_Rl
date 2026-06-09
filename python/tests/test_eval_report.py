@@ -73,6 +73,27 @@ def test_eval_report_uses_per_boss_win_rate_fallback() -> None:
     assert report["findings"] == []
 
 
+def test_eval_report_uses_per_boss_win_rate_when_win_rate_is_invalid() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "explicit_zero": {
+                    "per_boss_win_rate": 0.9,
+                    "win_rate": 0.0,
+                },
+                "null_win_rate": {
+                    "per_boss_win_rate": 0.6,
+                    "win_rate": None,
+                },
+            }
+        }
+    )
+
+    assert [task["task_id"] for task in report["tasks"]] == ["explicit_zero", "null_win_rate"]
+    assert [task["win_rate"] for task in report["tasks"]] == [0.0, 0.6]
+    assert report["summary"]["mean_win_rate"] == 0.3
+
+
 def test_eval_report_markdown_contains_task_table() -> None:
     markdown = render_eval_report_markdown(build_eval_report(_eval_payload()))
 

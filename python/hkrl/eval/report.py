@@ -142,7 +142,10 @@ def _task_rows(
 
 
 def _task_metric(task_metrics: Mapping[str, Any], key: str) -> float:
-    if key == "win_rate" and "win_rate" not in task_metrics:
+    if key == "win_rate":
+        win_rate = _finite_float_or_none(task_metrics.get("win_rate"))
+        if win_rate is not None:
+            return win_rate
         return _float(task_metrics.get("per_boss_win_rate", 0.0))
     return _float(task_metrics.get(key, 0.0))
 
@@ -242,6 +245,16 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return _float(value)
+
+
+def _finite_float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def _float(value: Any) -> float:
