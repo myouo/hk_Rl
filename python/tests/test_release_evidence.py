@@ -275,6 +275,61 @@ def test_release_evidence_verifier_rejects_phase8_smoke_without_metrics(
     ]
 
 
+def test_release_evidence_verifier_rejects_phase8_smoke_without_worker_rows(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    coordinator.pop("workers")
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_workers_invalid",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_phase8_smoke_missing_worker_rows(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    summary["worker_ids"] = ["worker-0", "worker-1", "worker-missing"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "worker_ids",
+            "missing_worker_ids": ["worker-missing"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_missing",
+        }
+    ]
+
+
 def test_release_evidence_verifier_accepts_clean_eval_report(tmp_path: Path) -> None:
     _write_required_release_artifacts(tmp_path)
     _write_eval_artifacts(
@@ -1179,7 +1234,17 @@ def _phase8_smoke_summary() -> dict[str, object]:
                 "active_worker_count": 2.0,
                 "sps": 32.0,
                 "worker_count": 2.0,
-            }
+            },
+            "workers": {
+                "worker-0": {
+                    "alive": True,
+                    "metrics": {"sps": 32.0},
+                },
+                "worker-1": {
+                    "alive": True,
+                    "metrics": {"sps": 0.0},
+                },
+            },
         },
         "learner": {
             "policy_version": 2.0,

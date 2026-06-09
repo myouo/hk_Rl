@@ -794,6 +794,14 @@ def _verify_phase8_smoke_summary_structure(
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_metrics_invalid",
         }
+    workers = coordinator.get("workers")
+    if not isinstance(workers, Mapping) or not workers:
+        return {
+            "field": "coordinator.workers",
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_workers_invalid",
+        }
 
     for field in ("checkpoint_versions", "task_ids", "worker_ids"):
         value = payload.get(field)
@@ -804,6 +812,28 @@ def _verify_phase8_smoke_summary_structure(
                 "path": "runs/phase8-smoke/summary.json",
                 "reason": "phase8_smoke_summary_list_invalid",
             }
+        if field in {"task_ids", "worker_ids"} and not all(
+            isinstance(item, str) and item for item in value
+        ):
+            return {
+                "field": field,
+                "ok": False,
+                "path": "runs/phase8-smoke/summary.json",
+                "reason": "phase8_smoke_summary_list_invalid",
+            }
+    worker_ids = payload.get("worker_ids")
+    assert isinstance(worker_ids, Sequence)
+    missing_worker_ids = sorted(
+        str(worker_id) for worker_id in worker_ids if worker_id not in workers
+    )
+    if missing_worker_ids:
+        return {
+            "field": "worker_ids",
+            "missing_worker_ids": missing_worker_ids,
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_missing",
+        }
     return None
 
 
