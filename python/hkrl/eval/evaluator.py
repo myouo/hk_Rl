@@ -8,7 +8,9 @@ action ratio, generalization, and old-task regression. Guards against the
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,6 +35,7 @@ class Evaluator:
         env_factory: Callable[[TaskConfig], Any] | None = None,
         max_steps_per_episode: int = 4096,
         replay_sink: Callable[[dict[str, Any]], None] | None = None,
+        num_workers: int = 1,
     ) -> None:
         if not tasks:
             raise ValueError("tasks must not be empty")
@@ -40,6 +43,8 @@ class Evaluator:
             raise ValueError("seeds must not be empty")
         if max_steps_per_episode <= 0:
             raise ValueError("max_steps_per_episode must be positive")
+        if num_workers <= 0:
+            raise ValueError("num_workers must be positive")
 
         self.model = model
         self.tasks = list(tasks)
@@ -47,6 +52,8 @@ class Evaluator:
         self.env_factory = env_factory
         self.max_steps_per_episode = max_steps_per_episode
         self.replay_sink = replay_sink
+        self.num_workers = num_workers
+        self._replay_lock = threading.Lock()
 
     def evaluate(self, episodes_per_task: int = 20) -> dict[str, dict[str, float]]:
         """Return ``{task_id: {win_rate, damage_taken, time_to_kill, ...}}``."""
@@ -55,24 +62,44 @@ class Evaluator:
         if self.env_factory is None:
             raise ValueError("env_factory is required for evaluation")
 
-        results: dict[str, dict[str, float]] = {}
-        for task in self.tasks:
-            env = self.env_factory(task)
-            try:
-                episodes = [
-                    self._run_episode(
-                        env,
-                        self.seeds[idx % len(self.seeds)],
-                        task=task,
-                        episode_index=idx,
-                    )
-                    for idx in range(episodes_per_task)
-                ]
-            finally:
-                if hasattr(env, "close"):
-                    env.close()
-            results[task.task_id] = _aggregate(episodes)
-        return results
+        if self.num_workers == 1 or len(self.tasks) == 1:
+            return {
+                task.task_id: self._evaluate_task(task, episodes_per_task) for task in self.tasks
+            }
+
+        worker_count = min(self.num_workers, len(self.tasks))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            task_metrics = list(
+                executor.map(
+                    lambda task: self._evaluate_task(task, episodes_per_task),
+                    self.tasks,
+                )
+            )
+        return {
+            task.task_id: metrics for task, metrics in zip(self.tasks, task_metrics, strict=True)
+        }
+
+    def _evaluate_task(
+        self,
+        task: TaskConfig,
+        episodes_per_task: int,
+    ) -> dict[str, float]:
+        assert self.env_factory is not None
+        env = self.env_factory(task)
+        try:
+            episodes = [
+                self._run_episode(
+                    env,
+                    self.seeds[idx % len(self.seeds)],
+                    task=task,
+                    episode_index=idx,
+                )
+                for idx in range(episodes_per_task)
+            ]
+        finally:
+            if hasattr(env, "close"):
+                env.close()
+        return _aggregate(episodes)
 
     def _run_episode(
         self,
@@ -217,28 +244,28 @@ class Evaluator:
     ) -> None:
         if self.replay_sink is None:
             return
-        self.replay_sink(
-            {
-                "action": _jsonable(action),
-                "damage_dealt": event_metrics.damage_dealt,
-                "damage_taken": event_metrics.damage_taken,
-                "death_reason": event_metrics.death_reason,
-                "episode": episode_index,
-                "episode_id": int(info.get("episode_id", 0)),
-                "heal_amount": event_metrics.heal_amount,
-                "heal_count": event_metrics.heal_count,
-                "invalid_actions": event_metrics.invalid_actions,
-                "reward": float(reward),
-                "seed": int(seed),
-                "step": int(step),
-                "task_id": task.task_id,
-                "terminated": bool(terminated),
-                "truncated": bool(truncated),
-                "type": "eval_step",
-                "wire_id": int(task.wire_id),
-                "won": event_metrics.won,
-            }
-        )
+        record = {
+            "action": _jsonable(action),
+            "damage_dealt": event_metrics.damage_dealt,
+            "damage_taken": event_metrics.damage_taken,
+            "death_reason": event_metrics.death_reason,
+            "episode": episode_index,
+            "episode_id": int(info.get("episode_id", 0)),
+            "heal_amount": event_metrics.heal_amount,
+            "heal_count": event_metrics.heal_count,
+            "invalid_actions": event_metrics.invalid_actions,
+            "reward": float(reward),
+            "seed": int(seed),
+            "step": int(step),
+            "task_id": task.task_id,
+            "terminated": bool(terminated),
+            "truncated": bool(truncated),
+            "type": "eval_step",
+            "wire_id": int(task.wire_id),
+            "won": event_metrics.won,
+        }
+        with self._replay_lock:
+            self.replay_sink(record)
 
     def regression_report(
         self, baseline: dict[str, dict[str, float]], current: dict[str, dict[str, float]]

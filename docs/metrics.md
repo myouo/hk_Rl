@@ -43,6 +43,10 @@ and current metrics.
 records with task/seed/episode/step, action, reward, terminal flags, and
 event-derived metrics. Replay JSONL is debugging evidence; capability decisions
 still use the aggregated shaping-free metrics above.
+`scripts/run_eval.py --eval-workers N --ports P0 P1 ...` evaluates tasks through
+a task-level worker pool so multi-boss regression checks can use multiple live
+env instances when available. The default is `1` worker and the single `--port`
+value to preserve deterministic single-instance behavior.
 
 ## 3. SPS, not FPS (PRD §9.6)
 

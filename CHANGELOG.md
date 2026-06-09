@@ -340,6 +340,9 @@ the project version tracks the **schema_version** + roadmap phase.
   coordinator monitoring without a live game.
 - `scripts/render_phase8_dashboard.py` and `make phase8-dashboard` now render a
   static Phase 8 fleet dashboard from coordinator or offline-smoke summary JSON.
+- Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
+  round-robin env assignment for multi-task regression runs across multiple live
+  env instances.
 - Mod-side protocol foundations: typed reward event buffering, heartbeat
   liveness tracking, StepRequest decode DTOs, and length-prefixed StepResponse
   encoding via generated FlatBuffers bindings.

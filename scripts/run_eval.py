@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +67,19 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=5555)
+    p.add_argument(
+        "--ports",
+        nargs="+",
+        type=int,
+        help="optional TCP port pool assigned round-robin to evaluator workers",
+    )
     p.add_argument("--max-steps", type=int, default=4096)
+    p.add_argument(
+        "--eval-workers",
+        type=int,
+        default=1,
+        help="number of task-level evaluator workers",
+    )
     p.add_argument("--no-normalize", action="store_true")
     p.add_argument(
         "--baseline", help="optional baseline metrics JSON for regression diff"
@@ -93,9 +106,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         _validate_model_task_layouts(tasks)
     train_cfg = load_train_config(args.train_config)
     policy = _build_policy(args, tasks[0], train_cfg)
+    next_port = _make_port_provider(args)
 
     def env_factory(task: TaskConfig) -> Any:
-        env = HKRLEnv(transport=_build_transport(args, train_cfg), task=task)
+        env = HKRLEnv(transport=_build_transport(args, train_cfg, port=next_port()), task=task)
         return env if args.no_normalize else NormalizeObservation(env)
 
     evaluator = Evaluator(
@@ -105,6 +119,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         env_factory=env_factory,
         max_steps_per_episode=args.max_steps,
         replay_sink=_make_replay_sink(getattr(args, "replay_jsonl", None)),
+        num_workers=int(getattr(args, "eval_workers", 1)),
     )
     metrics = evaluator.evaluate(episodes_per_task=args.episodes)
     output: dict[str, Any] = {
@@ -129,10 +144,12 @@ def _build_metadata(
         "checkpoint": getattr(args, "checkpoint", None),
         "checkpoint_dir": getattr(args, "checkpoint_dir", None),
         "episodes": int(args.episodes),
+        "eval_workers": int(getattr(args, "eval_workers", 1)),
         "max_steps": int(args.max_steps),
         "model": train_cfg.model.name,
         "normalize": not bool(args.no_normalize),
         "policy": args.policy,
+        "ports": _ports(args),
         "replay_jsonl": getattr(args, "replay_jsonl", None),
         "seeds": [int(seed) for seed in args.seeds],
         "task_ids": [task.task_id for task in tasks],
@@ -244,8 +261,35 @@ def _build_configured_policy(task: TaskConfig, train_cfg: TrainConfig) -> Any:
     )
 
 
-def _build_transport(args: argparse.Namespace, train_cfg: TrainConfig) -> Transport:
-    return make_transport(train_cfg, host=args.host, port=args.port)
+def _build_transport(
+    args: argparse.Namespace,
+    train_cfg: TrainConfig,
+    *,
+    port: int | None = None,
+) -> Transport:
+    return make_transport(train_cfg, host=args.host, port=args.port if port is None else port)
+
+
+def _make_port_provider(args: argparse.Namespace) -> Any:
+    ports = _ports(args)
+    lock = threading.Lock()
+    index = 0
+
+    def next_port() -> int:
+        nonlocal index
+        with lock:
+            port = ports[index % len(ports)]
+            index += 1
+        return port
+
+    return next_port
+
+
+def _ports(args: argparse.Namespace) -> list[int]:
+    ports = getattr(args, "ports", None)
+    if ports:
+        return [int(port) for port in ports]
+    return [int(getattr(args, "port", 5555))]
 
 
 def _write_output(output: dict[str, Any], path: Path) -> None:

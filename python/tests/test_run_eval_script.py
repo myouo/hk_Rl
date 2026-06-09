@@ -154,6 +154,14 @@ def test_run_eval_transport_uses_configured_auth_token(
     assert transport.auth_token == "secret"
 
 
+def test_run_eval_port_provider_cycles_configured_ports() -> None:
+    module = _load_script("run_eval.py")
+    args = argparse.Namespace(port=5555, ports=[6000, 6001])
+    next_port = module._make_port_provider(args)
+
+    assert [next_port(), next_port(), next_port()] == [6000, 6001, 6000]
+
+
 def test_run_eval_writes_output_json(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     output = {"metrics": {"task": {"win_rate": 1.0}}}
@@ -186,9 +194,12 @@ def test_run_eval_builds_reproducibility_metadata() -> None:
         checkpoint="checkpoint.pt",
         checkpoint_dir=None,
         episodes=7,
+        eval_workers=3,
         max_steps=123,
         no_normalize=False,
         policy="mlp",
+        port=6000,
+        ports=[6000, 6001],
         replay_jsonl="runs/replay.jsonl",
         seeds=[4, 5],
         train_config="configs/train/ppo_mlp.yaml",
@@ -201,10 +212,12 @@ def test_run_eval_builds_reproducibility_metadata() -> None:
         "checkpoint": "checkpoint.pt",
         "checkpoint_dir": None,
         "episodes": 7,
+        "eval_workers": 3,
         "max_steps": 123,
         "model": "mlp",
         "normalize": True,
         "policy": "mlp",
+        "ports": [6000, 6001],
         "replay_jsonl": "runs/replay.jsonl",
         "seeds": [4, 5],
         "task_ids": ["gruz_mother"],

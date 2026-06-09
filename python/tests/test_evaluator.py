@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 import torch
 from hkrl import protocol, spaces
 from hkrl.eval.evaluator import Evaluator
@@ -67,6 +68,48 @@ def test_evaluator_regression_report_returns_win_rate_delta() -> None:
     )
 
     assert report == {"a": -0.25, "b": -0.25, "c": 1.0}
+
+
+def test_evaluator_worker_pool_runs_tasks_and_closes_envs() -> None:
+    tasks = [
+        TaskConfig(task_id="fake_a", scene="FakeScene"),
+        TaskConfig(task_id="fake_b", scene="FakeScene"),
+    ]
+    action_space = spaces.make_action_space(enable_macro=False)
+    made_envs: list[tuple[str, FakeEvalEnv]] = []
+
+    def make_env(task: TaskConfig) -> FakeEvalEnv:
+        env = FakeEvalEnv()
+        made_envs.append((task.task_id, env))
+        return env
+
+    evaluator = Evaluator(
+        ScriptedAggroPolicy(action_space),
+        tasks=tasks,
+        seeds=[0, 1],
+        env_factory=make_env,
+        max_steps_per_episode=4,
+        num_workers=2,
+    )
+
+    results = evaluator.evaluate(episodes_per_task=2)
+
+    assert list(results) == ["fake_a", "fake_b"]
+    assert results["fake_a"]["win_rate"] == 0.5
+    assert results["fake_b"]["win_rate"] == 0.5
+    assert sorted(task_id for task_id, _ in made_envs) == ["fake_a", "fake_b"]
+    assert all(env.closed for _, env in made_envs)
+
+
+def test_evaluator_rejects_non_positive_worker_count() -> None:
+    with pytest.raises(ValueError, match="num_workers"):
+        Evaluator(
+            model=object(),
+            tasks=[TaskConfig(task_id="a", scene="A")],
+            seeds=[0],
+            env_factory=lambda task: None,
+            num_workers=0,
+        )
 
 
 def test_evaluator_regression_report_accepts_per_boss_win_rate() -> None:

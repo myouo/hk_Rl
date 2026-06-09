@@ -201,6 +201,12 @@ turns either a coordinator summary or a Phase 8 smoke summary into a static
 monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 `runs/phase8-smoke/dashboard.html` plus the normalized dashboard model JSON for
 CI artifacts or local inspection.
+Evaluator scale-out uses the same task isolation principle:
+`scripts/run_eval.py --eval-workers N --ports P0 P1 ...` runs different task
+evaluations through a task-level worker pool while keeping training separate
+from evaluator envs. Use `N` only when the target machine has enough live mod
+instances/ports for the selected task set; the default `1` and single `--port`
+preserve single-instance behavior.
 
 ## 9. PyTorch + CUDA note
 
