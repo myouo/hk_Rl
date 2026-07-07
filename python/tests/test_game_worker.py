@@ -247,12 +247,17 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
     uploaded: list[Any] = []
     heartbeats: list[dict[str, Any]] = []
     clock = AdvancingClock(step=0.5)
+
+    def accept_upload(batch: Any) -> bool:
+        uploaded.append(batch)
+        return True
+
     worker = GameWorker(
         env=env,  # type: ignore[arg-type]
         model=model,
         config=TrainConfig(algorithm="ppo", rollout_steps=2),
         learner_endpoint="learner:5600",
-        batch_uploader=uploaded.append,
+        batch_uploader=accept_upload,
         heartbeat_sink=heartbeats.append,
         clock=clock,
     )
@@ -371,6 +376,39 @@ def test_game_worker_reports_learner_upload_rejections() -> None:
     assert heartbeats[-1]["learner_upload_accepted_batches"] == 0
     assert heartbeats[-1]["learner_upload_rejected_batches"] == 1
     assert heartbeats[-1]["learner_upload_failed_batches"] == 0
+
+
+def test_game_worker_rejects_malformed_learner_upload_ack() -> None:
+    env = FakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    heartbeats: list[dict[str, Any]] = []
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        learner_endpoint="learner:5600",
+        batch_uploader=lambda _batch: None,
+        heartbeat_sink=heartbeats.append,
+        max_consecutive_failures=0,
+    )
+
+    with pytest.raises(RuntimeError, match="exceeded max_consecutive_failures=0"):
+        worker.run(total_steps=2)
+
+    assert heartbeats[-1]["status"] == "recovering"
+    assert heartbeats[-1]["learner_upload_submitted_batches"] == 1
+    assert heartbeats[-1]["learner_upload_accepted_batches"] == 0
+    assert heartbeats[-1]["learner_upload_rejected_batches"] == 0
+    assert heartbeats[-1]["learner_upload_failed_batches"] == 1
 
 
 def test_game_worker_reports_learner_upload_failures_before_recovery() -> None:

@@ -187,8 +187,12 @@ the project version tracks the **schema_version** + roadmap phase.
   filesystem or HTTP reads.
 - Checkpoint registry/client parsing now rejects non-positive versions,
   negative policy/step metadata, and malformed sha256 hashes in index entries.
+- Checkpoint registry/client parsing now rejects non-string checkpoint paths and
+  bool/float/string version metadata instead of silently coercing malformed
+  index entries.
 - Checkpoint registry publishing now rejects negative policy/step metadata
-  before writing checkpoint files or index entries.
+  and non-integer policy/step values before writing checkpoint files or index
+  entries.
 - Checkpoint publishing and worker pulls now reject malformed payloads and
   non-finite model-state tensors before weights can be loaded.
 - Evaluator checkpoint loading now applies the same model-state tensor
@@ -329,11 +333,20 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_worker.py` now builds config/task-driven worker wiring with a
   dry-run mode, optional checkpoint registry probing, NPZ batch spooling, and
   configurable recovery limits.
+- `scripts/run_worker.py` now rejects empty config/task/registry/spool/heartbeat
+  path arguments before constructing live env workers or writing local artifacts.
+- `HKRLEnvMod` now reads `HKRL_HOST`/`HKRL_PORT` at startup, while
+  `scripts/train.py` and `scripts/run_worker.py` expose matching env TCP
+  endpoint overrides for live smoke, training, and multi-instance worker runs.
+- `scripts/check_env.py` now provides a live HKRLEnvMod PING preflight that
+  verifies TCP/schema/auth connectivity without resetting the game scene.
 - `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
   provider for multi-task rollout smoke/curriculum runs.
 - `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,
   emits one-shot task assignments, ingests heartbeat JSONL, and reports a JSON
   monitoring snapshot for Phase 8 smoke checks.
+- `scripts/run_coordinator.py` now rejects empty config/task/bind/heartbeat/eval
+  metrics path arguments before task assignment or heartbeat ingestion.
 - Coordinator monitoring snapshots now report active worker policy/checkpoint
   version lag, stale-version counts, missing-version counts, and recovering
   worker counts for Phase 8 dashboard health checks.
@@ -352,6 +365,9 @@ the project version tracks the **schema_version** + roadmap phase.
   checkpoint versions.
 - Phase 8 dashboard/profile reports now surface active workers that have not
   been assigned tasks.
+- Phase 8 dashboard/profile reports now also identify unassigned workers from
+  per-worker `assigned_task = null` rows when aggregate assigned-worker counts
+  are missing or stale.
 - Phase 8 dashboard/profile reports now surface learner intake counters and flag
   rejected or still-queued learner batches.
 - Worker heartbeats and Phase 8 dashboard/profile reports now surface worker-side
@@ -364,6 +380,13 @@ the project version tracks the **schema_version** + roadmap phase.
 - Evaluator now supports `--eval-workers` task-level worker pools plus `--ports`
   round-robin env assignment for multi-task regression runs across multiple live
   env instances.
+- `scripts/run_eval.py` now rejects invalid live-eval counts, seeds, duplicate
+  or out-of-range ports, and multi-worker runs without one port per worker
+  before connecting to env instances.
+- `scripts/run_eval.py` now rejects empty task/config/checkpoint/baseline/output
+  and replay paths before connecting to live env instances or writing eval
+  artifacts, and preloads optional baseline metrics before starting a live eval
+  run.
 - `scripts/render_eval_report.py` and `make phase8-eval-report` now render
   fixed-seed evaluator JSON into JSON/Markdown regression reports.
 - Phase 8 eval reports now use `per_boss_win_rate` as the task win-rate fallback
@@ -396,6 +419,10 @@ the project version tracks the **schema_version** + roadmap phase.
   Markdown whose task row values drift from eval report JSON.
 - Phase 8 release evidence verification now rejects manifests whose `git_sha`
   differs from the expected release commit when provided.
+- Phase 8 release checklist and evidence artifacts now record `git_dirty`, and
+  verification rejects malformed or drifted dirty-worktree metadata.
+- `make phase8-release-checklist` and `make phase8-verify-release-evidence` now
+  pass the current Git SHA and dirty-worktree flag through the release tooling.
 - Phase 8 release evidence verification now rejects hash-valid Phase 8 smoke
   summaries that are malformed or do not report `ok=true`.
 - Phase 8 release evidence verification now rejects Phase 8 smoke summaries
@@ -467,9 +494,10 @@ the project version tracks the **schema_version** + roadmap phase.
 - Phase 8 release evidence verification now rejects Phase 8 profile Markdown
   whose worker row values drift from profile JSON.
 - Phase 8 release evidence verification now rejects malformed release checklist
-  JSON, missing Phase 8 gates, malformed check rows, or checklist commit drift.
+  JSON, missing Phase 8 gates, malformed check rows, or checklist commit/dirty
+  drift.
 - Phase 8 release evidence verification now rejects malformed release checklist
-  Markdown, missing Phase 8 gate IDs, or checklist Markdown commit drift.
+  Markdown, missing Phase 8 gate IDs, or checklist Markdown commit/dirty drift.
 - Phase 8 release evidence verification now rejects release checklist Markdown
   whose command/evidence rows drift from checklist JSON.
 - Phase 8 release evidence verification now rejects stale release evidence
@@ -565,6 +593,72 @@ the project version tracks the **schema_version** + roadmap phase.
   replay/regression capture plumbing.
 - Configs (`tasks/`, `train/`) and scripts (`gen_schema`, `train`,
   `run_worker`, `run_learner`, `run_eval`).
+
+### Fixed
+- CheckpointClient now bypasses system HTTP proxies for localhost/private
+  checkpoint registries, keeping worker checkpoint pulls local and stable in
+  proxied developer environments.
+- Phase 8 release evidence verification now rejects smoke summaries that omit
+  coordinator aggregate worker monitoring metrics instead of only checking them
+  when present.
+- Phase 8 release evidence verification now rejects malformed worker version and
+  rollout/upload telemetry instead of treating invalid worker metric values as
+  present.
+- Phase 8 dashboard/profile rendering now treats malformed worker `alive`
+  values as unknown instead of coercing truthy strings to online workers.
+- Phase 8 dashboard/profile rendering now ignores malformed numeric strings for
+  worker, learner, and eval win-rate telemetry instead of accepting them as
+  trusted metrics.
+- GameWorker learner upload accounting now treats malformed uploader ACKs as
+  failures instead of counting any non-`False` value as an accepted batch.
+- `scripts/run_worker.py` now rejects malformed worker ids, step limits,
+  recovery thresholds, and learner endpoints before constructing live worker
+  state.
+- `scripts/run_phase8_smoke.py` now rejects malformed config/task paths, worker
+  counts, seeds, work directories, and requested artifact output paths before
+  clearing or writing smoke artifacts.
+- Release checklist/evidence render scripts now reject malformed `git_dirty`,
+  empty version/output paths, and malformed evidence artifact path lists before
+  writing release metadata.
+- Release evidence verification now rejects malformed expected `git_dirty`,
+  manifest/root/output paths before loading or writing verification reports.
+- Phase 8 dashboard/profile render scripts now reject empty input/output paths
+  before reading summaries or writing release artifacts.
+- Phase 8 eval report rendering now rejects empty eval input and report output
+  paths before reading fixed-seed eval JSON or writing report artifacts.
+- Coordinator heartbeat ingestion now rejects non-finite numeric metrics before
+  they can poison worker monitoring aggregates.
+- Coordinator startup now rejects malformed heartbeat timeouts, worker
+  counts/ids, seed overrides, and ambiguous explicit worker-id/worker-count
+  combinations before building fleet state.
+- `run_coordinator.py --eval-metrics` now rejects malformed, non-finite, or
+  out-of-range win-rate values instead of silently clipping bad evaluator input.
+- `run_coordinator.py --eval-metrics` now rejects non-object or win-rate-missing
+  per-task metric rows instead of silently omitting malformed evaluator tasks.
+- TaskSampler now rejects malformed or out-of-range win-rate updates instead of
+  silently clipping bad curriculum inputs.
+- Phase 8 eval report rendering now marks tasks with missing or invalid
+  `win_rate`/`per_boss_win_rate` evidence as malformed instead of coercing bad
+  values to zero.
+- Phase 8 eval report rendering now marks tasks with malformed numeric
+  damage/timing/ratio metrics as invalid and rejects string-like regression
+  deltas instead of accepting numeric-looking strings.
+- Phase 8 eval report rendering now rejects non-finite or non-numeric
+  win-rate/regression threshold arguments instead of letting NaN disable
+  regression findings.
+- `make phase8-eval-report` now fails after writing JSON/Markdown artifacts
+  when the rendered fixed-seed eval report contains critical findings.
+- `scripts/run_learner.py` now rejects malformed learner gate overrides for
+  intake counts/timeouts, staleness, publish cadence, entity capacity, and macro
+  count before partially constructing the learner.
+- `scripts/run_learner.py` now rejects empty config/task/bind/batch/checkpoint
+  path arguments and `--serve-forever`/`--intake-count` conflicts before model,
+  registry, or intake-server construction.
+- Phase 8 release evidence verification now validates eval-report task row
+  numeric fields instead of trusting `metrics_valid` alone.
+- Evaluator regression reports now reject malformed, non-finite, or out-of-range
+  baseline/current win-rate metrics before computing catastrophic-forgetting
+  deltas.
 
 ### Decisions
 - ADR-0001 RL framework: self-built PyTorch PPO.

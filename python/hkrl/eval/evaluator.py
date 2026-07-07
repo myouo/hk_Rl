@@ -8,10 +8,12 @@ action ratio, generalization, and old-task regression. Guards against the
 
 from __future__ import annotations
 
+import math
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -22,6 +24,8 @@ from hkrl.models.base import ActorCritic
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
 from hkrl.utils.config import TaskConfig
 from hkrl.worker.game_worker import action_tensor_to_env_action
+
+_MISSING_METRICS = object()
 
 
 class Evaluator:
@@ -268,15 +272,26 @@ class Evaluator:
             self.replay_sink(record)
 
     def regression_report(
-        self, baseline: dict[str, dict[str, float]], current: dict[str, dict[str, float]]
+        self,
+        baseline: Mapping[str, Any],
+        current: Mapping[str, Any],
     ) -> dict[str, float]:
         """Per-task win-rate delta vs a baseline (catastrophic-forgetting check)."""
         task_ids = sorted(set(baseline) | set(current))
-        return {
-            task_id: _win_rate_metric(current.get(task_id, {}))
-            - _win_rate_metric(baseline.get(task_id, {}))
-            for task_id in task_ids
-        }
+        report: dict[str, float] = {}
+        for task_id in task_ids:
+            current_metrics = current.get(task_id, _MISSING_METRICS)
+            baseline_metrics = baseline.get(task_id, _MISSING_METRICS)
+            report[task_id] = _win_rate_metric(
+                current_metrics,
+                source="current",
+                task_id=task_id,
+            ) - _win_rate_metric(
+                baseline_metrics,
+                source="baseline",
+                task_id=task_id,
+            )
+        return report
 
 
 @dataclass(frozen=True)
@@ -406,8 +421,39 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
     return float(numerator / denominator)
 
 
-def _win_rate_metric(metrics: dict[str, float]) -> float:
-    return float(metrics.get("win_rate", metrics.get("per_boss_win_rate", 0.0)))
+def _win_rate_metric(metrics: Any, *, source: str, task_id: str) -> float:
+    if metrics is _MISSING_METRICS:
+        return 0.0
+    if not isinstance(metrics, Mapping):
+        raise ValueError(f"{source} metrics for task {task_id!r} must be an object")
+    if "win_rate" in metrics and metrics["win_rate"] is not None:
+        return _probability_metric(
+            metrics["win_rate"],
+            field="win_rate",
+            source=source,
+            task_id=task_id,
+        )
+    if "per_boss_win_rate" in metrics and metrics["per_boss_win_rate"] is not None:
+        return _probability_metric(
+            metrics["per_boss_win_rate"],
+            field="per_boss_win_rate",
+            source=source,
+            task_id=task_id,
+        )
+    raise ValueError(
+        f"{source} metrics for task {task_id!r} must include win_rate or per_boss_win_rate"
+    )
+
+
+def _probability_metric(value: Any, *, field: str, source: str, task_id: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (Real, np.integer, np.floating)):
+        raise ValueError(f"{source} {field} for task {task_id!r} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{source} {field} for task {task_id!r} must be finite")
+    if not 0.0 <= result <= 1.0:
+        raise ValueError(f"{source} {field} for task {task_id!r} must be in [0, 1]")
+    return result
 
 
 def _jsonable(value: Any) -> Any:

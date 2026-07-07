@@ -46,7 +46,10 @@ and current metrics.
 `scripts/run_eval.py --replay-jsonl FILE` can additionally emit per-step replay
 records with task/seed/episode/step, action, reward, terminal flags, and
 event-derived metrics. Replay JSONL is debugging evidence; capability decisions
-still use the aggregated shaping-free metrics above.
+still use the aggregated shaping-free metrics above. The evaluator CLI rejects
+empty task/config/checkpoint/baseline/output/replay paths before connecting to
+live env instances, and preloads optional baseline metrics before starting a
+fixed-seed eval run.
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` evaluates tasks through
 a task-level worker pool so multi-boss regression checks can use multiple live
 env instances when available. The default is `1` worker and the single `--port`
@@ -56,14 +59,19 @@ metrics and optional regression deltas into stable JSON/Markdown release
 artifacts. If `win_rate` is absent or invalid for a task, the report uses
 `per_boss_win_rate` as the canonical win-rate fallback. `make
 phase8-eval-report` writes `runs/eval-report.json` and `runs/eval-report.md`
-from the most recent evaluator output. Non-object per-task metric payloads are
-reported as critical findings instead of being silently treated as valid zeros;
-win-rate summaries are computed over valid task rows and include separate
-valid/malformed task counts. If every task row is malformed, the report also
-emits a critical no-valid-task finding so release evidence cannot pass without
-at least one usable fixed-seed metric row. Non-numeric or non-finite regression
-deltas are reported as critical findings and omitted from regression summaries
-instead of being coerced to zero.
+from the most recent evaluator output and exits non-zero after writing those
+artifacts if the report contains critical findings. Non-object per-task metric
+payloads are reported as critical findings instead of being silently treated as
+valid zeros. The script rejects empty eval input and output artifact paths before
+reading or writing files.
+Explicitly malformed damage/timing/ratio fields also invalidate that task row;
+numeric-looking strings are not accepted as evaluator evidence. Win-rate
+summaries are computed over valid task rows and include separate valid/malformed
+task counts. If every task row is malformed, the report also emits a critical
+no-valid-task finding so release evidence cannot pass without at least one usable
+fixed-seed metric row. Non-numeric or non-finite regression deltas, including
+numeric-looking strings, are reported as critical findings and omitted from
+regression summaries instead of being coerced to zero.
 
 ## 3. SPS, not FPS (PRD §9.6)
 
@@ -90,17 +98,23 @@ policy/checkpoint lag, worker table state, worker-side learner upload counters,
 learner intake counters, sampler weights, and evaluator win-rate inputs;
 `make phase8-dashboard` writes the default offline smoke dashboard to
 `runs/phase8-smoke/`.
+The script validates summary, output, and optional evaluator-metrics paths before
+reading inputs or writing dashboard artifacts.
 Dashboard health is degraded for lost workers, recovering workers, crash churn,
 unassigned active workers, stale/missing policy or checkpoint versions, or active
 workers reporting zero fleet SPS. Worker learner upload failures/rejections and
 learner rejected/queued batches are also reported as dashboard health issues.
 Lost-worker health checks use both aggregate counts and per-worker `alive`
-state, so stale or partial summaries still surface heartbeat-expired workers.
+state, and unassigned-worker checks use both aggregate assigned-worker counts
+and per-worker `assigned_task` state, so stale or partial summaries still
+surface heartbeat-expired or idle workers.
 `scripts/render_profile_report.py` renders a static JSON/Markdown profile report
 from the same summaries. It normalizes fleet SPS, per-worker rollout timing,
 per-worker alive/status state, lost/recovering workers, crash counts,
 unassigned workers, and stale/missing policy or checkpoint versions into
 bottleneck findings, with worker upload failures/rejections and learner
 rejected/queued batches reported as intake/backpressure findings.
+The report script validates summary and output paths before writing JSON or
+Markdown profile artifacts.
 This report defines a CI-friendly Phase 8 profiling format; live Unity CPU/GPU
 profiling is still performed on the game machine.

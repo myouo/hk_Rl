@@ -22,7 +22,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import threading
+from collections.abc import Sequence
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +104,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_eval_args(args)
+    baseline_metrics = (
+        _load_baseline_metrics(Path(args.baseline)) if getattr(args, "baseline", None) else None
+    )
     tasks = [load_task_config(path) for path in args.tasks]
     if args.policy in {"mlp", "model"}:
         _validate_model_task_layouts(tasks)
@@ -127,9 +134,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "metrics": metrics,
     }
 
-    if args.baseline:
-        baseline = _load_baseline_metrics(Path(args.baseline))
-        output["regression"] = evaluator.regression_report(baseline, metrics)
+    if baseline_metrics is not None:
+        output["regression"] = evaluator.regression_report(baseline_metrics, metrics)
 
     return output
 
@@ -288,8 +294,74 @@ def _make_port_provider(args: argparse.Namespace) -> Any:
 def _ports(args: argparse.Namespace) -> list[int]:
     ports = getattr(args, "ports", None)
     if ports:
-        return [int(port) for port in ports]
-    return [int(getattr(args, "port", 5555))]
+        return [_validate_port(port, name="ports") for port in ports]
+    return [_validate_port(getattr(args, "port", 5555), name="port")]
+
+
+def _validate_eval_args(args: argparse.Namespace) -> None:
+    tasks = getattr(args, "tasks", None)
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)) or not tasks:
+        raise ValueError("at least one task is required")
+    for index, task in enumerate(tasks):
+        _non_empty_path_like(task, name=f"tasks[{index}]")
+    _positive_int(getattr(args, "episodes", None), name="episodes")
+    _positive_int(getattr(args, "max_steps", None), name="max_steps")
+    eval_workers = _positive_int(getattr(args, "eval_workers", None), name="eval_workers")
+    _non_empty_string(getattr(args, "host", "127.0.0.1"), name="host")
+    _optional_path_arg(getattr(args, "baseline", None), name="baseline")
+    _optional_path_arg(getattr(args, "checkpoint", None), name="checkpoint")
+    _optional_path_arg(getattr(args, "checkpoint_dir", None), name="checkpoint_dir")
+    _optional_path_arg(getattr(args, "output", None), name="output")
+    _optional_path_arg(getattr(args, "replay_jsonl", None), name="replay_jsonl")
+    _optional_path_arg(getattr(args, "train_config", None), name="train_config")
+    seeds = getattr(args, "seeds", None)
+    if not isinstance(seeds, list) or not seeds:
+        raise ValueError("seeds must contain at least one integer")
+    for seed in seeds:
+        _integer(seed, name="seeds")
+    ports = _ports(args)
+    if len(set(ports)) != len(ports):
+        raise ValueError("ports must be unique")
+    if len(ports) < eval_workers:
+        raise ValueError("ports must include at least one port per eval worker")
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _integer(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    return int(value)
+
+
+def _validate_port(value: Any, *, name: str) -> int:
+    port = _integer(value, name=name)
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{name} must be in [1, 65535]")
+    return port
+
+
+def _non_empty_string(value: Any, *, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _non_empty_path_like(value: Any, *, name: str) -> str | os.PathLike[str]:
+    if not isinstance(value, str | os.PathLike) or not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _optional_path_arg(value: Any, *, name: str) -> str | os.PathLike[str] | None:
+    if value is None:
+        return None
+    return _non_empty_path_like(value, name=name)
 
 
 def _write_output(output: dict[str, Any], path: Path) -> None:
@@ -303,7 +375,7 @@ def _make_replay_sink(path: str | None) -> Any:
     if path is None:
         return None
 
-    target = Path(path)
+    target = Path(_non_empty_path_like(path, name="replay_jsonl"))
 
     def sink(record: dict[str, Any]) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -334,9 +406,11 @@ def _resolve_checkpoint_path(args: argparse.Namespace) -> Path:
         )
 
     if checkpoint_dir is not None:
-        return _latest_registry_checkpoint(Path(checkpoint_dir))
+        return _latest_registry_checkpoint(
+            Path(_non_empty_path_like(checkpoint_dir, name="checkpoint_dir"))
+        )
 
-    path = Path(checkpoint)
+    path = Path(_non_empty_path_like(checkpoint, name="checkpoint"))
     if path.is_dir():
         return _latest_registry_checkpoint(path)
     return path

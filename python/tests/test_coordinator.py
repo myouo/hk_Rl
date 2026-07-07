@@ -39,6 +39,48 @@ def test_coordinator_marks_lost_and_heartbeat_recovers_worker() -> None:
     assert record.lost_at is None
 
 
+def test_coordinator_rejects_non_finite_heartbeat_metrics() -> None:
+    coordinator = Coordinator(TaskSampler(["gruz"], seed=0), clock=FakeClock())
+    coordinator.register_worker("worker-1", {})
+
+    with pytest.raises(ValueError, match=r"sps.*finite"):
+        coordinator.heartbeat("worker-1", metrics={"sps": float("nan")})
+
+    with pytest.raises(ValueError, match=r"policy_version.*finite"):
+        coordinator.ingest_heartbeat_payload(
+            "worker-1",
+            {
+                "policy_version": float("inf"),
+                "status": "running",
+            },
+        )
+
+    assert coordinator.worker_record("worker-1").metrics == {}
+
+
+@pytest.mark.parametrize(
+    ("heartbeat_timeout_s", "match"),
+    [
+        (0.0, "positive"),
+        (-1.0, "positive"),
+        (float("nan"), "finite"),
+        (float("inf"), "finite"),
+        (True, "numeric"),
+        ("5", "numeric"),
+    ],
+)
+def test_coordinator_rejects_invalid_heartbeat_timeout(
+    heartbeat_timeout_s: object,
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        Coordinator(
+            TaskSampler(["gruz"], seed=0),
+            heartbeat_timeout_s=heartbeat_timeout_s,  # type: ignore[arg-type]
+            clock=FakeClock(),
+        )
+
+
 def test_coordinator_expires_workers_by_heartbeat_timeout() -> None:
     clock = FakeClock()
     coordinator = Coordinator(TaskSampler(["gruz"], seed=0), heartbeat_timeout_s=5.0, clock=clock)

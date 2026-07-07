@@ -6,9 +6,14 @@ with optional old-task replay. The curriculum scheduler adjusts weights over tim
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+from collections.abc import Mapping, Sequence
+from numbers import Real
+from typing import Any
 
 import numpy as np
+
+_MISSING_WINRATE = object()
 
 
 class TaskSampler:
@@ -48,13 +53,10 @@ class TaskSampler:
             active_tasks = self.task_ids
         return self._weighted_sample(active_tasks)
 
-    def update_weights(self, per_task_winrate: dict[str, float]) -> None:
+    def update_weights(self, per_task_winrate: Mapping[str, Any]) -> None:
         """Reweight toward weaker tasks; keep replay for mastered ones."""
         for task_id in self.task_ids:
-            winrate = float(per_task_winrate.get(task_id, 0.0))
-            if not np.isfinite(winrate):
-                raise ValueError(f"winrate for task {task_id!r} must be finite")
-            winrate = float(np.clip(winrate, 0.0, 1.0))
+            winrate = _winrate_or_default(per_task_winrate.get(task_id, _MISSING_WINRATE), task_id)
             self.weights[task_id] = max(0.05, 1.0 - winrate)
             if winrate >= self.mastered_winrate:
                 self.mastered_tasks.add(task_id)
@@ -70,3 +72,16 @@ class TaskSampler:
         else:
             probabilities = weights / total
         return str(self._rng.choice(list(task_ids), p=probabilities))
+
+
+def _winrate_or_default(value: Any, task_id: str) -> float:
+    if value is _MISSING_WINRATE:
+        return 0.0
+    if isinstance(value, bool) or not isinstance(value, (Real, np.integer, np.floating)):
+        raise ValueError(f"winrate for task {task_id!r} must be numeric")
+    winrate = float(value)
+    if not math.isfinite(winrate):
+        raise ValueError(f"winrate for task {task_id!r} must be finite")
+    if not 0.0 <= winrate <= 1.0:
+        raise ValueError(f"winrate for task {task_id!r} must be in [0, 1]")
+    return winrate

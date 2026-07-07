@@ -85,7 +85,8 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         title="Run a live env smoke against HKRLEnvMod",
         command=(
             "python scripts/train.py --config configs/train/ppo_mlp.yaml "
-            "--task configs/tasks/gruz_mother.yaml --smoke"
+            "--task configs/tasks/gruz_mother.yaml --smoke "
+            "--host 127.0.0.1 --port 5555"
         ),
         evidence="live smoke reaches RUNNING, steps the env, and exits without protocol errors",
     ),
@@ -96,7 +97,7 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         command=(
             "python scripts/run_eval.py --policy scripted "
             "--tasks configs/tasks/gruz_mother.yaml --episodes 5 "
-            "--output runs/eval.json"
+            "--host 127.0.0.1 --port 5555 --output runs/eval.json"
         ),
         evidence="runs/eval.json contains shaping-free per-boss metrics",
     ),
@@ -105,7 +106,10 @@ PHASE8_RELEASE_CHECKS: tuple[ReleaseCheck, ...] = (
         category="game_machine",
         title="Render the fixed-seed eval regression report",
         command="make phase8-eval-report",
-        evidence="runs/eval-report.json and eval-report.md summarize win rates/regressions",
+        evidence=(
+            "runs/eval-report.json and eval-report.md summarize win rates/regressions "
+            "without critical findings"
+        ),
     ),
     ReleaseCheck(
         id="security_scope",
@@ -150,6 +154,7 @@ def build_release_checklist(
     *,
     version: str = "phase8",
     git_sha: str | None = None,
+    git_dirty: bool = False,
     checks: Sequence[ReleaseCheck] = PHASE8_RELEASE_CHECKS,
 ) -> dict[str, Any]:
     """Return a stable release checklist payload."""
@@ -157,6 +162,7 @@ def build_release_checklist(
     return {
         "categories": categories,
         "checks": [asdict(check) for check in checks],
+        "git_dirty": bool(git_dirty),
         "git_sha": git_sha,
         "required_count": sum(1 for check in checks if check.blocking),
         "version": version,
@@ -174,6 +180,7 @@ def render_release_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Version: `{payload.get('version', 'unknown')}`",
         f"- Git SHA: `{payload.get('git_sha') or 'unrecorded'}`",
+        f"- Git dirty: `{_format_bool(payload.get('git_dirty', False))}`",
         f"- Blocking checks: `{payload.get('required_count', 0)}`",
         "",
     ]
@@ -217,6 +224,7 @@ def build_release_evidence_manifest(
     root: str | Path = ".",
     version: str = "phase8",
     git_sha: str | None = None,
+    git_dirty: bool = False,
     artifacts: Sequence[str | Path] | None = None,
     optional_artifacts: Sequence[str | Path] = PHASE8_OPTIONAL_RELEASE_ARTIFACTS,
 ) -> dict[str, Any]:
@@ -232,6 +240,7 @@ def build_release_evidence_manifest(
     return {
         "artifact_count": len(artifact_rows),
         "artifacts": artifact_rows,
+        "git_dirty": bool(git_dirty),
         "git_sha": git_sha,
         "manifest_version": RELEASE_EVIDENCE_MANIFEST_VERSION,
         "total_bytes": total_bytes,
@@ -260,6 +269,7 @@ def render_release_evidence_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Version: `{payload.get('version', 'unknown')}`",
         f"- Git SHA: `{payload.get('git_sha') or 'unrecorded'}`",
+        f"- Git dirty: `{_format_bool(payload.get('git_dirty', False))}`",
         f"- Manifest version: `{payload.get('manifest_version', 'unknown')}`",
         f"- Artifact count: `{payload.get('artifact_count', 0)}`",
         f"- Total bytes: `{payload.get('total_bytes', 0)}`",
@@ -302,6 +312,7 @@ def verify_release_evidence_manifest(
     *,
     root: str | Path = ".",
     manifest: Mapping[str, Any],
+    expected_git_dirty: bool | None = None,
     expected_git_sha: str | None = None,
 ) -> dict[str, Any]:
     """Verify release evidence artifact hashes against a manifest."""
@@ -336,6 +347,17 @@ def verify_release_evidence_manifest(
     git_sha_failure = _verify_manifest_git_sha(manifest)
     if git_sha_failure is not None:
         failures.append(git_sha_failure)
+
+    git_dirty_failure = _verify_manifest_git_dirty(manifest)
+    if git_dirty_failure is not None:
+        failures.append(git_dirty_failure)
+
+    expected_git_dirty_failure = _verify_manifest_expected_git_dirty(
+        manifest,
+        expected_git_dirty=expected_git_dirty,
+    )
+    if expected_git_dirty_failure is not None:
+        failures.append(expected_git_dirty_failure)
 
     expected_git_sha_failure = _verify_manifest_expected_git_sha(
         manifest,
@@ -379,6 +401,7 @@ def verify_release_evidence_manifest(
     checklist_failure = _verify_release_checklist_artifact(
         root_path,
         results,
+        manifest_git_dirty=manifest.get("git_dirty"),
         manifest_git_sha=manifest.get("git_sha"),
     )
     if checklist_failure is not None:
@@ -387,6 +410,7 @@ def verify_release_evidence_manifest(
     checklist_markdown_failure = _verify_release_checklist_markdown_artifact(
         root_path,
         results,
+        manifest_git_dirty=manifest.get("git_dirty"),
         manifest_git_sha=manifest.get("git_sha"),
     )
     if checklist_markdown_failure is not None:
@@ -419,6 +443,7 @@ def verify_release_evidence_manifest(
         "artifact_count": len(results),
         "checked_artifact_count": sum(1 for result in results if result["ok"]),
         "failures": failures,
+        "git_dirty": manifest.get("git_dirty"),
         "git_sha": manifest.get("git_sha"),
         "manifest_version": manifest.get("manifest_version"),
         "ok": not failures,
@@ -615,6 +640,49 @@ def _verify_manifest_git_sha(manifest: Mapping[str, Any]) -> dict[str, Any] | No
     return None
 
 
+def _verify_manifest_git_dirty(manifest: Mapping[str, Any]) -> dict[str, Any] | None:
+    git_dirty = manifest.get("git_dirty")
+    if not isinstance(git_dirty, bool):
+        return {
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_dirty_invalid",
+        }
+    return None
+
+
+def _verify_manifest_expected_git_dirty(
+    manifest: Mapping[str, Any],
+    *,
+    expected_git_dirty: bool | None,
+) -> dict[str, Any] | None:
+    if expected_git_dirty is None:
+        return None
+    if not isinstance(expected_git_dirty, bool):
+        return {
+            "actual_git_dirty": expected_git_dirty,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "expected_git_dirty_invalid",
+        }
+
+    git_dirty = manifest.get("git_dirty")
+    if not isinstance(git_dirty, bool):
+        return None
+    if git_dirty != expected_git_dirty:
+        return {
+            "actual_git_dirty": git_dirty,
+            "expected_git_dirty": expected_git_dirty,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_dirty_mismatch",
+        }
+    return None
+
+
 def _verify_manifest_expected_git_sha(
     manifest: Mapping[str, Any],
     *,
@@ -794,6 +862,7 @@ def _release_evidence_markdown_metadata_lines(text: str) -> tuple[str, ...]:
     prefixes = (
         "- Version: `",
         "- Git SHA: `",
+        "- Git dirty: `",
         "- Manifest version: `",
         "- Artifact count: `",
         "- Total bytes: `",
@@ -805,6 +874,7 @@ def _release_evidence_markdown_metadata(manifest: Mapping[str, Any]) -> tuple[st
     return (
         f"- Version: `{manifest.get('version', 'unknown')}`",
         f"- Git SHA: `{manifest.get('git_sha') or 'unrecorded'}`",
+        f"- Git dirty: `{_format_bool(manifest.get('git_dirty', False))}`",
         f"- Manifest version: `{manifest.get('manifest_version', 'unknown')}`",
         f"- Artifact count: `{manifest.get('artifact_count', 0)}`",
         f"- Total bytes: `{manifest.get('total_bytes', 0)}`",
@@ -1039,6 +1109,7 @@ def _verify_release_checklist_artifact(
     results: Sequence[Mapping[str, Any]],
     *,
     manifest_git_sha: Any,
+    manifest_git_dirty: Any,
 ) -> dict[str, Any] | None:
     checklist_result = next(
         (result for result in results if result.get("path") == "runs/release/checklist.json"),
@@ -1064,12 +1135,17 @@ def _verify_release_checklist_artifact(
             "path": "runs/release/checklist.json",
             "reason": "release_checklist_not_object",
         }
-    return _verify_release_checklist_structure(payload, manifest_git_sha=manifest_git_sha)
+    return _verify_release_checklist_structure(
+        payload,
+        manifest_git_dirty=manifest_git_dirty,
+        manifest_git_sha=manifest_git_sha,
+    )
 
 
 def _verify_release_checklist_structure(
     payload: Mapping[str, Any],
     *,
+    manifest_git_dirty: Any,
     manifest_git_sha: Any,
 ) -> dict[str, Any] | None:
     if payload.get("version") != "phase8":
@@ -1096,6 +1172,24 @@ def _verify_release_checklist_structure(
             "ok": False,
             "path": "runs/release/checklist.json",
             "reason": "release_checklist_git_sha_mismatch",
+        }
+
+    git_dirty = payload.get("git_dirty")
+    if not isinstance(git_dirty, bool):
+        return {
+            "field": "git_dirty",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_dirty_invalid",
+        }
+    if isinstance(manifest_git_dirty, bool) and git_dirty != manifest_git_dirty:
+        return {
+            "actual_git_dirty": git_dirty,
+            "expected_git_dirty": manifest_git_dirty,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_dirty_mismatch",
         }
 
     checks = payload.get("checks")
@@ -1186,6 +1280,7 @@ def _verify_release_checklist_markdown_artifact(
     root: Path,
     results: Sequence[Mapping[str, Any]],
     *,
+    manifest_git_dirty: Any,
     manifest_git_sha: Any,
 ) -> dict[str, Any] | None:
     checklist_result = next(
@@ -1198,6 +1293,7 @@ def _verify_release_checklist_markdown_artifact(
         _verify_release_checklist_artifact(
             root,
             results,
+            manifest_git_dirty=manifest_git_dirty,
             manifest_git_sha=manifest_git_sha,
         )
         is not None
@@ -1229,6 +1325,15 @@ def _verify_release_checklist_markdown_artifact(
             "ok": False,
             "path": "runs/release/checklist.md",
             "reason": "release_checklist_markdown_git_sha_mismatch",
+        }
+    if isinstance(manifest_git_dirty, bool) and (
+        f"- Git dirty: `{_format_bool(manifest_git_dirty)}`" not in text
+    ):
+        return {
+            "field": "git_dirty",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_git_dirty_mismatch",
         }
 
     checks = _release_checklist_markdown_checks(root, results)
@@ -1652,14 +1757,8 @@ def _verify_phase8_smoke_metric_totals(
             for worker in worker_rows
         ),
     }
-    expected = {
-        field: expected_value
-        for field, expected_value in expected_all.items()
-        if field in metrics or field in {"active_worker_count", "sps"}
-    }
-
     metric_mismatches: dict[str, dict[str, Any]] = {}
-    for field, expected_value in expected.items():
+    for field, expected_value in expected_all.items():
         actual_value = metrics.get(field)
         if not _is_non_negative_number(actual_value):
             metric_mismatches[field] = {
@@ -1698,7 +1797,11 @@ def _phase8_worker_metric(worker: Mapping[str, Any], field: str) -> float:
 
 def _phase8_worker_has_metric(worker: Mapping[str, Any], field: str) -> bool:
     worker_metrics = worker.get("metrics")
-    return isinstance(worker_metrics, Mapping) and field in worker_metrics
+    return (
+        isinstance(worker_metrics, Mapping)
+        and field in worker_metrics
+        and _is_non_negative_count(worker_metrics.get(field))
+    )
 
 
 def _phase8_worker_metric_values(
@@ -1711,7 +1814,7 @@ def _phase8_worker_metric_values(
         if not isinstance(worker_metrics, Mapping) or field not in worker_metrics:
             continue
         value = worker_metrics.get(field)
-        if not _is_non_negative_number(value):
+        if not _is_non_negative_count(value):
             continue
         assert isinstance(value, (int, float))
         values.append(float(value))
@@ -1895,6 +1998,10 @@ def _verify_phase8_smoke_security(
         malformed_fields.append("worker.learner_upload_enabled")
     if worker.get("learner") is not None:
         malformed_fields.append("worker.learner")
+    if not _valid_env_host(worker.get("env_host")):
+        malformed_fields.append("worker.env_host")
+    if not _valid_env_port(worker.get("env_port")):
+        malformed_fields.append("worker.env_port")
 
     if malformed_fields:
         return {
@@ -1911,11 +2018,26 @@ def _verify_phase8_smoke_security(
                 "auth_token_configured": worker.get("auth_token_configured"),
                 "auth_token_env": auth_token_env,
                 "auth_token_required": worker.get("auth_token_required"),
+                "env_host": worker.get("env_host"),
+                "env_port": worker.get("env_port"),
                 "learner": worker.get("learner"),
                 "learner_upload_enabled": worker.get("learner_upload_enabled"),
             },
         }
     return None
+
+
+def _valid_env_host(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _valid_env_port(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if float(value) != int(float(value)):
+        return False
+    port = int(float(value))
+    return 1 <= port <= 65535
 
 
 def _valid_loopback_bind(value: Any) -> bool:
@@ -2299,8 +2421,26 @@ def _valid_phase8_smoke_coordinator_worker(worker: Any) -> bool:
     metrics = worker.get("metrics")
     if not isinstance(metrics, Mapping):
         return False
-    return all(
+    if not all(
         _is_non_negative_number(metrics.get(field)) for field in ("sps", "worker_crash_count")
+    ):
+        return False
+    count_fields = ("checkpoint_version", "policy_version", "rollout_steps")
+    if any(
+        field in metrics and not _is_non_negative_count(metrics.get(field))
+        for field in count_fields
+    ):
+        return False
+    numeric_fields = (
+        "learner_upload_accepted_batches",
+        "learner_upload_failed_batches",
+        "learner_upload_rejected_batches",
+        "learner_upload_submitted_batches",
+        "rollout_duration_s",
+    )
+    return all(
+        field not in metrics or _is_non_negative_number(metrics.get(field))
+        for field in numeric_fields
     )
 
 
@@ -2997,12 +3137,29 @@ def _valid_eval_report_finding(finding: Any) -> bool:
 
 
 def _valid_eval_report_task(task: Any) -> bool:
-    return (
-        isinstance(task, Mapping)
-        and isinstance(task.get("task_id"), str)
-        and bool(task.get("task_id"))
-        and isinstance(task.get("metrics_valid"), bool)
-    )
+    if not isinstance(task, Mapping):
+        return False
+    if not isinstance(task.get("task_id"), str) or not task.get("task_id"):
+        return False
+    if not isinstance(task.get("metrics_valid"), bool):
+        return False
+    if not isinstance(task.get("regression_valid"), bool):
+        return False
+    regression_delta = task.get("regression_delta")
+    if regression_delta is not None and not _is_finite_number(regression_delta):
+        return False
+    if not _is_probability(task.get("win_rate")):
+        return False
+    for field in ("invalid_action_ratio", "death_rate"):
+        if field in task and not _is_probability(task.get(field)):
+            return False
+    for field in ("damage_taken", "damage_dealt", "per_boss_damage_ratio", "time_to_kill"):
+        if field in task and not _is_non_negative_number(task.get(field)):
+            return False
+    if task.get("metrics_valid") is False:
+        metric_error = task.get("metric_error")
+        return isinstance(metric_error, str) and bool(metric_error)
+    return True
 
 
 def _duplicate_eval_report_task_ids(tasks: Sequence[Any]) -> list[str]:
@@ -3099,6 +3256,10 @@ def _markdown_cell(value: str) -> str:
     return value.replace("|", "\\|")
 
 
+def _format_bool(value: Any) -> str:
+    return "true" if value is True else "false"
+
+
 def _is_sha256(value: Any) -> bool:
     return (
         isinstance(value, str)
@@ -3129,13 +3290,16 @@ def _is_non_negative_count(value: Any) -> bool:
     )
 
 
-def _is_non_negative_number(value: Any) -> bool:
+def _is_finite_number(value: Any) -> bool:
     return (
         not isinstance(value, bool)
         and isinstance(value, (int, float))
         and math.isfinite(float(value))
-        and value >= 0.0
     )
+
+
+def _is_non_negative_number(value: Any) -> bool:
+    return _is_finite_number(value) and value >= 0.0
 
 
 def _is_probability(value: Any) -> bool:

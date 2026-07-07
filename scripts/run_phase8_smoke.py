@@ -17,8 +17,9 @@ import os
 import shutil
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from numbers import Integral
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -64,10 +65,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    if args.num_workers <= 0:
-        raise ValueError("num_workers must be positive")
-    if not args.tasks:
-        raise ValueError("at least one task is required")
+    _validate_smoke_args(args)
 
     work_dir = _work_dir(getattr(args, "work_dir", None))
     with _work_dir_lock(work_dir):
@@ -263,6 +261,49 @@ def _write_requested_artifacts(summary: dict[str, Any], args: argparse.Namespace
             _write_text(Path(profile_json), report_to_json(profile))
         if profile_md:
             _write_text(Path(profile_md), render_profile_markdown(profile))
+
+
+def _validate_smoke_args(args: argparse.Namespace) -> None:
+    _non_empty_path_like(getattr(args, "config", None), name="config")
+    tasks = getattr(args, "tasks", None)
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)) or not tasks:
+        raise ValueError("at least one task is required")
+    for index, task in enumerate(tasks):
+        _non_empty_path_like(task, name=f"tasks[{index}]")
+
+    _positive_int(getattr(args, "num_workers", None), name="num_workers")
+    _integer(getattr(args, "seed", None), name="seed")
+    for name in (
+        "work_dir",
+        "output",
+        "dashboard_html",
+        "dashboard_json",
+        "profile_json",
+        "profile_md",
+    ):
+        value = getattr(args, name, None)
+        if value is not None:
+            _non_empty_path_like(value, name=name)
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _integer(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    return int(value)
+
+
+def _non_empty_path_like(value: Any, *, name: str) -> None:
+    if not isinstance(value, str | os.PathLike):
+        raise ValueError(f"{name} must be a path string")
+    if not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
 
 
 def _work_dir(path: str | None) -> Path:

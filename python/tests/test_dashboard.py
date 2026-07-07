@@ -165,6 +165,40 @@ def test_dashboard_health_flags_unassigned_workers() -> None:
     }
 
 
+def test_dashboard_health_flags_unassigned_worker_rows_when_aggregate_is_stale() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "active_worker_count": "2",
+            "assigned_worker_count": "2",
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["assigned_task"] = None
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["metrics"]["assigned_worker_count"] == 0.0
+    assert model["metrics"]["unassigned_worker_count"] == 1.0
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["unassigned workers"],
+    }
+
+
 def test_dashboard_health_flags_dead_worker_rows_as_lost() -> None:
     summary = _phase8_summary()
     metrics = summary["coordinator"]["metrics"]
@@ -196,6 +230,70 @@ def test_dashboard_health_flags_dead_worker_rows_as_lost() -> None:
         "status": "degraded",
         "reasons": ["lost workers"],
     }
+
+
+def test_dashboard_health_flags_malformed_worker_alive_status() -> None:
+    summary = _phase8_summary()
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "lost_worker_count": 0.0,
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
+    worker_b = summary["coordinator"]["workers"]["worker-b"]
+    assert isinstance(worker_b, dict)
+    worker_b["alive"] = "false"
+    worker_b["info"] = {"status": "running"}
+    worker_metrics = worker_b["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    model = build_dashboard_model(summary)
+
+    assert model["workers"][1]["alive"] is None
+    assert model["health"] == {
+        "status": "degraded",
+        "reasons": ["workers missing alive status"],
+    }
+
+
+def test_dashboard_ignores_malformed_numeric_strings() -> None:
+    summary = _phase8_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["sps"] = "12.5"
+    weights = coordinator["sampler_weights"]
+    assert isinstance(weights, dict)
+    weights["gruz"] = "0.1"
+    coordinator["eval_winrates"] = {"gruz": "0.9", "hornet": 1.2}
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_a = workers["worker-a"]
+    assert isinstance(worker_a, dict)
+    worker_metrics = worker_a["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["policy_version"] = "7"
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["latest_checkpoint"] = "3"
+
+    model = build_dashboard_model(summary)
+
+    assert model["metrics"]["sps"] == 0.0
+    assert model["tasks"][0]["sampler_weight"] == 0.0
+    assert [task["win_rate"] for task in model["tasks"]] == [None, None]
+    assert model["workers"][0]["policy_version"] is None
+    assert model["workers"][0]["policy_lag"] is None
+    assert model["learner"]["latest_checkpoint"] is None
 
 
 def test_dashboard_health_flags_learner_backpressure() -> None:
@@ -348,6 +446,36 @@ def test_render_phase8_dashboard_script_writes_html_and_json(tmp_path: Path) -> 
     assert model["health"]["status"] == "degraded"
     assert "HKRL Phase 8 Dashboard" in html_path.read_text(encoding="utf-8")
     assert json.loads(json_path.read_text(encoding="utf-8"))["metrics"]["sps"] == 12.5
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"summary": ""}, "summary"),
+        ({"output_html": ""}, "output_html"),
+        ({"output_json": ""}, "output_json"),
+        ({"eval_metrics": ""}, "eval_metrics"),
+    ],
+)
+def test_render_phase8_dashboard_script_rejects_invalid_args(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("render_phase8_dashboard.py")
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(_phase8_summary()), encoding="utf-8")
+    args = argparse.Namespace(
+        summary=str(summary_path),
+        output_html=str(tmp_path / "dashboard.html"),
+        output_json=None,
+        eval_metrics=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
 
 
 def _phase8_summary() -> dict[str, object]:

@@ -66,15 +66,31 @@ conda activate hkrl
 # 2. 生成 schema 绑定并运行本地质量门禁
 make check
 
-# 3. 本地 smoke（需要 Hollow Knight + HKRLEnvMod 正在监听 TCP）
+# 3. 在游戏机启动 Hollow Knight + HKRLEnvMod
+# 可选：覆盖 mod TCP 监听地址；多实例评估/worker 时给每个游戏实例不同端口
+export HKRL_HOST=127.0.0.1
+export HKRL_PORT=5555
+# 若训练配置启用 security.require_token=true，同时设置：
+export HKRL_AUTH_TOKEN=dev-secret
+
+# 4. 先做轻量接入检查：只 PING mod，不重置场景
+python scripts/check_env.py \
+  --config configs/train/ppo_mlp.yaml \
+  --task configs/tasks/gruz_mother.yaml \
+  --host 127.0.0.1 \
+  --port 5555
+
+# 5. 本地 smoke（需要 Hollow Knight + HKRLEnvMod 正在监听 TCP）
 python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \
   --task configs/tasks/gruz_mother.yaml \
   --smoke \
+  --host 127.0.0.1 \
+  --port 5555 \
   --steps 100 \
   --metrics runs/smoke.jsonl
 
-# 4. 固定 seed 评估（同样需要本地 HKRLEnvMod TCP）
+# 6. 固定 seed 评估（同样需要本地 HKRLEnvMod TCP）
 python scripts/run_eval.py \
   --policy scripted \
   --tasks configs/tasks/gruz_mother.yaml \
@@ -104,10 +120,12 @@ python scripts/run_eval.py \
   --eval-workers 1 \
   --ports 5555
 
-# 5. 本地 PPO/RecurrentPPO 训练（需要本地 HKRLEnvMod TCP）
+# 7. 本地 PPO/RecurrentPPO 训练（需要本地 HKRLEnvMod TCP）
 python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \
   --task configs/tasks/gruz_mother.yaml \
+  --host 127.0.0.1 \
+  --port 5555 \
   --updates 1 \
   --metrics runs/train.jsonl \
   --checkpoint-dir checkpoints
@@ -116,6 +134,8 @@ python scripts/train.py \
 python scripts/train.py \
   --config configs/train/ppo_attention_gru.yaml \
   --task configs/tasks/gruz_mother.yaml \
+  --host 127.0.0.1 \
+  --port 5555 \
   --updates 1 \
   --metrics runs/train_gru.jsonl \
   --checkpoint-dir checkpoints_gru
@@ -125,10 +145,12 @@ python scripts/train.py \
   --config configs/train/ppo_mlp.yaml \
   --task configs/tasks/gruz_mother.yaml \
   --smoke \
+  --host 127.0.0.1 \
+  --port 5555 \
   --metrics runs/smoke.csv \
   --metrics-kind csv
 
-# 6. 分布式入口 dry-run（不连接真实游戏，用于验证配置/任务/worker 编排）
+# 8. 分布式入口 dry-run（不连接真实游戏，用于验证配置/任务/worker 编排）
 make phase8-smoke
 make phase8-dashboard   # writes runs/phase8-smoke/dashboard.html + dashboard.json
 make phase8-profile     # writes runs/phase8-smoke/profile.md + profile.json
@@ -201,6 +223,8 @@ python -m http.server 8000 --directory checkpoints
 python scripts/run_worker.py \
   --config configs/train/remote_learner.yaml \
   --task configs/tasks/gruz_mother.yaml \
+  --env-host 127.0.0.1 \
+  --env-port 5555 \
   --learner 127.0.0.1:5600 \
   --registry http://127.0.0.1:8000/ \
   --heartbeat-jsonl runs/worker-heartbeats.jsonl \

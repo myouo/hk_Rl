@@ -25,14 +25,20 @@ make phase8-verify-release-evidence
 
 The generated files under `runs/` are ignored by git and should be attached to a
 release note or CI artifact store when useful. `evidence.json` records the
-release artifact paths, byte sizes, and sha256 hashes; `evidence-verification.json`
-records the result of re-hashing those files and checking the manifest aggregate
-counts. When `runs/release/evidence.md` exists, the verifier also checks that
-its release title, manifest metadata including `manifest_version`, and artifact
-table exactly match `evidence.json` without missing, reordered, or extra
-artifact rows. The verifier also rejects absolute, non-normalized, or duplicate
-artifact paths, non-object artifact entries, missing or malformed full-length
-`git_sha` values, mismatched release commit SHAs when `--git-sha` is provided,
+release artifact paths, byte sizes, sha256 hashes, `git_sha`, and `git_dirty`;
+the checklist/evidence renderers reject empty version/output paths and malformed
+`git_dirty` arguments before writing those release artifacts. The verifier
+rejects empty manifest/root/output paths and malformed expected `git_dirty`
+arguments before re-hashing release evidence.
+`evidence-verification.json` records the result of re-hashing those files and
+checking the manifest aggregate counts. When `runs/release/evidence.md` exists,
+the verifier also checks that its release title, manifest metadata including
+`manifest_version` and `git_dirty`, and artifact table exactly match
+`evidence.json` without missing, reordered, or extra artifact rows. The verifier
+also rejects absolute, non-normalized, or duplicate artifact paths, non-object
+artifact entries, missing or malformed full-length `git_sha` values, malformed
+`git_dirty` values, mismatched release commit SHAs when `--git-sha` is provided,
+mismatched dirty-worktree flags when `--git-dirty` is provided,
 unsupported release `version` or `manifest_version` values, and Phase 8 smoke
 summaries that do not report `ok=true` with non-negative coordinator
 `worker_count`, `active_worker_count`, and `sps` metrics, learner
@@ -69,10 +75,11 @@ Profile JSON must come from the Phase 8 smoke source and include metrics,
 findings, and workers with well-formed finding rows and unique worker rows,
 while profile Markdown must have the HKRL profile title, worker table, and the
 exact JSON worker rows. Checklist JSON must be a Phase 8 checklist with every
-required gate, well-formed check rows, a matching checklist `git_sha`, and a
-matching blocking check count; checklist Markdown must have the HKRL release
-title, matching `git_sha`, and the exact JSON check rows. It also requires every offline Phase 8
-artifact below to be listed in the manifest. Live eval artifacts are included
+required gate, well-formed check rows, matching checklist `git_sha` and
+`git_dirty` values, and a matching blocking check count; checklist Markdown must
+have the HKRL release title, matching `git_sha` and `git_dirty`, and the exact
+JSON check rows. It also requires every offline Phase 8 artifact below to be
+listed in the manifest. Live eval artifacts are included
 only when the full live eval group exists locally; if any live eval artifact is
 listed, all three live eval artifacts must be listed. When the eval report JSON
 is listed, verification also requires a `run_eval` report with well-formed
@@ -118,12 +125,17 @@ These gates require a machine with Hollow Knight, HKRLEnvMod dependencies, and
 the HK Modding API configured:
 
 ```bash
+export HKRL_HOST=127.0.0.1
+export HKRL_PORT=5555
 dotnet build mod/HKRLEnvMod/HKRLEnvMod.csproj
+python scripts/check_env.py --config configs/train/ppo_mlp.yaml \
+  --task configs/tasks/gruz_mother.yaml --host 127.0.0.1 --port 5555
 python scripts/train.py --config configs/train/ppo_mlp.yaml \
-  --task configs/tasks/gruz_mother.yaml --smoke
+  --task configs/tasks/gruz_mother.yaml --smoke \
+  --host 127.0.0.1 --port 5555
 python scripts/run_eval.py --policy scripted \
   --tasks configs/tasks/gruz_mother.yaml --episodes 5 \
-  --output runs/eval.json
+  --host 127.0.0.1 --port 5555 --output runs/eval.json
 make phase8-eval-report
 ```
 
@@ -137,18 +149,30 @@ python scripts/run_eval.py --policy scripted \
 make phase8-eval-report
 ```
 
+`run_eval.py` rejects non-positive episode/step/worker counts, empty seed lists,
+invalid or duplicate ports, and multi-worker runs without at least one port per
+worker before connecting to live env instances. It also rejects empty task,
+train-config, checkpoint, baseline, output, and replay paths before starting
+fixed-seed evaluation, and preloads optional baseline metrics so malformed
+baseline JSON fails before a live evaluator run starts.
+
 `phase8-eval-report` turns the fixed-seed evaluator JSON into
 `runs/eval-report.json` and `runs/eval-report.md`, including per-task win rates
-and regression deltas when the eval output includes a `regression` section. If a
-task omits `win_rate` or reports an invalid value, the report uses
-`per_boss_win_rate` as the canonical win-rate fallback. Non-object per-task
-metric payloads are rendered as critical findings so malformed eval evidence
-does not pass as ordinary zero-valued performance. Summary win-rate metrics are
-computed over valid task rows and report separate valid/malformed task counts.
+and regression deltas when the eval output includes a `regression` section.
+The Make target writes both artifacts and exits non-zero if the rendered report
+contains critical findings, so malformed live eval output remains inspectable
+without passing the gate. If a task omits `win_rate` or reports an invalid
+value, the report uses `per_boss_win_rate` as the canonical win-rate fallback.
+Non-object per-task metric payloads, invalid damage/timing/ratio fields, and
+string-like numeric fields are rendered as critical findings so malformed eval
+evidence does not pass as ordinary zero-valued performance. Summary win-rate
+metrics are computed over valid task rows and report separate valid/malformed
+task counts.
 If no valid task metric rows remain, the report emits an additional critical
 finding and the live eval evidence should be regenerated before release.
-Malformed regression deltas are also critical findings; they are left out of
-worst-regression summaries rather than coerced into a non-regression value.
+Malformed regression deltas, including numeric-looking strings, are also
+critical findings; they are left out of worst-regression summaries rather than
+coerced into a non-regression value.
 
 ## 4. Security Review
 
@@ -166,9 +190,11 @@ Before a LAN release, verify:
 Use the checklist renderer for a release record:
 
 ```bash
+GIT_DIRTY=$(test -n "$(git status --porcelain)" && echo true || echo false)
 python scripts/render_release_checklist.py \
   --version phase8 \
   --git-sha "$(git rev-parse HEAD)" \
+  --git-dirty "$GIT_DIRTY" \
   --output-json runs/release/checklist.json \
   --output-md runs/release/checklist.md
 ```
@@ -179,6 +205,7 @@ After all local artifacts are generated, render the hash manifest:
 python scripts/render_release_evidence.py \
   --version phase8 \
   --git-sha "$(git rev-parse HEAD)" \
+  --git-dirty "$GIT_DIRTY" \
   --output-json runs/release/evidence.json \
   --output-md runs/release/evidence.md
 ```
@@ -189,12 +216,14 @@ Verify the manifest before attaching artifacts:
 python scripts/verify_release_evidence.py \
   --manifest runs/release/evidence.json \
   --git-sha "$(git rev-parse HEAD)" \
+  --git-dirty "$GIT_DIRTY" \
   --output-json runs/release/evidence-verification.json
 ```
 
 `make phase8-release-evidence` runs the offline Phase 8 artifact pipeline and
 writes the checklist, evidence manifest, and verification report with the current
-git SHA.
+git SHA and dirty-worktree flag. `make phase8-verify-release-evidence` verifies
+both values against the current checkout.
 
 The checklist is a release record, not an automated certification. The game
 machine gates still need to be executed on a configured Hollow Knight host.

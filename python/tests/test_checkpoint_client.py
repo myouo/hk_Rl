@@ -38,9 +38,16 @@ def test_checkpoint_client_accepts_file_url(tmp_path: Path) -> None:
     assert client.latest_version() == meta.version
 
 
-def test_checkpoint_client_pulls_verified_http_checkpoint(tmp_path: Path) -> None:
+def test_checkpoint_client_pulls_verified_http_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     registry = CheckpointRegistry(str(tmp_path))
     meta = registry.publish({"model_state_dict": {"weight": torch.tensor([2.0])}}, 2, 5)
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("ALL_PROXY", "http://127.0.0.1:1")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
 
     with _serve_directory(tmp_path) as endpoint:
         client = CheckpointClient(endpoint)
@@ -139,6 +146,26 @@ def test_checkpoint_client_rejects_empty_index_path(tmp_path: Path) -> None:
         client.latest_version()
 
 
+def test_checkpoint_client_rejects_non_string_index_path(tmp_path: Path) -> None:
+    (tmp_path / "index.jsonl").write_text(
+        json.dumps(
+            {
+                "created_step": 1,
+                "path": None,
+                "policy_version": 1,
+                "sha256": "0" * 64,
+                "version": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = CheckpointClient(str(tmp_path), verify_hash=False)
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        client.latest_version()
+
+
 def test_checkpoint_client_rejects_duplicate_index_versions(tmp_path: Path) -> None:
     registry = CheckpointRegistry(str(tmp_path))
     meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
@@ -164,6 +191,36 @@ def test_checkpoint_client_rejects_invalid_index_metadata(tmp_path: Path) -> Non
         + "\n",
         encoding="utf-8",
     )
+    client = CheckpointClient(str(tmp_path), verify_hash=False)
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        client.latest_version()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("version", True),
+        ("version", "1"),
+        ("version", 1.0),
+        ("policy_version", False),
+        ("policy_version", "1"),
+        ("policy_version", 1.0),
+        ("created_step", False),
+        ("created_step", "1"),
+        ("created_step", 1.0),
+    ],
+)
+def test_checkpoint_client_rejects_non_integer_index_metadata(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    registry = CheckpointRegistry(str(tmp_path))
+    meta = registry.publish({"model_state_dict": {"weight": torch.tensor([1.0])}}, 1, 1)
+    payload = {**meta.__dict__, "path": meta.path}
+    payload[field] = value
+    (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
     client = CheckpointClient(str(tmp_path), verify_hash=False)
 
     with pytest.raises(ValueError, match="invalid checkpoint index line"):

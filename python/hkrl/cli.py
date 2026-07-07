@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,17 @@ def build_argparser() -> argparse.ArgumentParser:
         help="path to a task config YAML",
     )
     parser.add_argument("--smoke", action="store_true", help="random-policy wiring check")
+    parser.add_argument(
+        "--host",
+        default=None,
+        help="override TCP env host from the train config",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="override TCP env port from the train config",
+    )
     parser.add_argument("--steps", type=int, default=None, help="override total smoke steps")
     parser.add_argument("--updates", type=int, default=1, help="number of PPO updates to run")
     parser.add_argument(
@@ -80,7 +92,7 @@ def run_training_from_args(args: argparse.Namespace) -> dict[str, Any]:
     from hkrl.env import HKRLEnv
     from hkrl.wrappers import NormalizeObservation
 
-    transport = make_transport(cfg)
+    transport = _make_env_transport(cfg, args)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     observation_space: Any = env.observation_space
     obs_dims = _obs_dims(observation_space)
@@ -117,7 +129,7 @@ def run_smoke_from_args(args: argparse.Namespace) -> dict[str, Any]:
     from hkrl.env import HKRLEnv
     from hkrl.wrappers import NormalizeObservation
 
-    transport = make_transport(cfg)
+    transport = _make_env_transport(cfg, args)
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     policy = RandomPolicy(env.action_space, seed=cfg.seed)
     sink = make_sink(args.metrics_kind, path=Path(args.metrics))
@@ -183,6 +195,33 @@ def _obs_dims(observation_space: Any) -> dict[str, tuple[int, ...]]:
         "entities": observation_space["entities"].shape,
         "entity_mask": observation_space["entity_mask"].shape,
     }
+
+
+def _make_env_transport(cfg: TrainConfig, args: argparse.Namespace) -> Any:
+    return make_transport(
+        cfg,
+        host=_optional_host(getattr(args, "host", None)),
+        port=_optional_port(getattr(args, "port", None)),
+    )
+
+
+def _optional_host(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("host must not be empty")
+    return value.strip()
+
+
+def _optional_port(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError("port must be an integer")
+    port = int(value)
+    if not 1 <= port <= 65535:
+        raise ValueError("port must be in [1, 65535]")
+    return port
 
 
 def _build_model(

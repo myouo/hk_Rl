@@ -39,6 +39,27 @@ def test_eval_report_rejects_missing_metrics() -> None:
         build_eval_report({"metadata": {}})
 
 
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"max_regression_drop": float("nan")}, "max_regression_drop"),
+        ({"max_regression_drop": -0.01}, "max_regression_drop"),
+        ({"max_regression_drop": True}, "max_regression_drop"),
+        ({"max_regression_drop": "0.05"}, "max_regression_drop"),
+        ({"min_win_rate": float("nan")}, "min_win_rate"),
+        ({"min_win_rate": 1.2}, "min_win_rate"),
+        ({"min_win_rate": False}, "min_win_rate"),
+        ({"min_win_rate": "0.5"}, "min_win_rate"),
+    ],
+)
+def test_eval_report_rejects_invalid_threshold_args(
+    kwargs: dict[str, object],
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        build_eval_report(_eval_payload(), **kwargs)
+
+
 def test_eval_report_marks_empty_metrics_critical() -> None:
     report = build_eval_report({"metrics": {}})
 
@@ -83,6 +104,25 @@ def test_eval_report_flags_malformed_regression_delta() -> None:
     ]
 
 
+def test_eval_report_flags_string_numeric_regression_delta() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": {
+                    "per_boss_win_rate": 0.8,
+                },
+            },
+            "regression": {
+                "gruz_mother": "0.1",
+            },
+        },
+    )
+
+    assert report["tasks"][0]["regression_delta"] is None
+    assert report["tasks"][0]["regression_valid"] is False
+    assert [finding["code"] for finding in report["findings"]] == ["malformed_regression_delta"]
+
+
 def test_eval_report_flags_malformed_task_metrics() -> None:
     report = build_eval_report(
         {
@@ -104,6 +144,51 @@ def test_eval_report_flags_malformed_task_metrics() -> None:
             "code": "malformed_task_metrics",
             "message": "gruz_mother has a non-object metric payload.",
             "recommendation": "Re-run fixed-seed eval and check the evaluator JSON writer.",
+            "severity": "critical",
+        },
+        {
+            "code": "no_valid_eval_tasks",
+            "message": "The evaluator report contains no valid task metric rows.",
+            "recommendation": "Re-run fixed-seed eval and inspect malformed task metric payloads.",
+            "severity": "critical",
+        },
+    ]
+
+
+def test_eval_report_flags_invalid_numeric_task_metric_fields() -> None:
+    report = build_eval_report(
+        {
+            "metrics": {
+                "gruz_mother": {
+                    "damage_taken": "1.5",
+                    "death_rate": True,
+                    "invalid_action_ratio": 1.2,
+                    "per_boss_win_rate": 0.8,
+                    "time_to_kill": -1.0,
+                },
+            }
+        },
+    )
+
+    assert report["tasks"][0]["metrics_valid"] is False
+    assert report["tasks"][0]["metric_error"] == "invalid_metric_fields"
+    assert report["tasks"][0]["invalid_metric_fields"] == [
+        "damage_taken",
+        "death_rate",
+        "invalid_action_ratio",
+        "time_to_kill",
+    ]
+    assert report["summary"]["valid_task_count"] == 0.0
+    assert report["findings"] == [
+        {
+            "code": "malformed_task_metrics",
+            "message": (
+                "gruz_mother has invalid numeric metric fields: "
+                "damage_taken, death_rate, invalid_action_ratio, time_to_kill."
+            ),
+            "recommendation": (
+                "Re-run fixed-seed eval and confirm task metrics are finite numeric values."
+            ),
             "severity": "critical",
         },
         {
@@ -180,12 +265,69 @@ def test_eval_report_uses_per_boss_win_rate_when_win_rate_is_invalid() -> None:
     assert report["summary"]["mean_win_rate"] == 0.3
 
 
+@pytest.mark.parametrize(
+    "task_metrics",
+    [
+        {},
+        {"win_rate": 1.2},
+        {"win_rate": float("nan")},
+        {"win_rate": "0.5"},
+        {"per_boss_win_rate": True},
+    ],
+)
+def test_eval_report_flags_missing_or_invalid_win_rate_metrics(
+    task_metrics: dict[str, object],
+) -> None:
+    report = build_eval_report({"metrics": {"gruz_mother": task_metrics}})
+
+    assert report["tasks"][0]["metrics_valid"] is False
+    assert report["tasks"][0]["metric_error"] == "missing_or_invalid_win_rate"
+    assert report["tasks"][0]["win_rate"] == 0.0
+    assert report["summary"] == {
+        "malformed_task_count": 1.0,
+        "mean_win_rate": 0.0,
+        "min_win_rate": 0.0,
+        "task_count": 1.0,
+        "valid_task_count": 0.0,
+        "worst_regression_delta": 0.0,
+    }
+    assert report["findings"] == [
+        {
+            "code": "malformed_task_metrics",
+            "message": "gruz_mother has missing or invalid win-rate metrics.",
+            "recommendation": (
+                "Re-run fixed-seed eval and confirm win_rate or per_boss_win_rate is in [0, 1]."
+            ),
+            "severity": "critical",
+        },
+        {
+            "code": "no_valid_eval_tasks",
+            "message": "The evaluator report contains no valid task metric rows.",
+            "recommendation": "Re-run fixed-seed eval and inspect malformed task metric payloads.",
+            "severity": "critical",
+        },
+    ]
+
+
 def test_eval_report_markdown_contains_task_table() -> None:
     markdown = render_eval_report_markdown(build_eval_report(_eval_payload()))
 
     assert "# HKRL Eval Report" in markdown
     assert "| Task | Metrics Valid | Regression Valid | Win Rate | Regression Delta |" in markdown
     assert "| gruz_mother | yes | yes | 0.7 | -0.2 | 1.5 | 120 | 0.01 | 0.1 |" in markdown
+
+
+def test_eval_report_ignores_string_numeric_metadata() -> None:
+    payload = _eval_payload()
+    metadata = payload["metadata"]
+    assert isinstance(metadata, dict)
+    metadata["episodes"] = "5"
+    metadata["eval_workers"] = "2"
+
+    report = build_eval_report(payload)
+
+    assert report["metadata"]["episodes"] == 0.0
+    assert report["metadata"]["eval_workers"] == 0.0
 
 
 def test_render_eval_report_script_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -207,6 +349,66 @@ def test_render_eval_report_script_writes_json_and_markdown(tmp_path: Path) -> N
     assert report["summary"]["task_count"] == 2.0
     assert json.loads(report_json.read_text(encoding="utf-8"))["source"] == "run_eval"
     assert "HKRL Eval Report" in report_md.read_text(encoding="utf-8")
+
+
+def test_render_eval_report_script_can_fail_on_critical_after_writing_artifacts(
+    tmp_path: Path,
+) -> None:
+    module = _load_script("render_eval_report.py")
+    eval_json = tmp_path / "eval.json"
+    report_json = tmp_path / "reports" / "eval-report.json"
+    report_md = tmp_path / "reports" / "eval-report.md"
+    eval_json.write_text(
+        json.dumps({"metrics": {"gruz_mother": "not an object"}}),
+        encoding="utf-8",
+    )
+
+    exit_code = module.main(
+        [
+            "--eval-json",
+            str(eval_json),
+            "--output-json",
+            str(report_json),
+            "--output-md",
+            str(report_md),
+            "--fail-on-critical",
+        ]
+    )
+
+    assert exit_code == 1
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+    assert any(finding["severity"] == "critical" for finding in report["findings"])
+    assert "**critical**" in report_md.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"eval_json": ""}, "eval_json"),
+        ({"output_json": ""}, "output_json"),
+        ({"output_md": ""}, "output_md"),
+    ],
+)
+def test_render_eval_report_script_rejects_invalid_path_args(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("render_eval_report.py")
+    eval_json = tmp_path / "eval.json"
+    eval_json.write_text(json.dumps(_eval_payload()), encoding="utf-8")
+    args = argparse.Namespace(
+        eval_json=str(eval_json),
+        max_regression_drop=0.05,
+        min_win_rate=0.5,
+        output_json=None,
+        output_md=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
 
 
 def _eval_payload() -> dict[str, object]:

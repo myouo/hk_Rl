@@ -8,7 +8,13 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
-from hkrl.cli import _build_model, build_argparser, run_ppo_training_loop, run_random_policy_smoke
+from hkrl.cli import (
+    _build_model,
+    _make_env_transport,
+    build_argparser,
+    run_ppo_training_loop,
+    run_random_policy_smoke,
+)
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
 from hkrl.spaces import make_observation_space
@@ -69,6 +75,51 @@ def test_build_argparser_accepts_csv_metrics_kind() -> None:
 
     assert args.metrics == "runs/smoke.csv"
     assert args.metrics_kind == "csv"
+
+
+def test_build_argparser_accepts_env_endpoint_overrides() -> None:
+    parser = build_argparser()
+    args = parser.parse_args(
+        [
+            "--config",
+            "configs/train/ppo_mlp.yaml",
+            "--smoke",
+            "--host",
+            "127.0.0.2",
+            "--port",
+            "6000",
+        ]
+    )
+
+    assert args.host == "127.0.0.2"
+    assert args.port == 6000
+
+
+def test_make_env_transport_uses_cli_endpoint_overrides() -> None:
+    cfg = TrainConfig()
+    args = build_argparser().parse_args(
+        [
+            "--config",
+            "configs/train/ppo_mlp.yaml",
+            "--host",
+            "127.0.0.2",
+            "--port",
+            "6000",
+        ]
+    )
+
+    transport = _make_env_transport(cfg, args)
+
+    assert transport.host == "127.0.0.2"
+    assert transport.port == 6000
+
+
+def test_make_env_transport_rejects_invalid_endpoint_overrides() -> None:
+    cfg = TrainConfig()
+    args = build_argparser().parse_args(["--config", "configs/train/ppo_mlp.yaml", "--port", "0"])
+
+    with pytest.raises(ValueError, match="port"):
+        _make_env_transport(cfg, args)
 
 
 def test_training_components_support_recurrent_ppo() -> None:

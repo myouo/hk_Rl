@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import math
 from pathlib import Path
 from types import ModuleType
 
@@ -133,6 +134,52 @@ def test_run_learner_rejects_serve_forever_with_intake_count(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="serve-forever"):
         module.run_from_args(args)
+
+
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("config", "", "config"),
+        ("task", "", "task"),
+        ("tasks", [], "tasks"),
+        ("tasks", "configs/tasks/gruz_mother.yaml", "tasks"),
+        ("tasks", [""], r"tasks\[0\]"),
+        ("bind", "", "bind"),
+        ("batch_dir", "", "batch_dir"),
+        ("checkpoint_dir", "", "checkpoint_dir"),
+        ("intake_count", -1, "intake_count"),
+        ("intake_count", False, "intake_count"),
+        ("intake_timeout_s", 0.0, "intake_timeout_s"),
+        ("intake_timeout_s", math.nan, "intake_timeout_s"),
+        ("intake_timeout_s", "1.0", "intake_timeout_s"),
+        ("max_staleness", -1, "max_staleness"),
+        ("max_staleness", True, "max_staleness"),
+        ("publish_every_updates", 0, "publish_every_updates"),
+        ("publish_every_updates", False, "publish_every_updates"),
+        ("max_entities", 0, "max_entities"),
+        ("max_entities", True, "max_entities"),
+        ("n_macro_actions", -1, "n_macro_actions"),
+        ("n_macro_actions", False, "n_macro_actions"),
+    ],
+)
+def test_run_learner_rejects_invalid_gate_args(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    module = _load_script("run_learner.py")
+    args = _learner_args(**{field: value})
+
+    with pytest.raises(ValueError, match=match):
+        module._validate_learner_args(args)
+
+
+def test_run_learner_gate_rejects_serve_forever_with_intake_count() -> None:
+    module = _load_script("run_learner.py")
+    args = _learner_args(serve_forever=True, intake_count=1)
+
+    with pytest.raises(ValueError, match="serve-forever"):
+        module._validate_learner_args(args)
 
 
 def test_run_learner_serve_forever_updates_after_accepted_batch(
@@ -336,6 +383,34 @@ def test_run_learner_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> Non
     )
 
     assert model.trunk[0].out_features == 256
+
+
+def test_run_learner_batch_dir_submit_rejects_empty_path() -> None:
+    module = _load_script("run_learner.py")
+
+    with pytest.raises(ValueError, match="batch_dir"):
+        module._submit_batch_dir(_FakeServer(), "")
+
+
+def _learner_args(**overrides: object) -> argparse.Namespace:
+    root = Path(__file__).parents[2]
+    values: dict[str, object] = {
+        "batch_dir": None,
+        "bind": None,
+        "checkpoint_dir": None,
+        "config": str(root / "configs/train/remote_learner.yaml"),
+        "intake_count": 0,
+        "intake_timeout_s": 10.0,
+        "max_entities": 64,
+        "max_staleness": 4,
+        "n_macro_actions": 11,
+        "publish_every_updates": 1,
+        "serve_forever": False,
+        "task": None,
+        "tasks": None,
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
 
 
 def _load_script(name: str) -> ModuleType:

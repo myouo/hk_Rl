@@ -24,11 +24,31 @@ def test_task_sampler_updates_weights_and_mastered_set() -> None:
     assert sampler.mastered_tasks == {"a"}
 
 
-def test_task_sampler_rejects_non_finite_winrates() -> None:
+@pytest.mark.parametrize(
+    "winrate, match",
+    [
+        (float("nan"), "finite"),
+        (1.2, r"in \[0, 1\]"),
+        (-0.1, r"in \[0, 1\]"),
+        ("0.5", "numeric"),
+        (True, "numeric"),
+        (None, "numeric"),
+    ],
+)
+def test_task_sampler_rejects_invalid_winrates(winrate: object, match: str) -> None:
     sampler = TaskSampler(["a"], seed=0)
 
-    with pytest.raises(ValueError, match="finite"):
-        sampler.update_weights({"a": float("nan")})
+    with pytest.raises(ValueError, match=match):
+        sampler.update_weights({"a": winrate})
+
+
+def test_task_sampler_treats_missing_winrates_as_zero() -> None:
+    sampler = TaskSampler(["a", "b"], mastered_winrate=0.8, seed=0)
+
+    sampler.update_weights({"a": 0.9})
+
+    assert sampler.weights["b"] == 1.0
+    assert sampler.mastered_tasks == {"a"}
 
 
 def test_task_sampler_replays_mastered_tasks_when_requested() -> None:

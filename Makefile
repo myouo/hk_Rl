@@ -8,6 +8,7 @@ FBS       := schema/hkrl.fbs
 PY_SCHEMA := python/hkrl/schema
 CS_SCHEMA := mod/HKRLEnvMod/Schema
 GIT_SHA  ?= $(shell git rev-parse HEAD 2>/dev/null)
+GIT_DIRTY ?= $(shell test -n "$$(git status --porcelain 2>/dev/null)" && echo true || echo false)
 
 .DEFAULT_GOAL := help
 .PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-eval-report phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
@@ -73,11 +74,12 @@ phase8-profile: ## Render offline Phase 8 profiling report under runs/phase8-smo
 
 phase8-eval-report: ## Render fixed-seed eval report from runs/eval.json
 	$(PY) scripts/render_eval_report.py --eval-json runs/eval.json \
-	  --output-json runs/eval-report.json --output-md runs/eval-report.md
+	  --output-json runs/eval-report.json --output-md runs/eval-report.md \
+	  --fail-on-critical
 
 phase8-release-checklist: ## Render Phase 8 release checklist under runs/release
 	mkdir -p runs/release
-	$(PY) scripts/render_release_checklist.py --version phase8 --output-json runs/release/checklist.json --output-md runs/release/checklist.md
+	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --git-dirty "$(GIT_DIRTY)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
 
 phase8-release-evidence: ## Render Phase 8 release evidence bundle manifest
 	mkdir -p runs/phase8-smoke runs/release
@@ -88,12 +90,12 @@ phase8-release-evidence: ## Render Phase 8 release evidence bundle manifest
 	  --dashboard-json runs/phase8-smoke/dashboard.json \
 	  --profile-json runs/phase8-smoke/profile.json \
 	  --profile-md runs/phase8-smoke/profile.md
-	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
-	$(PY) scripts/render_release_evidence.py --version phase8 --git-sha "$(GIT_SHA)" --output-json runs/release/evidence.json --output-md runs/release/evidence.md
-	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --output-json runs/release/evidence-verification.json
+	$(PY) scripts/render_release_checklist.py --version phase8 --git-sha "$(GIT_SHA)" --git-dirty "$(GIT_DIRTY)" --output-json runs/release/checklist.json --output-md runs/release/checklist.md
+	$(PY) scripts/render_release_evidence.py --version phase8 --git-sha "$(GIT_SHA)" --git-dirty "$(GIT_DIRTY)" --output-json runs/release/evidence.json --output-md runs/release/evidence.md
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --git-dirty "$(GIT_DIRTY)" --output-json runs/release/evidence-verification.json
 
 phase8-verify-release-evidence: ## Verify Phase 8 release evidence hashes
-	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --output-json runs/release/evidence-verification.json
+	$(PY) scripts/verify_release_evidence.py --manifest runs/release/evidence.json --git-sha "$(GIT_SHA)" --git-dirty "$(GIT_DIRTY)" --output-json runs/release/evidence-verification.json
 
 clean: ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -277,10 +277,13 @@ class GameWorker:
             raise
         if not track_learner_upload:
             return
-        if accepted is False:
-            self.learner_upload_rejected_batches += 1
-        else:
+        if not isinstance(accepted, bool):
+            self.learner_upload_failed_batches += 1
+            raise ValueError("batch_uploader must return a bool when learner_endpoint is set")
+        if accepted:
             self.learner_upload_accepted_batches += 1
+        else:
+            self.learner_upload_rejected_batches += 1
 
     def _emit_heartbeat(self, batch: RolloutBatch) -> None:
         if self.heartbeat_sink is None:

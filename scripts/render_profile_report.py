@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +32,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    report = build_profile_report(_read_json(Path(args.summary)))
-    _write_text(Path(args.output_json), report_to_json(report))
-    if args.output_md is not None:
-        _write_text(Path(args.output_md), render_profile_markdown(report))
+    summary_path = _non_empty_path(getattr(args, "summary", None), name="summary")
+    output_json = _non_empty_path(getattr(args, "output_json", None), name="output_json")
+    output_md = _optional_path(getattr(args, "output_md", None), name="output_md")
+    report = build_profile_report(_read_json(summary_path))
+    _write_text(output_json, report_to_json(report))
+    if output_md is not None:
+        _write_text(output_md, render_profile_markdown(report))
     return report
 
 
@@ -49,6 +53,18 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def _non_empty_path(value: Any, *, name: str) -> Path:
+    if not isinstance(value, str | os.PathLike) or not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
+    return Path(value)
+
+
+def _optional_path(value: Any, *, name: str) -> Path | None:
+    if value is None:
+        return None
+    return _non_empty_path(value, name=name)
 
 
 if __name__ == "__main__":

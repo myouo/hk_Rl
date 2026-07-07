@@ -25,6 +25,8 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         config=str(root / "configs/train/remote_learner.yaml"),
         task=str(root / "configs/tasks/gruz_mother.yaml"),
         tasks=None,
+        env_host="127.0.0.2",
+        env_port=6001,
         learner="127.0.0.1:5600",
         registry=str(tmp_path / "checkpoints"),
         batch_dir=str(tmp_path / "batches"),
@@ -45,6 +47,8 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "batch_dir": str(tmp_path / "batches"),
         "dry_run": True,
         "enable_macro_actions": True,
+        "env_host": "127.0.0.2",
+        "env_port": 6001,
         "heartbeat_jsonl": str(tmp_path / "heartbeats.jsonl"),
         "learner": "127.0.0.1:5600",
         "learner_upload_enabled": True,
@@ -98,6 +102,46 @@ def test_run_worker_rejects_incompatible_task_layouts() -> None:
         raise AssertionError("expected incompatible macro layouts to fail")
 
 
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("config", "", "config"),
+        ("task", "", "task"),
+        ("tasks", [], "tasks"),
+        ("tasks", "configs/tasks/gruz_mother.yaml", "tasks"),
+        ("tasks", [""], r"tasks\[0\]"),
+        ("worker_id", "", "worker_id"),
+        ("worker_id", "   ", "worker_id"),
+        ("worker_id", None, "worker_id"),
+        ("steps", 0, "steps"),
+        ("steps", True, "steps"),
+        ("max_consecutive_failures", -1, "max_consecutive_failures"),
+        ("max_consecutive_failures", False, "max_consecutive_failures"),
+        ("env_host", "", "env_host"),
+        ("env_host", "   ", "env_host"),
+        ("env_port", 0, "env_port"),
+        ("env_port", 65536, "env_port"),
+        ("env_port", False, "env_port"),
+        ("learner", "", "learner endpoint"),
+        ("learner", "missing-port", "host:port"),
+        ("learner", "127.0.0.1:0", "port"),
+        ("registry", "", "registry"),
+        ("batch_dir", "", "batch_dir"),
+        ("heartbeat_jsonl", "", "heartbeat_jsonl"),
+    ],
+)
+def test_run_worker_rejects_invalid_gate_args(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    module = _load_script("run_worker.py")
+    args = _worker_args(**{field: value})
+
+    with pytest.raises(ValueError, match=match):
+        module._validate_worker_args(args)
+
+
 def test_run_worker_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None:
     module = _load_script("run_worker.py")
     cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
@@ -147,6 +191,13 @@ def test_run_worker_batch_spooler_writes_rollout_npz(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded.rewards, np.array([[1.0]], dtype=np.float32))
 
 
+def test_run_worker_batch_spooler_rejects_empty_batch_dir() -> None:
+    module = _load_script("run_worker.py")
+
+    with pytest.raises(ValueError, match="batch_dir"):
+        module._make_batch_uploader("", "game-pc-1", [])
+
+
 def test_run_worker_heartbeat_sink_writes_coordinator_jsonl(tmp_path: Path) -> None:
     module = _load_script("run_worker.py")
     written: list[None] = []
@@ -172,6 +223,13 @@ def test_run_worker_heartbeat_sink_writes_coordinator_jsonl(tmp_path: Path) -> N
             "worker_id": "game_pc_1",
         }
     ]
+
+
+def test_run_worker_heartbeat_sink_rejects_empty_path() -> None:
+    module = _load_script("run_worker.py")
+
+    with pytest.raises(ValueError, match="heartbeat_jsonl"):
+        module._make_heartbeat_sink("", "game-pc-1", [])
 
 
 def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None:
@@ -220,6 +278,13 @@ def test_run_worker_upload_summary_counts_accepted_and_rejected() -> None:
     }
 
 
+def test_run_worker_upload_summary_rejects_non_boolean_acks() -> None:
+    module = _load_script("run_worker.py")
+
+    with pytest.raises(ValueError, match="indexes \\[1\\]"):
+        module._upload_summary([True, None])
+
+
 def _load_script(name: str) -> ModuleType:
     path = Path(__file__).parents[2] / "scripts" / name
     spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)
@@ -228,6 +293,26 @@ def _load_script(name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _worker_args(**overrides: object) -> argparse.Namespace:
+    root = Path(__file__).parents[2]
+    values: dict[str, object] = {
+        "batch_dir": None,
+        "config": str(root / "configs/train/remote_learner.yaml"),
+        "env_host": None,
+        "env_port": None,
+        "heartbeat_jsonl": None,
+        "learner": None,
+        "max_consecutive_failures": 3,
+        "registry": None,
+        "steps": None,
+        "task": str(root / "configs/tasks/gruz_mother.yaml"),
+        "tasks": None,
+        "worker_id": "worker-0",
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
 
 
 def _sample_batch(policy_version: int) -> RolloutBatch:

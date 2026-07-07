@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping
+from numbers import Real
 from typing import Any
 
 TASK_METRICS: tuple[str, ...] = (
@@ -17,6 +18,15 @@ TASK_METRICS: tuple[str, ...] = (
     "invalid_action_ratio",
     "death_rate",
 )
+NON_NEGATIVE_TASK_METRICS = frozenset(
+    {
+        "damage_taken",
+        "damage_dealt",
+        "per_boss_damage_ratio",
+        "time_to_kill",
+    }
+)
+PROBABILITY_TASK_METRICS = frozenset({"death_rate", "invalid_action_ratio"})
 
 
 def build_eval_report(
@@ -26,10 +36,11 @@ def build_eval_report(
     max_regression_drop: float = 0.05,
 ) -> dict[str, Any]:
     """Build a stable report from ``scripts/run_eval.py`` output."""
-    if max_regression_drop < 0.0:
-        raise ValueError("max_regression_drop must be non-negative")
-    if min_win_rate is not None and not 0.0 <= min_win_rate <= 1.0:
-        raise ValueError("min_win_rate must be between 0 and 1")
+    max_regression_drop = _non_negative_arg(
+        max_regression_drop,
+        name="max_regression_drop",
+    )
+    min_win_rate = _probability_arg(min_win_rate, name="min_win_rate")
 
     metadata = _mapping(payload.get("metadata", {}))
     metrics = payload.get("metrics")
@@ -138,7 +149,19 @@ def _task_rows(
         metrics_valid = isinstance(raw_metrics, Mapping)
         task_metrics = raw_metrics if metrics_valid else {}
         row: dict[str, Any] = {key: _task_metric(task_metrics, key) for key in TASK_METRICS}
+        win_rate, win_rate_valid = _win_rate_metric(task_metrics)
+        row["win_rate"] = win_rate
         row["metrics_valid"] = metrics_valid
+        if not metrics_valid:
+            row["metric_error"] = "non_object"
+        if metrics_valid and not win_rate_valid:
+            row["metrics_valid"] = False
+            row["metric_error"] = "missing_or_invalid_win_rate"
+        invalid_fields = _invalid_metric_fields(task_metrics)
+        if row["metrics_valid"] is not False and invalid_fields:
+            row["metrics_valid"] = False
+            row["metric_error"] = "invalid_metric_fields"
+            row["invalid_metric_fields"] = invalid_fields
         row["task_id"] = str(task_id)
         row["regression_delta"], row["regression_valid"] = _regression_delta(
             regression,
@@ -150,11 +173,64 @@ def _task_rows(
 
 def _task_metric(task_metrics: Mapping[str, Any], key: str) -> float:
     if key == "win_rate":
-        win_rate = _finite_float_or_none(task_metrics.get("win_rate"))
-        if win_rate is not None:
-            return win_rate
-        return _float(task_metrics.get("per_boss_win_rate", 0.0))
+        return _win_rate_metric(task_metrics)[0]
     return _float(task_metrics.get(key, 0.0))
+
+
+def _win_rate_metric(task_metrics: Mapping[str, Any]) -> tuple[float, bool]:
+    explicit, explicit_valid = _probability_or_none(task_metrics.get("win_rate"))
+    if explicit_valid and explicit is not None:
+        return explicit, True
+
+    fallback, fallback_valid = _probability_or_none(task_metrics.get("per_boss_win_rate"))
+    if fallback_valid and fallback is not None:
+        return fallback, True
+
+    if "win_rate" not in task_metrics and "per_boss_win_rate" not in task_metrics:
+        return 0.0, False
+    return 0.0, False
+
+
+def _probability_or_none(value: Any) -> tuple[float | None, bool]:
+    if value is None:
+        return None, True
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None, False
+    result = float(value)
+    if not math.isfinite(result):
+        return None, False
+    if not 0.0 <= result <= 1.0:
+        return None, False
+    return result, True
+
+
+def _probability_arg(value: Any, *, name: str) -> float | None:
+    if value is None:
+        return None
+    result, valid = _probability_or_none(value)
+    if not valid or result is None:
+        raise ValueError(f"{name} must be a finite probability in [0, 1]")
+    return result
+
+
+def _non_negative_arg(value: Any, *, name: str) -> float:
+    result = _non_negative_float_or_none(value)
+    if result is None:
+        raise ValueError(f"{name} must be a finite non-negative number")
+    return result
+
+
+def _invalid_metric_fields(task_metrics: Mapping[str, Any]) -> list[str]:
+    invalid_fields: list[str] = []
+    for field in NON_NEGATIVE_TASK_METRICS:
+        if field in task_metrics and _non_negative_float_or_none(task_metrics[field]) is None:
+            invalid_fields.append(field)
+    for field in PROBABILITY_TASK_METRICS:
+        if field in task_metrics:
+            _, valid = _probability_or_none(task_metrics[field])
+            if task_metrics[field] is None or not valid:
+                invalid_fields.append(field)
+    return sorted(invalid_fields)
 
 
 def _regression_delta(
@@ -225,12 +301,26 @@ def _findings(
 
     for task in tasks:
         if task.get("metrics_valid") is False:
+            if task.get("metric_error") == "missing_or_invalid_win_rate":
+                message = f"{task['task_id']} has missing or invalid win-rate metrics."
+                recommendation = (
+                    "Re-run fixed-seed eval and confirm win_rate or per_boss_win_rate is in [0, 1]."
+                )
+            elif task.get("metric_error") == "invalid_metric_fields":
+                fields = ", ".join(str(field) for field in task.get("invalid_metric_fields", []))
+                message = f"{task['task_id']} has invalid numeric metric fields: {fields}."
+                recommendation = (
+                    "Re-run fixed-seed eval and confirm task metrics are finite numeric values."
+                )
+            else:
+                message = f"{task['task_id']} has a non-object metric payload."
+                recommendation = "Re-run fixed-seed eval and check the evaluator JSON writer."
             findings.append(
                 _finding(
                     "critical",
                     "malformed_task_metrics",
-                    f"{task['task_id']} has a non-object metric payload.",
-                    "Re-run fixed-seed eval and check the evaluator JSON writer.",
+                    message,
+                    recommendation,
                 )
             )
 
@@ -314,19 +404,22 @@ def _optional_float(value: Any) -> float | None:
 def _finite_float_or_none(value: Any) -> float | None:
     if value is None:
         return None
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool) or not isinstance(value, Real):
         return None
+    result = float(value)
     return result if math.isfinite(result) else None
 
 
 def _float(value: Any) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return result if math.isfinite(result) else 0.0
+    result = _finite_float_or_none(value)
+    return 0.0 if result is None else result
+
+
+def _non_negative_float_or_none(value: Any) -> float | None:
+    result = _finite_float_or_none(value)
+    if result is None or result < 0.0:
+        return None
+    return result
 
 
 def _mean(values: list[float]) -> float:

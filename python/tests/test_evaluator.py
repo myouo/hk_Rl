@@ -128,6 +128,51 @@ def test_evaluator_regression_report_accepts_per_boss_win_rate() -> None:
     assert report == {"a": -0.25}
 
 
+@pytest.mark.parametrize(
+    "baseline_metrics, match",
+    [
+        ({}, "must include win_rate"),
+        ({"win_rate": 1.2}, r"must be in \[0, 1\]"),
+        ({"win_rate": float("nan")}, "must be finite"),
+        ({"win_rate": "0.5"}, "must be numeric"),
+        ({"per_boss_win_rate": True}, "must be numeric"),
+        ("not an object", "must be an object"),
+        (None, "must be an object"),
+    ],
+)
+def test_evaluator_regression_report_rejects_invalid_baseline_win_rate(
+    baseline_metrics: object,
+    match: str,
+) -> None:
+    evaluator = Evaluator(
+        model=object(),
+        tasks=[TaskConfig(task_id="a", scene="A")],
+        seeds=[0],
+        env_factory=lambda task: None,
+    )
+
+    with pytest.raises(ValueError, match=match):
+        evaluator.regression_report(
+            baseline={"a": baseline_metrics},
+            current={"a": {"win_rate": 0.5}},
+        )
+
+
+def test_evaluator_regression_report_rejects_invalid_current_win_rate() -> None:
+    evaluator = Evaluator(
+        model=object(),
+        tasks=[TaskConfig(task_id="a", scene="A")],
+        seeds=[0],
+        env_factory=lambda task: None,
+    )
+
+    with pytest.raises(ValueError, match="current win_rate"):
+        evaluator.regression_report(
+            baseline={"a": {"win_rate": 0.5}},
+            current={"a": {"win_rate": float("inf")}},
+        )
+
+
 def test_evaluator_emits_step_replay_records() -> None:
     task = TaskConfig(task_id="fake_boss", wire_id=9, scene="FakeScene")
     action_space = spaces.make_action_space(enable_macro=False)

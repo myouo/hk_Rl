@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping
+from numbers import Real
 from typing import Any
 
 
@@ -24,6 +25,10 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
     ]
     active_workers = _float(metrics.get("active_worker_count", 0.0))
     assigned_workers = _float(metrics.get("assigned_worker_count", 0.0))
+    unassigned_workers = max(
+        max(0.0, active_workers - assigned_workers),
+        _unassigned_worker_count(workers),
+    )
     sps = _float(metrics.get("sps", 0.0))
     report_metrics = {
         "active_worker_count": active_workers,
@@ -43,7 +48,7 @@ def build_profile_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         "sps_per_active_worker": sps / active_workers if active_workers > 0.0 else 0.0,
         "stale_checkpoint_worker_count": _float(metrics.get("stale_checkpoint_worker_count", 0.0)),
         "stale_policy_worker_count": _float(metrics.get("stale_policy_worker_count", 0.0)),
-        "unassigned_worker_count": max(0.0, active_workers - assigned_workers),
+        "unassigned_worker_count": unassigned_workers,
         "worker_checkpoint_lag_max": _float(metrics.get("worker_checkpoint_lag_max", 0.0)),
         "worker_count": _float(metrics.get("worker_count", 0.0)),
         "worker_crash_count": _float(metrics.get("worker_crash_count", 0.0)),
@@ -171,6 +176,7 @@ def _worker_profiles(raw_workers: Any) -> list[dict[str, Any]]:
         rows.append(
             {
                 "alive": _optional_bool(record.get("alive")),
+                "assigned_task": _optional_str(record.get("assigned_task")),
                 "rollout_duration_s": _optional_float(metrics.get("rollout_duration_s")),
                 "rollout_steps": _optional_float(metrics.get("rollout_steps")),
                 "sps": _float(metrics.get("sps", 0.0)),
@@ -231,6 +237,15 @@ def _findings(metrics: Mapping[str, float], workers: list[dict[str, Any]]) -> li
                 "Some workers missed the heartbeat timeout and are marked lost.",
                 "Inspect worker process health, transport connectivity, "
                 "and coordinator timeout settings.",
+            )
+        )
+    if _has_unknown_alive_worker(workers):
+        findings.append(
+            _finding(
+                "warning",
+                "missing_worker_alive_status",
+                "Some worker rows do not have a valid alive flag.",
+                "Inspect coordinator heartbeat serialization and reject malformed worker rows.",
             )
         )
     if metrics["learner_rejected_batches"] > 0.0:
@@ -339,6 +354,20 @@ def _has_dead_worker(workers: list[dict[str, Any]]) -> bool:
     return any(worker.get("alive") is False for worker in workers)
 
 
+def _has_unknown_alive_worker(workers: list[dict[str, Any]]) -> bool:
+    return any(worker.get("alive") is None for worker in workers)
+
+
+def _unassigned_worker_count(workers: list[dict[str, Any]]) -> float:
+    return float(
+        sum(
+            1
+            for worker in workers
+            if worker.get("alive") is True and worker.get("assigned_task") is None
+        )
+    )
+
+
 def _finding(severity: str, code: str, message: str, recommendation: str) -> dict[str, str]:
     return {
         "code": code,
@@ -361,7 +390,7 @@ def _mean(values: list[float]) -> float:
 def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
-    return _float(value)
+    return _numeric_float(value)
 
 
 def _optional_bool(value: Any) -> bool | None:
@@ -369,15 +398,23 @@ def _optional_bool(value: Any) -> bool | None:
         return None
     if isinstance(value, bool):
         return value
-    return bool(value)
+    return None
+
+
+def _optional_str(value: Any) -> str | None:
+    return None if value is None else str(value)
 
 
 def _float(value: Any) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return result if math.isfinite(result) else 0.0
+    result = _numeric_float(value)
+    return 0.0 if result is None else result
+
+
+def _numeric_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) else None
 
 
 def _format_value(value: Any) -> str:

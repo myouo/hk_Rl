@@ -70,7 +70,10 @@ namespace HKRLEnvMod
     /// </summary>
     public class HKRLDriver : MonoBehaviour
     {
+        private const string AuthTokenEnv = "HKRL_AUTH_TOKEN";
         private const float Phase0LogIntervalSeconds = 2.0f;
+        private const string HostEnv = "HKRL_HOST";
+        private const string PortEnv = "HKRL_PORT";
 
         private float _nextPhase0LogTime;
         private TcpServer? _server;
@@ -86,13 +89,15 @@ namespace HKRLEnvMod
 
             try
             {
-                string? authToken = Environment.GetEnvironmentVariable("HKRL_AUTH_TOKEN");
+                string configuredHost = ResolveHost(host);
+                int configuredPort = ResolvePort(port);
+                string? authToken = Environment.GetEnvironmentVariable(AuthTokenEnv);
                 if (string.IsNullOrEmpty(authToken))
                 {
                     authToken = null;
                 }
 
-                _server = new TcpServer(host, port, authToken);
+                _server = new TcpServer(configuredHost, configuredPort, authToken);
                 RewardEventBuffer rewards = new RewardEventBuffer();
                 DamageHooks.Install(rewards);
                 DeathHooks.Install(rewards);
@@ -112,7 +117,7 @@ namespace HKRLEnvMod
                 _server.Start();
                 _configured = true;
                 global::HKRLEnvMod.Debug.Logger.Info(
-                    $"HKRL TCP environment server listening on {host}:{port}; "
+                    $"HKRL TCP environment server listening on {configuredHost}:{configuredPort}; "
                     + $"auth={(authToken == null ? "disabled" : "enabled")}.");
             }
             catch (Exception exception)
@@ -125,6 +130,30 @@ namespace HKRLEnvMod
                     "Failed to start HKRL TCP environment server",
                     exception);
             }
+        }
+
+        private static string ResolveHost(string defaultHost)
+        {
+            string? value = Environment.GetEnvironmentVariable(HostEnv);
+            return string.IsNullOrWhiteSpace(value) ? defaultHost : value.Trim();
+        }
+
+        private static int ResolvePort(int defaultPort)
+        {
+            string? value = Environment.GetEnvironmentVariable(PortEnv);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return defaultPort;
+            }
+
+            if (int.TryParse(value, out int port) && port >= 1 && port <= 65535)
+            {
+                return port;
+            }
+
+            global::HKRLEnvMod.Debug.Logger.Warn(
+                $"Ignoring invalid {PortEnv}={value}; using {defaultPort}.");
+            return defaultPort;
         }
 
         private void Awake()

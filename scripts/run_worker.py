@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 from collections.abc import Callable
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -23,7 +24,7 @@ from urllib.parse import urlparse
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
 from hkrl.spaces import make_observation_space
-from hkrl.learner.batch_intake import BatchIntakeClient
+from hkrl.learner.batch_intake import BatchIntakeClient, split_endpoint
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
 from hkrl.transport.factory import make_transport
@@ -43,6 +44,10 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--config", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--tasks", nargs="+", help="optional task list cycled per rollout")
+    p.add_argument("--env-host", help="override TCP env host from the train config")
+    p.add_argument(
+        "--env-port", type=int, help="override TCP env port from the train config"
+    )
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
     p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
@@ -68,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_worker_args(args)
     cfg = load_train_config(args.config)
     tasks = _load_tasks(args)
     task = tasks[0]
@@ -109,6 +115,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "dry_run": True,
             "batch_dir": args.batch_dir,
             "enable_macro_actions": task.action.enable_macro_actions,
+            "env_host": _env_host(cfg, args),
+            "env_port": _env_port(cfg, args),
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
@@ -125,7 +133,11 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     from hkrl.env import HKRLEnv
     from hkrl.wrappers import NormalizeObservation
 
-    transport = make_transport(cfg)
+    transport = make_transport(
+        cfg,
+        host=_optional_host(getattr(args, "env_host", None), name="env_host"),
+        port=_optional_port(getattr(args, "env_port", None), name="env_port"),
+    )
     env = NormalizeObservation(HKRLEnv(transport=transport, task=task))
     spooled_batches: list[str] = []
     heartbeats: list[None] = []
@@ -160,6 +172,8 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "consecutive_failures": worker.consecutive_failures,
             "dry_run": False,
             "enable_macro_actions": task.action.enable_macro_actions,
+            "env_host": _env_host(cfg, args),
+            "env_port": _env_port(cfg, args),
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "heartbeats_written": len(heartbeats),
             "last_error": worker.last_error,
@@ -257,6 +271,124 @@ def _checkpoint_auth_token(cfg: Any, registry_endpoint: str | None) -> str | Non
     return None
 
 
+def _validate_worker_args(args: argparse.Namespace) -> None:
+    _non_empty_path_like(getattr(args, "config", None), name="config")
+    _non_empty_path_like(getattr(args, "task", None), name="task")
+    task_paths = getattr(args, "tasks", None)
+    if task_paths is not None:
+        if isinstance(task_paths, (str, bytes)) or not isinstance(
+            task_paths, list | tuple
+        ):
+            raise ValueError("tasks must be a sequence of paths")
+        if not task_paths:
+            raise ValueError("tasks must contain at least one path")
+        for index, task_path in enumerate(task_paths):
+            _non_empty_path_like(task_path, name=f"tasks[{index}]")
+
+    worker_id = getattr(args, "worker_id", None)
+    if not isinstance(worker_id, str) or not worker_id.strip():
+        raise ValueError("worker_id must not be empty")
+
+    steps = getattr(args, "steps", None)
+    if steps is not None:
+        _positive_int(steps, name="steps")
+    _non_negative_int(
+        getattr(args, "max_consecutive_failures", 3),
+        name="max_consecutive_failures",
+    )
+
+    learner = getattr(args, "learner", None)
+    if learner is not None:
+        _validate_learner_endpoint(learner)
+    _optional_host(getattr(args, "env_host", None), name="env_host")
+    _optional_port(getattr(args, "env_port", None), name="env_port")
+    _optional_non_empty_string(getattr(args, "registry", None), name="registry")
+    _optional_non_empty_path_like(getattr(args, "batch_dir", None), name="batch_dir")
+    _optional_non_empty_path_like(
+        getattr(args, "heartbeat_jsonl", None),
+        name="heartbeat_jsonl",
+    )
+
+
+def _validate_learner_endpoint(endpoint: Any) -> None:
+    if not isinstance(endpoint, str) or not endpoint:
+        raise ValueError("learner endpoint must be host:port")
+    _host, port = split_endpoint(endpoint)
+    if port == 0:
+        raise ValueError("learner endpoint port must be in [1, 65535]")
+
+
+def _env_host(cfg: Any, args: argparse.Namespace) -> str:
+    override = getattr(args, "env_host", None)
+    return cfg.transport.host if override is None else str(override).strip()
+
+
+def _env_port(cfg: Any, args: argparse.Namespace) -> int:
+    override = getattr(args, "env_port", None)
+    return int(cfg.transport.port if override is None else override)
+
+
+def _optional_host(value: Any, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value.strip()
+
+
+def _optional_port(value: Any, *, name: str) -> int | None:
+    if value is None:
+        return None
+    port = _integer(value, name=name)
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{name} must be in [1, 65535]")
+    return port
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _non_negative_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return result
+
+
+def _integer(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    return int(value)
+
+
+def _non_empty_path_like(value: Any, *, name: str) -> str | os.PathLike[str]:
+    if not isinstance(value, str | os.PathLike) or not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _optional_non_empty_path_like(
+    value: Any,
+    *,
+    name: str,
+) -> str | os.PathLike[str] | None:
+    if value is None:
+        return None
+    return _non_empty_path_like(value, name=name)
+
+
+def _optional_non_empty_string(value: Any, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
 def _make_heartbeat_sink(
     path: str | None,
     worker_id: str,
@@ -265,7 +397,7 @@ def _make_heartbeat_sink(
     if path is None:
         return None
 
-    target = Path(path)
+    target = Path(_non_empty_path_like(path, name="heartbeat_jsonl"))
     safe_worker = _safe_filename_component(worker_id)
 
     def sink(payload: dict[str, Any]) -> None:
@@ -298,7 +430,11 @@ def _make_batch_uploader(
     if batch_dir is None and learner_endpoint is None:
         return None
 
-    directory = None if batch_dir is None else Path(batch_dir)
+    directory = (
+        None
+        if batch_dir is None
+        else Path(_non_empty_path_like(batch_dir, name="batch_dir"))
+    )
     client = (
         None
         if learner_endpoint is None
@@ -328,6 +464,13 @@ def _make_batch_uploader(
 
 
 def _upload_summary(uploaded: list[bool]) -> dict[str, int]:
+    malformed_indexes = [
+        index for index, value in enumerate(uploaded) if not isinstance(value, bool)
+    ]
+    if malformed_indexes:
+        raise ValueError(
+            f"uploaded batch ACKs must be bool at indexes {malformed_indexes}"
+        )
     accepted = sum(1 for value in uploaded if value)
     submitted = len(uploaded)
     return {

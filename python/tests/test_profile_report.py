@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from hkrl.coordinator.profiling import build_profile_report, render_profile_markdown
 
 
@@ -49,6 +50,27 @@ def test_profile_report_flags_unassigned_workers() -> None:
     report = build_profile_report(summary)
 
     assert report["metrics"]["unassigned_worker_count"] == 1.0
+    assert "unassigned_workers" in {finding["code"] for finding in report["findings"]}
+
+
+def test_profile_report_flags_unassigned_worker_rows_when_aggregate_is_stale() -> None:
+    summary = _summary(include_timing=True)
+    metrics = summary["coordinator"]["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["active_worker_count"] = "2"
+    metrics["assigned_worker_count"] = "2"
+    workers = summary["coordinator"]["workers"]
+    assert isinstance(workers, dict)
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["assigned_task"] = None
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["active_worker_count"] == 0.0
+    assert report["metrics"]["assigned_worker_count"] == 0.0
+    assert report["metrics"]["unassigned_worker_count"] == 1.0
+    assert report["workers"][1]["assigned_task"] is None
     assert "unassigned_workers" in {finding["code"] for finding in report["findings"]}
 
 
@@ -96,6 +118,66 @@ def test_profile_report_flags_dead_worker_rows_as_lost() -> None:
     assert report["metrics"]["lost_worker_count"] == 0.0
     assert report["workers"][1]["alive"] is False
     assert [finding["code"] for finding in report["findings"]] == ["lost_workers"]
+
+
+def test_profile_report_flags_malformed_worker_alive_status() -> None:
+    summary = _summary(include_timing=True)
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.update(
+        {
+            "lost_worker_count": 0.0,
+            "recovering_worker_count": 0.0,
+            "stale_checkpoint_worker_count": 0.0,
+            "stale_policy_worker_count": 0.0,
+            "worker_checkpoint_lag_max": 0.0,
+            "worker_crash_count": 0.0,
+            "worker_policy_lag_max": 0.0,
+        }
+    )
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_1 = workers["worker-1"]
+    assert isinstance(worker_1, dict)
+    worker_1["alive"] = "false"
+    worker_1["info"] = {"status": "running"}
+    worker_metrics = worker_1["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["worker_crash_count"] = 0
+
+    report = build_profile_report(summary)
+
+    assert report["workers"][1]["alive"] is None
+    assert [finding["code"] for finding in report["findings"]] == ["missing_worker_alive_status"]
+
+
+def test_profile_report_ignores_malformed_numeric_strings() -> None:
+    summary = _summary(include_timing=True)
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["sps"] = "32"
+    learner = summary["learner"]
+    assert isinstance(learner, dict)
+    learner["queued_batches"] = "2"
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_0 = workers["worker-0"]
+    assert isinstance(worker_0, dict)
+    worker_metrics = worker_0["metrics"]
+    assert isinstance(worker_metrics, dict)
+    worker_metrics["rollout_duration_s"] = "4"
+    worker_metrics["rollout_steps"] = "128"
+
+    report = build_profile_report(summary)
+
+    assert report["metrics"]["sps"] == 0.0
+    assert report["metrics"]["learner_queued_batches"] == 0.0
+    assert report["workers"][0]["rollout_duration_s"] is None
+    assert report["workers"][0]["rollout_steps"] is None
 
 
 def test_profile_report_flags_learner_backpressure() -> None:
@@ -225,6 +307,34 @@ def test_render_profile_report_script_writes_json_and_markdown(tmp_path: Path) -
     assert "HKRL Phase 8 Profile" in markdown_path.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"summary": ""}, "summary"),
+        ({"output_json": ""}, "output_json"),
+        ({"output_md": ""}, "output_md"),
+    ],
+)
+def test_render_profile_report_script_rejects_invalid_args(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("render_profile_report.py")
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(_summary(include_timing=True)), encoding="utf-8")
+    args = argparse.Namespace(
+        summary=str(summary_path),
+        output_json=str(tmp_path / "profile.json"),
+        output_md=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
+
+
 def _summary(*, include_timing: bool) -> dict[str, object]:
     workers = {
         "worker-0": _worker(
@@ -305,6 +415,7 @@ def _worker(
         metrics["rollout_duration_s"] = rollout_duration_s
     return {
         "alive": True,
+        "assigned_task": f"task-{status}",
         "info": {"status": status},
         "metrics": metrics,
     }

@@ -7,6 +7,7 @@ worker crash must not stall training — PRD Phase 8 milestone).
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,13 +37,18 @@ class Coordinator:
         heartbeat_timeout_s: float = 30.0,
         clock: Callable[[], float] | None = None,
     ) -> None:
-        if heartbeat_timeout_s <= 0:
+        if isinstance(heartbeat_timeout_s, bool) or not isinstance(heartbeat_timeout_s, Real):
+            raise ValueError("heartbeat_timeout_s must be numeric")
+        heartbeat_timeout = float(heartbeat_timeout_s)
+        if not math.isfinite(heartbeat_timeout):
+            raise ValueError("heartbeat_timeout_s must be finite")
+        if heartbeat_timeout <= 0:
             raise ValueError("heartbeat_timeout_s must be positive")
 
-        self.task_sampler = task_sampler
-        self.bind = bind
-        self.heartbeat_timeout_s = heartbeat_timeout_s
-        self._clock = clock or time.monotonic
+        self.task_sampler: TaskSampler = task_sampler
+        self.bind: str = bind
+        self.heartbeat_timeout_s: float = heartbeat_timeout
+        self._clock: Callable[[], float] = clock or time.monotonic
         self._workers: dict[str, WorkerRecord] = {}
 
     def register_worker(self, worker_id: str, info: dict[str, object]) -> None:
@@ -91,6 +97,7 @@ class Coordinator:
         if info is not None:
             worker.info.update(info)
         if metrics is not None:
+            _validate_metrics(metrics)
             worker.metrics.update(metrics)
         worker.last_heartbeat = self._clock()
         worker.alive = True
@@ -110,6 +117,8 @@ class Coordinator:
             if isinstance(value, bool):
                 info[key] = value
             elif isinstance(value, Real):
+                if not math.isfinite(float(value)):
+                    raise ValueError(f"heartbeat metric {key!r} must be finite")
                 metrics[key] = float(value)
             else:
                 info[key] = value
@@ -218,3 +227,11 @@ def _metric_values(workers: list[WorkerRecord], key: str) -> list[float]:
 
 def _sum_metric(workers: list[WorkerRecord], key: str) -> float:
     return sum(float(worker.metrics.get(key, 0.0)) for worker in workers)
+
+
+def _validate_metrics(metrics: dict[str, float]) -> None:
+    for key, value in metrics.items():
+        if isinstance(value, bool) or not isinstance(value, Real):
+            raise ValueError(f"heartbeat metric {key!r} must be numeric")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"heartbeat metric {key!r} must be finite")

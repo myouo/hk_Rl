@@ -7,13 +7,14 @@ before loading (never load an unverified checkpoint).
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 import torch
 
@@ -166,13 +167,14 @@ def _parse_index(lines: Any) -> dict[int, CheckpointMeta]:
 
 
 def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
-    path = str(payload["path"])
+    path = payload["path"]
     _validate_checkpoint_path(path)
-    version = int(payload["version"])
-    policy_version = int(payload["policy_version"])
-    created_step = int(payload["created_step"])
+    version, policy_version, created_step = _validate_checkpoint_numbers(
+        payload["version"],
+        payload["policy_version"],
+        payload["created_step"],
+    )
     sha256 = str(payload["sha256"])
-    _validate_checkpoint_numbers(version, policy_version, created_step)
     _validate_sha256(sha256)
     return CheckpointMeta(
         version=version,
@@ -212,18 +214,36 @@ def _checkpoint_url(base_url: str, path: str) -> str:
     return url
 
 
-def _validate_checkpoint_path(path: str) -> None:
-    if Path(path) == Path("."):
+def _validate_checkpoint_path(path: Any) -> None:
+    if not isinstance(path, str) or not path.strip() or Path(path) == Path("."):
         raise ValueError("checkpoint path must name a file")
 
 
-def _validate_checkpoint_numbers(version: int, policy_version: int, created_step: int) -> None:
-    if version <= 0:
-        raise ValueError("checkpoint version must be positive")
-    if policy_version < 0:
-        raise ValueError("checkpoint policy_version must be non-negative")
-    if created_step < 0:
-        raise ValueError("checkpoint created_step must be non-negative")
+def _validate_checkpoint_numbers(
+    version: Any,
+    policy_version: Any,
+    created_step: Any,
+) -> tuple[int, int, int]:
+    version = _positive_int(version, name="version")
+    policy_version = _non_negative_int(policy_version, name="policy_version")
+    created_step = _non_negative_int(created_step, name="created_step")
+    return version, policy_version, created_step
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"checkpoint {name} must be an integer")
+    if value <= 0:
+        raise ValueError(f"checkpoint {name} must be positive")
+    return value
+
+
+def _non_negative_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"checkpoint {name} must be an integer")
+    if value < 0:
+        raise ValueError(f"checkpoint {name} must be non-negative")
+    return value
 
 
 def _validate_sha256(value: str) -> None:
@@ -236,8 +256,25 @@ def _http_get_bytes(url: str, *, auth_token: str | None, timeout_s: float) -> by
     if auth_token is not None:
         headers["Authorization"] = f"Bearer {auth_token}"
     request = Request(url, headers=headers)
+    if _bypass_proxy(url):
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(request, timeout=timeout_s) as response:
+            return response.read()
     with urlopen(request, timeout=timeout_s) as response:
         return response.read()
+
+
+def _bypass_proxy(url: str) -> bool:
+    host = urlparse(url).hostname
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
 
 
 def _sha256_bytes(payload: bytes) -> str:

@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Mapping
+import math
+import os
+from collections.abc import Mapping, Sequence
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
@@ -67,26 +70,28 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_coordinator_args(args)
     cfg = load_train_config(args.config)
     tasks = _load_tasks(args.tasks)
     task_ids = [task.task_id for task in tasks]
     bind = validate_bind_address(
         args.bind or cfg.coordinator.bind, cfg.security.bind_scope
     )
-    sampler = TaskSampler(task_ids, seed=cfg.seed if args.seed is None else args.seed)
+    worker_ids = _worker_ids(args, default_count=cfg.coordinator.num_workers)
+    heartbeat_timeout_s = _heartbeat_timeout_s(
+        args,
+        default_value=cfg.coordinator.heartbeat_timeout_s,
+    )
+    seed = cfg.seed if args.seed is None else _integer(args.seed, name="seed")
+    sampler = TaskSampler(task_ids, seed=seed)
     eval_winrates = _load_eval_winrates(getattr(args, "eval_metrics", None))
     if eval_winrates:
         sampler.update_weights(eval_winrates)
     coordinator = Coordinator(
         sampler,
         bind=bind,
-        heartbeat_timeout_s=(
-            cfg.coordinator.heartbeat_timeout_s
-            if args.heartbeat_timeout_s is None
-            else args.heartbeat_timeout_s
-        ),
+        heartbeat_timeout_s=heartbeat_timeout_s,
     )
-    worker_ids = _worker_ids(args, default_count=cfg.coordinator.num_workers)
     assignments = _register_and_assign(coordinator, worker_ids)
     ingested_heartbeats = _ingest_heartbeat_jsonl(coordinator, args.heartbeat_jsonl)
     metrics = coordinator.metrics_snapshot()
@@ -114,7 +119,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _load_tasks(paths: list[str]) -> list[TaskConfig]:
-    tasks = [load_task_config(path) for path in paths]
+    tasks = [
+        load_task_config(_non_empty_path_like(path, name=f"tasks[{index}]"))
+        for index, path in enumerate(paths)
+    ]
     if not tasks:
         raise ValueError("at least one task is required")
     return tasks
@@ -124,7 +132,7 @@ def _load_eval_winrates(path: str | None) -> dict[str, float]:
     if path is None:
         return {}
 
-    metrics_path = Path(path)
+    metrics_path = Path(_non_empty_path_like(path, name="eval_metrics"))
     if not metrics_path.exists():
         raise FileNotFoundError(f"eval metrics JSON does not exist: {metrics_path}")
 
@@ -140,27 +148,136 @@ def _load_eval_winrates(path: str | None) -> dict[str, float]:
     winrates: dict[str, float] = {}
     for task_id, values in metrics.items():
         if not isinstance(values, Mapping):
-            continue
-        winrate = values.get("win_rate", values.get("per_boss_win_rate"))
+            raise ValueError(f"eval metrics for task {task_id!r} must be an object")
+        winrate = values.get("win_rate")
         if winrate is None:
-            continue
-        winrates[str(task_id)] = float(winrate)
+            winrate = values.get("per_boss_win_rate")
+        if winrate is None:
+            raise ValueError(
+                f"eval metrics for task {task_id!r} must include win_rate or per_boss_win_rate"
+            )
+        winrates[str(task_id)] = _validate_winrate(str(task_id), winrate)
     return winrates
 
 
+def _validate_winrate(task_id: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"eval win_rate for task {task_id!r} must be numeric")
+    winrate = float(value)
+    if not math.isfinite(winrate):
+        raise ValueError(f"eval win_rate for task {task_id!r} must be finite")
+    if not 0.0 <= winrate <= 1.0:
+        raise ValueError(f"eval win_rate for task {task_id!r} must be in [0, 1]")
+    return winrate
+
+
+def _validate_coordinator_args(args: argparse.Namespace) -> None:
+    _non_empty_path_like(getattr(args, "config", None), name="config")
+    tasks = getattr(args, "tasks", None)
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)) or not tasks:
+        raise ValueError("at least one task is required")
+    for index, task in enumerate(tasks):
+        _non_empty_path_like(task, name=f"tasks[{index}]")
+
+    _optional_non_empty_string(getattr(args, "bind", None), name="bind")
+    _optional_non_empty_path_like(
+        getattr(args, "heartbeat_jsonl", None), name="heartbeat_jsonl"
+    )
+    _optional_non_empty_path_like(
+        getattr(args, "eval_metrics", None), name="eval_metrics"
+    )
+
+    if getattr(args, "num_workers", None) is not None:
+        _positive_int(args.num_workers, name="num_workers")
+    if getattr(args, "heartbeat_timeout_s", None) is not None:
+        _positive_finite_float(args.heartbeat_timeout_s, name="heartbeat_timeout_s")
+    if getattr(args, "seed", None) is not None:
+        _integer(args.seed, name="seed")
+
+    if (
+        getattr(args, "worker_ids", None) is not None
+        and getattr(args, "num_workers", None) is not None
+    ):
+        raise ValueError("num_workers cannot be combined with explicit worker ids")
+
+
 def _worker_ids(args: argparse.Namespace, *, default_count: int) -> list[str]:
-    if args.worker_ids:
-        worker_ids = [str(worker_id) for worker_id in args.worker_ids]
-        if any(not worker_id for worker_id in worker_ids):
+    if args.worker_ids is not None:
+        if isinstance(args.worker_ids, (str, bytes)) or not isinstance(
+            args.worker_ids, Sequence
+        ):
+            raise ValueError("worker_ids must be a sequence of worker ids")
+        worker_ids: list[str] = []
+        for worker_id in args.worker_ids:
+            if not isinstance(worker_id, str) or not worker_id.strip():
+                raise ValueError("worker ids must not be empty")
+            if worker_id != worker_id.strip():
+                raise ValueError("worker ids must not have surrounding whitespace")
+            worker_ids.append(worker_id)
+        if not worker_ids:
             raise ValueError("worker ids must not be empty")
         if len(set(worker_ids)) != len(worker_ids):
             raise ValueError("worker ids must be unique")
         return worker_ids
 
     count = default_count if args.num_workers is None else args.num_workers
-    if count <= 0:
-        raise ValueError("num_workers must be positive")
+    count = _positive_int(count, name="num_workers")
     return [f"worker-{idx}" for idx in range(count)]
+
+
+def _heartbeat_timeout_s(args: argparse.Namespace, *, default_value: float) -> float:
+    value = (
+        default_value if args.heartbeat_timeout_s is None else args.heartbeat_timeout_s
+    )
+    return _positive_finite_float(value, name="heartbeat_timeout_s")
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _integer(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    return int(value)
+
+
+def _positive_finite_float(value: Any, *, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name} must be finite")
+    if result <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _non_empty_path_like(value: Any, *, name: str) -> str | os.PathLike[str]:
+    if not isinstance(value, str | os.PathLike) or not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _optional_non_empty_path_like(
+    value: Any,
+    *,
+    name: str,
+) -> str | os.PathLike[str] | None:
+    if value is None:
+        return None
+    return _non_empty_path_like(value, name=name)
+
+
+def _optional_non_empty_string(value: Any, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
 
 
 def _register_and_assign(
@@ -177,7 +294,7 @@ def _ingest_heartbeat_jsonl(coordinator: Coordinator, path: str | None) -> int:
     if path is None:
         return 0
 
-    heartbeat_path = Path(path)
+    heartbeat_path = Path(_non_empty_path_like(path, name="heartbeat_jsonl"))
     if not heartbeat_path.exists():
         raise FileNotFoundError(f"heartbeat JSONL does not exist: {heartbeat_path}")
 

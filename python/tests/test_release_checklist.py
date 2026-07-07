@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from hkrl.utils.release import build_release_checklist, render_release_markdown
 
 
@@ -84,6 +85,35 @@ def test_render_release_checklist_script_writes_json_and_markdown(tmp_path: Path
     assert checklist["git_sha"] == "deadbeef"
     assert json.loads(json_path.read_text(encoding="utf-8"))["version"] == "phase8"
     assert "HKRL Release Checklist" in markdown_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"version": ""}, "version"),
+        ({"git_dirty": "maybe"}, "git_dirty"),
+        ({"git_dirty": True}, "git_dirty"),
+        ({"output_json": ""}, "output_json"),
+        ({"output_md": ""}, "output_md"),
+    ],
+)
+def test_render_release_checklist_script_rejects_invalid_args(
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("render_release_checklist.py")
+    args = argparse.Namespace(
+        version="phase8",
+        git_dirty="false",
+        git_sha="deadbeef",
+        output_json="runs/release/checklist.json",
+        output_md=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
 
 
 def _load_script(name: str) -> ModuleType:

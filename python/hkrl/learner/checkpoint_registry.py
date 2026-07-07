@@ -45,7 +45,11 @@ class CheckpointRegistry:
         """
         validate_checkpoint_payload(state)
         version = self._next_version()
-        _validate_checkpoint_numbers(version, policy_version, step)
+        version, policy_version, step = _validate_checkpoint_numbers(
+            version,
+            policy_version,
+            step,
+        )
         filename = f"checkpoint_v{version:06d}.pt"
         path = self._root_path / filename
         torch.save(state, path)
@@ -105,13 +109,14 @@ class CheckpointRegistry:
 
 
 def _meta_from_payload(payload: dict[str, Any]) -> CheckpointMeta:
-    path = str(payload["path"])
+    path = payload["path"]
     _validate_checkpoint_path(path)
-    version = int(payload["version"])
-    policy_version = int(payload["policy_version"])
-    created_step = int(payload["created_step"])
+    version, policy_version, created_step = _validate_checkpoint_numbers(
+        payload["version"],
+        payload["policy_version"],
+        payload["created_step"],
+    )
     sha256 = str(payload["sha256"])
-    _validate_checkpoint_numbers(version, policy_version, created_step)
     _validate_sha256(sha256)
     return CheckpointMeta(
         version=version,
@@ -136,18 +141,36 @@ def _checkpoint_path(root: Path, path: str) -> Path:
     return resolved_checkpoint
 
 
-def _validate_checkpoint_path(path: str) -> None:
-    if Path(path) == Path("."):
+def _validate_checkpoint_path(path: Any) -> None:
+    if not isinstance(path, str) or not path.strip() or Path(path) == Path("."):
         raise ValueError("checkpoint path must name a file")
 
 
-def _validate_checkpoint_numbers(version: int, policy_version: int, created_step: int) -> None:
-    if version <= 0:
-        raise ValueError("checkpoint version must be positive")
-    if policy_version < 0:
-        raise ValueError("checkpoint policy_version must be non-negative")
-    if created_step < 0:
-        raise ValueError("checkpoint created_step must be non-negative")
+def _validate_checkpoint_numbers(
+    version: Any,
+    policy_version: Any,
+    created_step: Any,
+) -> tuple[int, int, int]:
+    version = _positive_int(version, name="version")
+    policy_version = _non_negative_int(policy_version, name="policy_version")
+    created_step = _non_negative_int(created_step, name="created_step")
+    return version, policy_version, created_step
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"checkpoint {name} must be an integer")
+    if value <= 0:
+        raise ValueError(f"checkpoint {name} must be positive")
+    return value
+
+
+def _non_negative_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"checkpoint {name} must be an integer")
+    if value < 0:
+        raise ValueError(f"checkpoint {name} must be non-negative")
+    return value
 
 
 def _validate_sha256(value: str) -> None:

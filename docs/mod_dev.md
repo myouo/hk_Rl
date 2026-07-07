@@ -34,6 +34,26 @@
 are machine-specific — keep them in a local `.csproj.user` / props file, not in
 source. Compilation is deferred until a machine with the game is configured.
 
+At runtime the mod starts the TCP environment server from the persistent
+`HKRLDriver`. Defaults are `127.0.0.1:5555`; set these environment variables
+before launching Hollow Knight to line up live smoke, evaluator, or worker
+processes with a specific game instance:
+
+```bash
+export HKRL_HOST=127.0.0.1
+export HKRL_PORT=5555
+export HKRL_AUTH_TOKEN=dev-secret   # optional; enables TCP env auth
+```
+
+For multi-instance evaluation or worker scale-out on one game machine, launch
+each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching
+`--port`/`--ports` or `--env-port` value to the Python entry point. Keep
+`HKRL_HOST` loopback unless the deployment is explicitly firewall-scoped to a
+trusted LAN.
+Use `python scripts/check_env.py --host HOST --port PORT` as the first live
+diagnostic: it sends `PING` through the same FlatBuffers/TCP/auth path without
+resetting the scene.
+
 ## 4. Module map (PRD §5.2)
 
 ```text

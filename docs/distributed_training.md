@@ -61,6 +61,11 @@ For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
 loads all `*.npz` batches through `LearnerServer.submit()` before serving one
 update cycle.
+`run_worker.py` validates config/task paths, optional task lists, registry,
+batch-spool and heartbeat output paths, optional `--env-host`/`--env-port`
+overrides, its stable worker id, finite-step limit, recovery threshold, and
+learner endpoint before constructing the live env worker, so malformed worker
+gate parameters fail before rollout or heartbeat state is created.
 For TCP smoke runs, `scripts/run_learner.py --intake-count N` accepts `N`
 length-prefixed NPZ rollout uploads on `learner.bind` (or `--bind`) before the
 same update cycle, and `scripts/run_worker.py --learner HOST:PORT` sends each
@@ -91,6 +96,9 @@ batches, heartbeat JSONL, and evaluator metrics before writing new artifacts and
 holds a work-directory lock while running, so repeated or concurrent
 dashboard/profile runs do not reuse stale registry state or mix artifact
 generations.
+It validates config/task paths, worker count, sampling seed, work directory, and
+requested artifact output paths before taking the work-dir lock or clearing
+generated smoke artifacts.
 It does not connect to a live game, start learner intake sockets, or exercise mod
 runtime behavior.
 
@@ -124,12 +132,22 @@ CLI flags on `scripts/run_learner.py` override those YAML values only when
 explicitly provided.
 Unknown config keys are rejected instead of ignored, so typos in distributed
 settings fail during startup.
+Learner CLI overrides for config/task paths, optional batch/checkpoint
+directories, bind overrides, intake count/timeout, max staleness, checkpoint
+publish cadence, max entities, and macro-action count are validated before
+model/server construction, so malformed gate parameters fail early instead of
+after partial learner startup.
 
 When `security.require_token` is true, Python TCP clients read the token from
 `security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the initial
 auth frame. This covers local training, workers, and evaluator env connections.
 The mod reads the same `HKRL_AUTH_TOKEN` environment variable to enable
 server-side token verification.
+The mod also reads `HKRL_HOST` and `HKRL_PORT` at startup to choose its TCP env
+listener; local training uses `scripts/train.py --host/--port`, workers use
+`scripts/run_worker.py --env-host/--env-port`, and evaluators use
+`scripts/run_eval.py --host/--port` or `--ports` to target the matching live
+game instance.
 Learner/coordinator service binds are validated against `security.bind_scope`:
 `localhost` requires a loopback bind, while `lan` rejects public IP literals and
 allows private, loopback, or wildcard binds for firewall-scoped LAN deployments.
@@ -146,6 +164,9 @@ Checkpoint registries and local file checkpoint clients reject index entries
 whose checkpoint path escapes the registry root, so a compromised or malformed
 index cannot redirect workers to arbitrary local files. Evaluator registry loads
 also recompute the checkpoint sha256 before loading policy weights.
+Registry index metadata is type-checked at both publish and worker-pull time:
+checkpoint paths must be non-empty strings, and version/policy/step metadata
+must be native integers rather than bools, floats, or numeric strings.
 Newly published registry entries store checkpoint paths relative to the registry
 root so the same `index.jsonl` can be mounted locally or served over HTTP(S).
 `CheckpointClient` supports local/file and HTTP(S) registry endpoints, sends the
@@ -198,12 +219,18 @@ The `scripts/run_coordinator.py --heartbeat-jsonl FILE` entry point accepts one
 JSON object per line, either `{ "worker_id": "...", "payload": {...} }` or a flat
 object with `worker_id` plus heartbeat fields, and emits the same aggregate plus
 per-worker records.
+It validates config/task paths, bind overrides, heartbeat/eval metrics paths,
+task lists, worker count/id overrides, sampling seeds, and heartbeat timeouts
+before constructing coordinator state, so malformed fleet bootstrap parameters
+fail before task assignment or heartbeat ingestion.
 `scripts/run_coordinator.py --eval-metrics FILE` reads evaluator output
 (`{"metrics": {"task_id": {"win_rate": ...}}}` or the raw metrics object),
 updates `TaskSampler` weights toward weaker tasks, and exposes the resulting
 weights/mastered-task set in the JSON summary.
 It also accepts `per_boss_win_rate` when a metrics pipeline keeps only the
-canonical per-boss evaluator key.
+canonical per-boss evaluator key. Every task row present in the file must be an
+object with a finite probability-valued `win_rate` or `per_boss_win_rate`; the
+coordinator rejects malformed rows instead of silently omitting them.
 `make phase8-smoke` runs the same offline distributed wiring check with the
 default Phase 8 config/tasks; the Python test suite covers the script so CI can
 catch broken worker/learner/coordinator config contracts without a live game.
@@ -211,7 +238,9 @@ catch broken worker/learner/coordinator config contracts without a live game.
 turns either a coordinator summary or a Phase 8 smoke summary into a static
 monitoring dashboard. `make phase8-dashboard` runs the offline smoke and writes
 `runs/phase8-smoke/dashboard.html` plus the normalized dashboard model JSON for
-CI artifacts or local inspection. Dashboard health is marked degraded when
+CI artifacts or local inspection. The script rejects empty summary, output, or
+optional eval-metrics paths before reading inputs or writing artifacts.
+Dashboard health is marked degraded when
 workers are lost/recovering, crash churn is visible, active workers are
 unassigned, workers lag or omit policy or checkpoint versions, or active workers
 report zero fleet SPS. It also shows worker-side learner upload counters and
@@ -223,7 +252,8 @@ not hide heartbeat-expired workers.
 renders the same data as a static profiling report with bottleneck findings for
 zero SPS, recovering/crashing workers, unassigned workers, stale or missing
 policies/checkpoints, worker upload failures/rejections, learner intake
-backpressure, and missing rollout timing. The Markdown worker table includes
+backpressure, and missing rollout timing. It rejects empty summary/output paths
+before writing JSON or Markdown artifacts. The Markdown worker table includes
 each worker's alive flag and status so heartbeat-expired workers can be located
 without opening the JSON payload.
 `make phase8-profile` writes `runs/phase8-smoke/profile.md` and `profile.json`;
@@ -233,8 +263,10 @@ Evaluator scale-out uses the same task isolation principle:
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` runs different task
 evaluations through a task-level worker pool while keeping training separate
 from evaluator envs. Use `N` only when the target machine has enough live mod
-instances/ports for the selected task set; the default `1` and single `--port`
-preserve single-instance behavior.
+instances/ports for the selected task set; `run_eval.py` rejects invalid ports,
+duplicate port pools, empty seed lists, non-positive episode/step/worker counts,
+and port pools smaller than `--eval-workers`. The default `1` and single
+`--port` preserve single-instance behavior.
 
 ## 9. PyTorch + CUDA note
 

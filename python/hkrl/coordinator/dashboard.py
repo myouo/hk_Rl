@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import math
 from collections.abc import Mapping
+from numbers import Real
 from typing import Any
 
 KEY_METRICS: tuple[str, ...] = (
@@ -49,7 +50,7 @@ def build_dashboard_model(
     metrics = _metrics_payload(coordinator)
     workers = _worker_rows(coordinator.get("workers", {}), metrics)
     tasks = _task_rows(coordinator, eval_metrics=eval_metrics)
-    dashboard_metrics = _dashboard_metrics(metrics)
+    dashboard_metrics = _dashboard_metrics(metrics, workers=workers)
     learner = _learner_summary(payload)
     health = _health(dashboard_metrics, learner, workers)
 
@@ -130,11 +131,19 @@ def _metrics_payload(coordinator: Mapping[str, Any]) -> Mapping[str, Any]:
     return metrics
 
 
-def _dashboard_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
+def _dashboard_metrics(
+    metrics: Mapping[str, Any],
+    *,
+    workers: list[dict[str, Any]],
+) -> dict[str, float]:
     rows = {key: _float(metrics.get(key, 0.0)) for key in KEY_METRICS}
-    rows["unassigned_worker_count"] = max(
+    aggregate_unassigned = max(
         0.0,
         rows["active_worker_count"] - rows["assigned_worker_count"],
+    )
+    rows["unassigned_worker_count"] = max(
+        aggregate_unassigned,
+        _unassigned_worker_count(workers),
     )
     return rows
 
@@ -234,8 +243,9 @@ def _eval_winrates(
             winrate = value.get("win_rate", value.get("per_boss_win_rate"))
         else:
             winrate = value
-        if winrate is not None:
-            winrates[str(task_id)] = _float(winrate)
+        parsed = _optional_float(winrate)
+        if parsed is not None and 0.0 <= parsed <= 1.0:
+            winrates[str(task_id)] = parsed
     return winrates
 
 
@@ -247,6 +257,8 @@ def _health(
     reasons: list[str] = []
     if _float(metrics.get("lost_worker_count", 0.0)) > 0.0 or _has_dead_worker(workers):
         reasons.append("lost workers")
+    if _has_unknown_alive_worker(workers):
+        reasons.append("workers missing alive status")
     if _float(metrics.get("unassigned_worker_count", 0.0)) > 0.0:
         reasons.append("unassigned workers")
     if _float(metrics.get("recovering_worker_count", 0.0)) > 0.0:
@@ -286,6 +298,20 @@ def _health(
 
 def _has_dead_worker(workers: list[dict[str, Any]]) -> bool:
     return any(worker.get("alive") is False for worker in workers)
+
+
+def _has_unknown_alive_worker(workers: list[dict[str, Any]]) -> bool:
+    return any(worker.get("alive") is None for worker in workers)
+
+
+def _unassigned_worker_count(workers: list[dict[str, Any]]) -> float:
+    return float(
+        sum(
+            1
+            for worker in workers
+            if worker.get("alive") is True and worker.get("assigned_task") is None
+        )
+    )
 
 
 def _render_reasons(reasons: list[str]) -> str:
@@ -409,7 +435,7 @@ def _optional_str(value: Any) -> str | None:
 def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
-    return _float(value)
+    return _numeric_float(value)
 
 
 def _optional_bool(value: Any) -> bool | None:
@@ -417,15 +443,19 @@ def _optional_bool(value: Any) -> bool | None:
         return None
     if isinstance(value, bool):
         return value
-    return bool(value)
+    return None
 
 
 def _float(value: Any) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return result if math.isfinite(result) else 0.0
+    result = _numeric_float(value)
+    return 0.0 if result is None else result
+
+
+def _numeric_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) else None
 
 
 def _lag(max_version: float, version: float | None) -> float | None:

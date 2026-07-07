@@ -122,6 +122,38 @@ def test_run_phase8_smoke_work_dir_lock_times_out(tmp_path: Path) -> None:
         pass
 
 
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"config": ""}, "config"),
+        ({"tasks": []}, "at least one task"),
+        ({"tasks": "configs/tasks/gruz_mother.yaml"}, "at least one task"),
+        ({"tasks": [""]}, r"tasks\[0\]"),
+        ({"num_workers": 0}, "num_workers"),
+        ({"num_workers": True}, "num_workers"),
+        ({"num_workers": 1.5}, "num_workers"),
+        ({"seed": None}, "seed"),
+        ({"seed": False}, "seed"),
+        ({"seed": 1.5}, "seed"),
+        ({"work_dir": ""}, "work_dir"),
+        ({"output": ""}, "output"),
+        ({"dashboard_html": ""}, "dashboard_html"),
+        ({"dashboard_json": ""}, "dashboard_json"),
+        ({"profile_json": ""}, "profile_json"),
+        ({"profile_md": ""}, "profile_md"),
+    ],
+)
+def test_run_phase8_smoke_rejects_invalid_gate_args(
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    args = _smoke_args(**overrides)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
+
+
 def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:
     module = _load_script("run_phase8_smoke.py")
     args = argparse.Namespace(
@@ -139,6 +171,23 @@ def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:
         assert "num_workers" in str(exc)
     else:
         raise AssertionError("expected num_workers=0 to fail")
+
+
+def _smoke_args(**overrides: object) -> argparse.Namespace:
+    values: dict[str, object] = {
+        "config": "configs/train/remote_learner.yaml",
+        "tasks": ["configs/tasks/gruz_mother.yaml"],
+        "work_dir": None,
+        "num_workers": 1,
+        "seed": 0,
+        "output": None,
+        "dashboard_html": None,
+        "dashboard_json": None,
+        "profile_json": None,
+        "profile_md": None,
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
 
 
 def _load_script(name: str) -> ModuleType:

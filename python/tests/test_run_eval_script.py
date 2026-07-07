@@ -162,6 +162,51 @@ def test_run_eval_port_provider_cycles_configured_ports() -> None:
     assert [next_port(), next_port(), next_port()] == [6000, 6001, 6000]
 
 
+def test_run_eval_validates_live_eval_worker_port_coverage() -> None:
+    module = _load_script("run_eval.py")
+    args = _eval_args(eval_workers=2, ports=[6000])
+
+    with pytest.raises(ValueError, match="one port per eval worker"):
+        module._validate_eval_args(args)
+
+
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("episodes", 0, "episodes"),
+        ("episodes", True, "episodes"),
+        ("max_steps", -1, "max_steps"),
+        ("eval_workers", 0, "eval_workers"),
+        ("seeds", [], "seeds"),
+        ("seeds", [1, "2"], "seeds"),
+        ("port", 0, "port"),
+        ("port", 65536, "port"),
+        ("ports", [6000, 6000], "unique"),
+        ("ports", [False], "ports"),
+        ("tasks", [], "task"),
+        ("tasks", "configs/tasks/gruz_mother.yaml", "task"),
+        ("tasks", [""], r"tasks\[0\]"),
+        ("host", "", "host"),
+        ("baseline", "", "baseline"),
+        ("checkpoint", "", "checkpoint"),
+        ("checkpoint_dir", "", "checkpoint_dir"),
+        ("output", "", "output"),
+        ("replay_jsonl", "", "replay_jsonl"),
+        ("train_config", "", "train_config"),
+    ],
+)
+def test_run_eval_rejects_invalid_live_gate_args(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    module = _load_script("run_eval.py")
+    args = _eval_args(**{field: value})
+
+    with pytest.raises(ValueError, match=match):
+        module._validate_eval_args(args)
+
+
 def test_run_eval_writes_output_json(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     output = {"metrics": {"task": {"win_rate": 1.0}}}
@@ -184,6 +229,13 @@ def test_run_eval_writes_replay_jsonl(tmp_path: Path) -> None:
     assert [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] == [
         {"step": 1, "task_id": "gruz"}
     ]
+
+
+def test_run_eval_rejects_empty_replay_jsonl_path() -> None:
+    module = _load_script("run_eval.py")
+
+    with pytest.raises(ValueError, match="replay_jsonl"):
+        module._make_replay_sink("")
 
 
 def test_run_eval_builds_reproducibility_metadata() -> None:
@@ -238,6 +290,24 @@ def test_run_eval_rejects_incompatible_model_task_layouts() -> None:
         module._validate_model_task_layouts(tasks)
 
 
+@pytest.mark.parametrize(
+    ("field", "match"),
+    [
+        ("checkpoint", "checkpoint"),
+        ("checkpoint_dir", "checkpoint_dir"),
+    ],
+)
+def test_run_eval_rejects_empty_checkpoint_paths(field: str, match: str) -> None:
+    module = _load_script("run_eval.py")
+    args = argparse.Namespace(checkpoint="checkpoint.pt", checkpoint_dir=None)
+    setattr(args, field, "")
+    if field == "checkpoint_dir":
+        args.checkpoint = None
+
+    with pytest.raises(ValueError, match=match):
+        module._resolve_checkpoint_path(args)
+
+
 def test_run_eval_loads_wrapped_or_raw_baseline_metrics(tmp_path: Path) -> None:
     module = _load_script("run_eval.py")
     raw = tmp_path / "raw.json"
@@ -256,6 +326,40 @@ def test_run_eval_rejects_invalid_baseline_metrics(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="baseline metrics JSON"):
         module._load_baseline_metrics(path)
+
+
+def test_run_eval_loads_baseline_before_starting_evaluator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_eval.py")
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("[]\n", encoding="utf-8")
+    evaluator_started = False
+
+    def fail_if_evaluator_starts(*_args: object, **_kwargs: object) -> object:
+        nonlocal evaluator_started
+        evaluator_started = True
+        raise AssertionError("Evaluator should not start for an invalid baseline")
+
+    monkeypatch.setattr(module, "Evaluator", fail_if_evaluator_starts)
+    root = Path(__file__).parents[2]
+    args = _eval_args(
+        baseline=str(baseline),
+        checkpoint=None,
+        checkpoint_dir=None,
+        host="127.0.0.1",
+        no_normalize=False,
+        output=None,
+        policy="scripted",
+        replay_jsonl=None,
+        train_config=str(root / "configs/train/ppo_mlp.yaml"),
+    )
+
+    with pytest.raises(ValueError, match="baseline metrics JSON"):
+        module.run_from_args(args)
+
+    assert evaluator_started is False
 
 
 def _mlp_for_task(task: TaskConfig) -> MlpActorCritic:
@@ -296,6 +400,20 @@ def _recurrent_for_task(task: TaskConfig) -> EntityAttentionRecurrentAC:
         n_macros=task.action.n_macro_actions,
         max_entities=task.observation.max_entities,
     )
+
+
+def _eval_args(**overrides: object) -> argparse.Namespace:
+    values: dict[str, object] = {
+        "episodes": 5,
+        "eval_workers": 1,
+        "max_steps": 4096,
+        "port": 5555,
+        "ports": None,
+        "seeds": [0, 1, 2],
+        "tasks": ["configs/tasks/gruz_mother.yaml"],
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
 
 
 def _load_script(name: str) -> ModuleType:

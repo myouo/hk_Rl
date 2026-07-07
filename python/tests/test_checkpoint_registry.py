@@ -55,6 +55,10 @@ def test_checkpoint_registry_publish_rejects_invalid_metadata(tmp_path: Path) ->
         registry.publish({"model_state_dict": {}}, policy_version=-1, step=0)
     with pytest.raises(ValueError, match="created_step"):
         registry.publish({"model_state_dict": {}}, policy_version=0, step=-1)
+    with pytest.raises(ValueError, match="policy_version"):
+        registry.publish({"model_state_dict": {}}, policy_version=True, step=0)
+    with pytest.raises(ValueError, match="created_step"):
+        registry.publish({"model_state_dict": {}}, policy_version=0, step=1.0)
     assert not (tmp_path / "index.jsonl").exists()
 
 
@@ -130,6 +134,20 @@ def test_checkpoint_registry_rejects_empty_checkpoint_path(tmp_path: Path) -> No
         CheckpointRegistry(str(tmp_path))
 
 
+def test_checkpoint_registry_rejects_non_string_checkpoint_path(tmp_path: Path) -> None:
+    payload = {
+        "version": 1,
+        "path": None,
+        "sha256": "0" * 64,
+        "policy_version": 1,
+        "created_step": 10,
+    }
+    (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        CheckpointRegistry(str(tmp_path))
+
+
 def test_checkpoint_registry_rejects_invalid_metadata_numbers_and_hash(tmp_path: Path) -> None:
     payload = {
         "version": 0,
@@ -138,6 +156,41 @@ def test_checkpoint_registry_rejects_invalid_metadata_numbers_and_hash(tmp_path:
         "policy_version": -1,
         "created_step": -1,
     }
+    (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid checkpoint index line"):
+        CheckpointRegistry(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("version", True),
+        ("version", "1"),
+        ("version", 1.0),
+        ("policy_version", False),
+        ("policy_version", "1"),
+        ("policy_version", 1.0),
+        ("created_step", False),
+        ("created_step", "10"),
+        ("created_step", 10.0),
+    ],
+)
+def test_checkpoint_registry_rejects_non_integer_index_metadata(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    path = tmp_path / "checkpoint_v000001.pt"
+    torch.save({"model_state_dict": {}}, path)
+    payload = {
+        "version": 1,
+        "path": "checkpoint_v000001.pt",
+        "sha256": _sha256(path),
+        "policy_version": 1,
+        "created_step": 10,
+    }
+    payload[field] = value
     (tmp_path / "index.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="invalid checkpoint index line"):

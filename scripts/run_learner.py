@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
+from collections.abc import Sequence
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_learner_args(args)
     cfg = load_train_config(args.config)
     bind = validate_bind_address(args.bind or cfg.learner.bind, cfg.security.bind_scope)
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
@@ -203,7 +208,7 @@ def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
     if batch_dir is None:
         return 0
 
-    directory = Path(batch_dir)
+    directory = Path(_non_empty_path_like(batch_dir, name="batch_dir"))
     if not directory.exists():
         raise FileNotFoundError(f"batch directory does not exist: {directory}")
     if not directory.is_dir():
@@ -303,6 +308,117 @@ def _resolve_layout(
         "n_macro_actions": n_macros,
         "tier": tier,
     }
+
+
+def _validate_learner_args(args: argparse.Namespace) -> None:
+    _non_empty_path_like(getattr(args, "config", None), name="config")
+    _optional_non_empty_path_like(getattr(args, "task", None), name="task")
+    task_paths = getattr(args, "tasks", None)
+    if task_paths is not None:
+        if not isinstance(task_paths, Sequence) or isinstance(task_paths, (str, bytes)):
+            raise ValueError("tasks must be a sequence of paths")
+        if not task_paths:
+            raise ValueError("tasks must contain at least one path")
+        for index, task_path in enumerate(task_paths):
+            _non_empty_path_like(task_path, name=f"tasks[{index}]")
+    _optional_non_empty_string(getattr(args, "bind", None), name="bind")
+    _optional_non_empty_path_like(getattr(args, "batch_dir", None), name="batch_dir")
+    _optional_non_empty_path_like(
+        getattr(args, "checkpoint_dir", None),
+        name="checkpoint_dir",
+    )
+    intake_count = getattr(args, "intake_count", 0)
+    if intake_count is None:
+        intake_count = 0
+    _non_negative_int(
+        intake_count,
+        name="intake_count",
+    )
+    _positive_number(
+        getattr(args, "intake_timeout_s", 10.0),
+        name="intake_timeout_s",
+    )
+    _optional_non_negative_int(
+        getattr(args, "max_staleness", None), name="max_staleness"
+    )
+    _optional_positive_int(
+        getattr(args, "publish_every_updates", None),
+        name="publish_every_updates",
+    )
+    _optional_positive_int(getattr(args, "max_entities", None), name="max_entities")
+    _optional_non_negative_int(
+        getattr(args, "n_macro_actions", None),
+        name="n_macro_actions",
+    )
+    if bool(getattr(args, "serve_forever", False)) and intake_count:
+        raise ValueError("--serve-forever cannot be combined with --intake-count")
+
+
+def _non_empty_path_like(value: Any, *, name: str) -> str | os.PathLike[str]:
+    if not isinstance(value, str | os.PathLike) or not str(value).strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _optional_non_empty_path_like(
+    value: Any,
+    *,
+    name: str,
+) -> str | os.PathLike[str] | None:
+    if value is None:
+        return None
+    return _non_empty_path_like(value, name=name)
+
+
+def _optional_non_empty_string(value: Any, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _optional_positive_int(value: Any, *, name: str) -> int | None:
+    if value is None:
+        return None
+    return _positive_int(value, name=name)
+
+
+def _optional_non_negative_int(value: Any, *, name: str) -> int | None:
+    if value is None:
+        return None
+    return _non_negative_int(value, name=name)
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _non_negative_int(value: Any, *, name: str) -> int:
+    result = _integer(value, name=name)
+    if result < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return result
+
+
+def _integer(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer")
+    return int(value)
+
+
+def _positive_number(value: Any, *, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name} must be finite")
+    if result <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    return result
 
 
 def _validate_task_layouts(tasks: list[TaskConfig]) -> None:

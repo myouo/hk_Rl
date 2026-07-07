@@ -45,6 +45,7 @@ def test_release_evidence_manifest_hashes_artifacts(tmp_path: Path) -> None:
 
     assert manifest["version"] == "phase8"
     assert manifest["git_sha"] == "abc123"
+    assert manifest["git_dirty"] is False
     assert manifest["manifest_version"] == 1
     assert manifest["artifact_count"] == 2
     assert manifest["total_bytes"] == summary.stat().st_size + checklist.stat().st_size
@@ -180,6 +181,7 @@ def test_release_evidence_verifier_accepts_matching_manifest(tmp_path: Path) -> 
     assert result["ok"] is True
     assert result["artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
     assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["git_dirty"] is False
     assert result["failures"] == []
 
 
@@ -249,6 +251,7 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_metadata_dr
             "actual_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{OTHER_FULL_GIT_SHA}`",
+                "- Git dirty: `false`",
                 "- Manifest version: `1`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
@@ -256,6 +259,7 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_metadata_dr
             "expected_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{FULL_GIT_SHA}`",
+                "- Git dirty: `false`",
                 "- Manifest version: `1`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
@@ -292,12 +296,14 @@ def test_release_evidence_verifier_rejects_release_evidence_markdown_missing_man
             "actual_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{FULL_GIT_SHA}`",
+                "- Git dirty: `false`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
             ],
             "expected_metadata": [
                 "- Version: `phase8`",
                 f"- Git SHA: `{FULL_GIT_SHA}`",
+                "- Git dirty: `false`",
                 "- Manifest version: `1`",
                 f"- Artifact count: `{manifest['artifact_count']}`",
                 f"- Total bytes: `{manifest['total_bytes']}`",
@@ -850,6 +856,8 @@ def test_release_evidence_verifier_rejects_phase8_smoke_security_malformed(
     worker["auth_token_configured"] = "false"
     worker["auth_token_env"] = ""
     worker["auth_token_required"] = False
+    worker["env_host"] = ""
+    worker["env_port"] = 0
     worker["learner"] = "tcp://127.0.0.1:5600"
     worker["learner_upload_enabled"] = True
     _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
@@ -877,6 +885,8 @@ def test_release_evidence_verifier_rejects_phase8_smoke_security_malformed(
                 "worker.auth_token_configured",
                 "worker.learner_upload_enabled",
                 "worker.learner",
+                "worker.env_host",
+                "worker.env_port",
             ],
             "ok": False,
             "path": "runs/phase8-smoke/summary.json",
@@ -885,6 +895,8 @@ def test_release_evidence_verifier_rejects_phase8_smoke_security_malformed(
                 "auth_token_configured": "false",
                 "auth_token_env": "",
                 "auth_token_required": False,
+                "env_host": "",
+                "env_port": 0,
                 "learner": "tcp://127.0.0.1:5600",
                 "learner_upload_enabled": True,
             },
@@ -1257,6 +1269,42 @@ def test_release_evidence_verifier_rejects_phase8_smoke_monitoring_metric_drift(
     ]
 
 
+def test_release_evidence_verifier_rejects_missing_phase8_smoke_monitoring_metrics(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    metrics = coordinator["metrics"]
+    assert isinstance(metrics, dict)
+    del metrics["worker_policy_lag_max"]
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.metrics",
+            "metric_mismatches": {
+                "worker_policy_lag_max": {
+                    "actual": None,
+                    "expected": 1.0,
+                },
+            },
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_metric_totals_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
     tmp_path: Path,
 ) -> None:
@@ -1288,6 +1336,41 @@ def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_rows(
         {
             "field": "coordinator.workers",
             "malformed_worker_ids": ["worker-0", "worker-1"],
+            "ok": False,
+            "path": "runs/phase8-smoke/summary.json",
+            "reason": "phase8_smoke_summary_worker_rows_malformed",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_malformed_phase8_smoke_worker_versions(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    summary = _phase8_smoke_summary()
+    coordinator = summary["coordinator"]
+    assert isinstance(coordinator, dict)
+    workers = coordinator["workers"]
+    assert isinstance(workers, dict)
+    worker_0 = workers["worker-0"]
+    assert isinstance(worker_0, dict)
+    metrics = worker_0["metrics"]
+    assert isinstance(metrics, dict)
+    metrics["policy_version"] = 1.5
+    _write(tmp_path / "runs" / "phase8-smoke" / "summary.json", json.dumps(summary) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "coordinator.workers",
+            "malformed_worker_ids": ["worker-0"],
             "ok": False,
             "path": "runs/phase8-smoke/summary.json",
             "reason": "phase8_smoke_summary_worker_rows_malformed",
@@ -2165,6 +2248,34 @@ def test_release_evidence_verifier_rejects_release_checklist_git_sha_drift(
     ]
 
 
+def test_release_evidence_verifier_rejects_release_checklist_git_dirty_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist(git_dirty=True)
+    _write(tmp_path / "runs" / "release" / "checklist.json", json.dumps(checklist) + "\n")
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_dirty=False,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_dirty": True,
+            "expected_git_dirty": False,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "runs/release/checklist.json",
+            "reason": "release_checklist_git_dirty_mismatch",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_release_checklist_required_count_drift(
     tmp_path: Path,
 ) -> None:
@@ -2238,6 +2349,32 @@ def test_release_evidence_verifier_rejects_release_checklist_markdown_git_sha_dr
             "ok": False,
             "path": "runs/release/checklist.md",
             "reason": "release_checklist_markdown_git_sha_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_rejects_release_checklist_markdown_git_dirty_drift(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    checklist = _release_checklist(git_dirty=True)
+    _write(tmp_path / "runs" / "release" / "checklist.md", render_release_markdown(checklist))
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_dirty=False,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "git_dirty",
+            "ok": False,
+            "path": "runs/release/checklist.md",
+            "reason": "release_checklist_markdown_git_dirty_mismatch",
         }
     ]
 
@@ -2384,14 +2521,8 @@ def test_release_evidence_verifier_rejects_eval_report_markdown_missing_task_row
     _write_required_release_artifacts(tmp_path)
     report = _eval_report(
         tasks=[
-            {
-                "metrics_valid": True,
-                "task_id": "gruz_mother",
-            },
-            {
-                "metrics_valid": True,
-                "task_id": "hornet_protector_attuned",
-            },
+            _eval_report_task("gruz_mother"),
+            _eval_report_task("hornet_protector_attuned"),
         ],
         summary={
             "malformed_task_count": 0.0,
@@ -2400,14 +2531,7 @@ def test_release_evidence_verifier_rejects_eval_report_markdown_missing_task_row
         },
     )
     _write_eval_artifacts(tmp_path, report)
-    markdown_report = _eval_report(
-        tasks=[
-            {
-                "metrics_valid": True,
-                "task_id": "gruz_mother",
-            }
-        ]
-    )
+    markdown_report = _eval_report(tasks=[_eval_report_task("gruz_mother")])
     _write(
         tmp_path / "runs" / "eval-report.md",
         render_eval_report_markdown(markdown_report),
@@ -2544,12 +2668,7 @@ def test_release_evidence_verifier_rejects_eval_report_without_valid_tasks(
                 "task_count": 1.0,
                 "valid_task_count": 0.0,
             },
-            tasks=[
-                {
-                    "metrics_valid": False,
-                    "task_id": "gruz_mother",
-                }
-            ],
+            tasks=[_eval_report_task("gruz_mother", metrics_valid=False)],
         ),
     )
     manifest = build_release_evidence_manifest(
@@ -2617,10 +2736,7 @@ def test_release_evidence_verifier_rejects_malformed_eval_report_tasks(
                 "valid_task_count": 1.0,
             },
             tasks=[
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                },
+                _eval_report_task("gruz_mother"),
                 {
                     "task_id": "missing metrics_valid",
                 },
@@ -2647,6 +2763,36 @@ def test_release_evidence_verifier_rejects_malformed_eval_report_tasks(
     ]
 
 
+def test_release_evidence_verifier_rejects_malformed_eval_report_task_metrics(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    task = _eval_report_task("gruz_mother")
+    task["win_rate"] = "0.9"
+    task["damage_taken"] = -1.0
+    _write_eval_artifacts(
+        tmp_path,
+        _eval_report(tasks=[task]),
+    )
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["failures"] == [
+        {
+            "field": "tasks",
+            "indexes": [0],
+            "ok": False,
+            "path": "runs/eval-report.json",
+            "reason": "eval_report_tasks_malformed",
+        }
+    ]
+
+
 def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -2660,14 +2806,8 @@ def test_release_evidence_verifier_rejects_valid_task_count_mismatch(
                 "valid_task_count": 2.0,
             },
             tasks=[
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                },
-                {
-                    "metrics_valid": False,
-                    "task_id": "hornet_protector_attuned",
-                },
+                _eval_report_task("gruz_mother"),
+                _eval_report_task("hornet_protector_attuned", metrics_valid=False),
             ],
         ),
     )
@@ -2735,14 +2875,8 @@ def test_release_evidence_verifier_rejects_malformed_task_count_mismatch(
                 "valid_task_count": 1.0,
             },
             tasks=[
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                },
-                {
-                    "metrics_valid": False,
-                    "task_id": "hornet_protector_attuned",
-                },
+                _eval_report_task("gruz_mother"),
+                _eval_report_task("hornet_protector_attuned", metrics_valid=False),
             ],
         ),
     )
@@ -2779,14 +2913,8 @@ def test_release_evidence_verifier_rejects_duplicate_eval_report_task_ids(
                 "valid_task_count": 2.0,
             },
             tasks=[
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                },
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                },
+                _eval_report_task("gruz_mother"),
+                _eval_report_task("gruz_mother"),
             ],
         ),
     )
@@ -3041,6 +3169,28 @@ def test_release_evidence_verifier_reports_invalid_git_sha(tmp_path: Path) -> No
     ]
 
 
+def test_release_evidence_verifier_reports_invalid_git_dirty(tmp_path: Path) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    manifest["git_dirty"] = "false"
+
+    result = verify_release_evidence_manifest(root=tmp_path, manifest=manifest)
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_dirty_invalid",
+        }
+    ]
+
+
 def test_release_evidence_verifier_reports_expected_git_sha_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -3066,6 +3216,64 @@ def test_release_evidence_verifier_reports_expected_git_sha_mismatch(
             "ok": False,
             "path": "<manifest>",
             "reason": "manifest_git_sha_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_expected_git_dirty_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_dirty=False,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(
+        root=tmp_path,
+        manifest=manifest,
+        expected_git_dirty=True,
+    )
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_dirty": False,
+            "expected_git_dirty": True,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_dirty_mismatch",
+        }
+    ]
+
+
+def test_release_evidence_verifier_reports_invalid_expected_git_dirty(
+    tmp_path: Path,
+) -> None:
+    _write_required_release_artifacts(tmp_path)
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+
+    result = verify_release_evidence_manifest(
+        root=tmp_path,
+        manifest=manifest,
+        expected_git_dirty="false",  # type: ignore[arg-type]
+    )
+
+    assert result["ok"] is False
+    assert result["checked_artifact_count"] == len(PHASE8_RELEASE_ARTIFACTS)
+    assert result["failures"] == [
+        {
+            "actual_git_dirty": "false",
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "expected_git_dirty_invalid",
         }
     ]
 
@@ -3263,6 +3471,43 @@ def test_render_release_evidence_script_writes_json_and_markdown(tmp_path: Path)
     assert "HKRL Release Evidence" in markdown_path.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"version": ""}, "version"),
+        ({"git_dirty": "maybe"}, "git_dirty"),
+        ({"git_dirty": True}, "git_dirty"),
+        ({"root": ""}, "root"),
+        ({"artifacts": "runs/phase8-smoke/summary.json"}, "artifacts"),
+        ({"artifacts": [""]}, r"artifacts\[0\]"),
+        ({"output_json": ""}, "output_json"),
+        ({"output_md": ""}, "output_md"),
+    ],
+)
+def test_render_release_evidence_script_rejects_invalid_args(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("render_release_evidence.py")
+    artifact = tmp_path / "runs" / "phase8-smoke" / "summary.json"
+    _write(artifact, '{"ok": true}\n')
+    args = argparse.Namespace(
+        version="phase8",
+        git_dirty="false",
+        git_sha="deadbeef",
+        root=str(tmp_path),
+        artifacts=["runs/phase8-smoke/summary.json"],
+        output_json=str(tmp_path / "runs" / "release" / "evidence.json"),
+        output_md=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
+
+
 def test_verify_release_evidence_script_writes_failure_report(tmp_path: Path) -> None:
     module = _load_script("verify_release_evidence.py")
     _write_required_release_artifacts(tmp_path)
@@ -3332,6 +3577,83 @@ def test_verify_release_evidence_script_checks_expected_git_sha(tmp_path: Path) 
     ]
 
 
+def test_verify_release_evidence_script_checks_expected_git_dirty(tmp_path: Path) -> None:
+    module = _load_script("verify_release_evidence.py")
+    _write_required_release_artifacts(tmp_path)
+    manifest_path = tmp_path / "runs" / "release" / "evidence.json"
+    report_path = tmp_path / "runs" / "release" / "verification.json"
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_dirty=False,
+        git_sha=FULL_GIT_SHA,
+    )
+    _write(manifest_path, release_evidence_to_json(manifest))
+
+    exit_code = module.main(
+        [
+            "--manifest",
+            str(manifest_path),
+            "--root",
+            str(tmp_path),
+            "--git-dirty",
+            "true",
+            "--output-json",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is False
+    assert report["failures"] == [
+        {
+            "actual_git_dirty": False,
+            "expected_git_dirty": True,
+            "field": "git_dirty",
+            "ok": False,
+            "path": "<manifest>",
+            "reason": "manifest_git_dirty_mismatch",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"manifest": ""}, "manifest"),
+        ({"root": ""}, "root"),
+        ({"git_dirty": "maybe"}, "git_dirty"),
+        ({"git_dirty": True}, "git_dirty"),
+        ({"output_json": ""}, "output_json"),
+    ],
+)
+def test_verify_release_evidence_script_rejects_invalid_args(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    module = _load_script("verify_release_evidence.py")
+    _write_required_release_artifacts(tmp_path)
+    manifest_path = tmp_path / "runs" / "release" / "evidence.json"
+    manifest = build_release_evidence_manifest(
+        root=tmp_path,
+        git_sha=FULL_GIT_SHA,
+    )
+    _write(manifest_path, release_evidence_to_json(manifest))
+    args = argparse.Namespace(
+        manifest=str(manifest_path),
+        root=str(tmp_path),
+        git_dirty=None,
+        git_sha=None,
+        output_json=None,
+    )
+    for key, value in overrides.items():
+        setattr(args, key, value)
+
+    with pytest.raises(ValueError, match=match):
+        module.run_from_args(args)
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -3357,8 +3679,16 @@ def _write_required_release_artifacts(root: Path) -> None:
             _write(root / artifact, f"{artifact}\n")
 
 
-def _release_checklist(*, git_sha: str = FULL_GIT_SHA) -> dict[str, object]:
-    return build_release_checklist(version="phase8", git_sha=git_sha)
+def _release_checklist(
+    *,
+    git_dirty: bool = False,
+    git_sha: str = FULL_GIT_SHA,
+) -> dict[str, object]:
+    return build_release_checklist(
+        version="phase8",
+        git_dirty=git_dirty,
+        git_sha=git_sha,
+    )
 
 
 def _phase8_smoke_summary() -> dict[str, object]:
@@ -3475,6 +3805,8 @@ def _phase8_smoke_summary() -> dict[str, object]:
             "batch_dir": "runs/phase8-smoke/batches",
             "dry_run": True,
             "enable_macro_actions": True,
+            "env_host": "127.0.0.1",
+            "env_port": 5555,
             "heartbeat_jsonl": "runs/phase8-smoke/worker-heartbeats.jsonl",
             "latest_checkpoint": 2,
             "learner": None,
@@ -3618,17 +3950,25 @@ def _eval_report(
             if summary is None
             else summary
         ),
-        "tasks": (
-            [
-                {
-                    "metrics_valid": True,
-                    "task_id": "gruz_mother",
-                }
-            ]
-            if tasks is None
-            else tasks
-        ),
+        "tasks": ([_eval_report_task("gruz_mother")] if tasks is None else tasks),
     }
+
+
+def _eval_report_task(task_id: str, *, metrics_valid: bool = True) -> dict[str, object]:
+    task: dict[str, object] = {
+        "damage_taken": 1.0,
+        "death_rate": 0.0,
+        "invalid_action_ratio": 0.0,
+        "metrics_valid": metrics_valid,
+        "regression_delta": None,
+        "regression_valid": True,
+        "task_id": task_id,
+        "time_to_kill": 10.0,
+        "win_rate": 0.9,
+    }
+    if not metrics_valid:
+        task["metric_error"] = "missing_or_invalid_win_rate"
+    return task
 
 
 def _sha256(path: Path) -> str:
