@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import torch
 from hkrl import protocol, spaces
-from hkrl.eval.evaluator import Evaluator
+from hkrl.eval.evaluator import Evaluator, _metrics_from_info
 from hkrl.eval.scripted_policies import ScriptedAggroPolicy
 from hkrl.models.base import ActorCritic, RnnState
 from hkrl.utils.config import TaskConfig
@@ -199,6 +199,67 @@ def test_evaluator_emits_step_replay_records() -> None:
     assert records[0]["damage_dealt"] == 1.0
     assert records[1]["won"] is True
     assert records[1]["terminated"] is True
+
+
+@pytest.mark.parametrize(
+    ("info", "match"),
+    [
+        (
+            {
+                "reward_events": [
+                    protocol.RewardEvent(
+                        protocol.RewardEventKind.DAMAGE_DEALT,
+                        amount=float("nan"),
+                    )
+                ]
+            },
+            "reward event amount must be finite",
+        ),
+        (
+            {
+                "reward_events": [
+                    protocol.RewardEvent(
+                        protocol.RewardEventKind.DAMAGE_TAKEN,
+                        amount=-1.0,
+                    )
+                ]
+            },
+            "DAMAGE_TAKEN reward event amount must be non-negative",
+        ),
+        (
+            {
+                "reward_events": [
+                    object(),
+                ]
+            },
+            "reward event kind is invalid",
+        ),
+        ({"damage_taken": float("inf")}, "damage_taken must be finite"),
+        ({"heal_count": 1.5}, "heal_count must be an integer"),
+        ({"invalid_actions": -1}, "invalid_actions must be non-negative"),
+    ],
+)
+def test_evaluator_rejects_malformed_metric_inputs(
+    info: dict[str, Any],
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _metrics_from_info(info)
+
+
+def test_evaluator_player_death_event_defaults_to_positive_reason() -> None:
+    metrics = _metrics_from_info(
+        {
+            "reward_events": [
+                protocol.RewardEvent(
+                    protocol.RewardEventKind.PLAYER_DEATH,
+                    aux_int=-7,
+                )
+            ]
+        }
+    )
+
+    assert metrics.death_reason == 1
 
 
 def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:

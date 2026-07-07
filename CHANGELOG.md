@@ -608,6 +608,10 @@ the project version tracks the **schema_version** + roadmap phase.
   `run_worker`, `run_learner`, `run_eval`).
 
 ### Fixed
+- Evaluator reward-event metric extraction now rejects malformed evidence
+  (unknown event kinds, non-finite amounts, negative damage/heal/soul amounts,
+  and malformed direct metric fields) before aggregate win-rate/damage reports
+  can be produced.
 - Mod control commands (`PING`, `PAUSE`, `RESUME`, `SET_TIMESCALE`) no longer
   advance the episode lifecycle; only `RESET`, `SET_TASK`, and reset-poll/normal
   `STEP` requests move the clean reset state machine.

@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from numbers import Real
+from numbers import Integral, Real
 from typing import Any
 
 import numpy as np
@@ -332,19 +332,24 @@ class _EventMetrics:
 
 def _metrics_from_info(info: dict[str, Any]) -> _EventMetrics:
     won = bool(info.get("won", False))
-    damage_taken = float(info.get("damage_taken", 0.0))
-    damage_dealt = float(info.get("damage_dealt", 0.0))
-    heal_count = int(info.get("heal_count", 0))
-    heal_amount = float(info.get("heal_amount", 0.0))
-    invalid_actions = int(info.get("invalid_actions", 0))
-    death_reason = int(info.get("death_reason", 0))
+    damage_taken = _non_negative_float(info.get("damage_taken", 0.0), field="damage_taken")
+    damage_dealt = _non_negative_float(info.get("damage_dealt", 0.0), field="damage_dealt")
+    heal_count = _non_negative_int(info.get("heal_count", 0), field="heal_count")
+    heal_amount = _non_negative_float(info.get("heal_amount", 0.0), field="heal_amount")
+    invalid_actions = _non_negative_int(
+        info.get("invalid_actions", 0),
+        field="invalid_actions",
+    )
+    death_reason = _non_negative_int(info.get("death_reason", 0), field="death_reason")
 
     for event in info.get("reward_events", []):
         kind = _event_kind(event)
+        if kind is None:
+            raise ValueError("reward event kind is invalid")
         amount_value = getattr(event, "amount", getattr(event, "Amount", 0.0))
         if callable(amount_value):
             amount_value = amount_value()
-        amount = float(amount_value)
+        amount = _event_amount(kind, amount_value)
         if kind == protocol.RewardEventKind.BOSS_KILLED:
             won = True
         elif kind == protocol.RewardEventKind.DAMAGE_TAKEN:
@@ -355,7 +360,7 @@ def _metrics_from_info(info: dict[str, Any]) -> _EventMetrics:
             heal_count += 1
             heal_amount += amount
         elif kind == protocol.RewardEventKind.PLAYER_DEATH:
-            death_reason = _event_aux_int(event) or 1
+            death_reason = max(1, _event_aux_int(event))
         elif kind == protocol.RewardEventKind.INVALID_ACTION:
             invalid_actions += 1
 
@@ -390,6 +395,48 @@ def _event_aux_int(event: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _event_amount(kind: protocol.RewardEventKind, value: Any) -> float:
+    amount = _finite_float(value, field="reward event amount")
+    if kind in _NON_NEGATIVE_AMOUNT_EVENT_KINDS and amount < 0.0:
+        raise ValueError(f"{kind.name} reward event amount must be non-negative")
+    return amount
+
+
+def _non_negative_float(value: Any, *, field: str) -> float:
+    result = _finite_float(value, field=field)
+    if result < 0.0:
+        raise ValueError(f"{field} must be non-negative")
+    return result
+
+
+def _non_negative_int(value: Any, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (Integral, np.integer)):
+        raise ValueError(f"{field} must be an integer")
+    result = int(value)
+    if result < 0:
+        raise ValueError(f"{field} must be non-negative")
+    return result
+
+
+def _finite_float(value: Any, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (Real, np.integer, np.floating)):
+        raise ValueError(f"{field} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{field} must be finite")
+    return result
+
+
+_NON_NEGATIVE_AMOUNT_EVENT_KINDS: frozenset[protocol.RewardEventKind] = frozenset(
+    {
+        protocol.RewardEventKind.DAMAGE_DEALT,
+        protocol.RewardEventKind.DAMAGE_TAKEN,
+        protocol.RewardEventKind.HEAL,
+        protocol.RewardEventKind.SOUL_GAINED,
+    }
+)
 
 
 def _aggregate(episodes: Sequence[_EpisodeResult]) -> dict[str, float]:

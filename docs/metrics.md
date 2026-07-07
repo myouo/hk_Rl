@@ -50,6 +50,10 @@ still use the aggregated shaping-free metrics above. The evaluator CLI rejects
 empty task/config/checkpoint/baseline/output/replay paths before connecting to
 live env instances, and preloads optional baseline metrics before starting a
 fixed-seed eval run.
+Evaluator reward-event extraction rejects malformed evidence before aggregation:
+unknown event kinds, non-finite amounts, negative amount-bearing events, and
+malformed direct metric fields fail the run instead of writing NaN or impossible
+damage/heal/invalid-action metrics into release artifacts.
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` evaluates tasks through
 a task-level worker pool so multi-boss regression checks can use multiple live
 env instances when available. The port pool must cover the active concurrent
