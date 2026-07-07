@@ -32,7 +32,7 @@ def test_run_coordinator_builds_assignment_summary() -> None:
         "worker-0": "gruz_mother",
         "worker-1": "gruz_mother",
     }
-    assert summary["bind"] == "0.0.0.0:5610"
+    assert summary["bind"] == "127.0.0.1:5610"
     assert summary["dry_run"] is True
     assert summary["eval_metrics"] is None
     assert summary["eval_winrates"] == {}
@@ -349,6 +349,26 @@ def test_run_coordinator_rejects_wildcard_bind_for_localhost_scope(tmp_path: Pat
         assert "loopback" in str(exc)
     else:
         raise AssertionError("expected localhost scope wildcard bind to fail")
+
+
+def test_run_coordinator_rejects_wildcard_bind_for_lan_scope(tmp_path: Path) -> None:
+    module = _load_script("run_coordinator.py")
+    root = Path(__file__).parents[2]
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        tasks=[str(root / "configs/tasks/gruz_mother.yaml")],
+        bind="0.0.0.0:5610",
+        num_workers=1,
+        worker_ids=None,
+        heartbeat_timeout_s=None,
+        heartbeat_jsonl=None,
+        eval_metrics=None,
+        seed=None,
+        dry_run=True,
+    )
+
+    with pytest.raises(ValueError, match="wildcard"):
+        module.run_from_args(args)
 
 
 def _load_script(name: str) -> ModuleType:

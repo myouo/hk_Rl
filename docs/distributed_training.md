@@ -161,8 +161,11 @@ listener; local training uses `scripts/train.py --host/--port`, workers use
 `scripts/run_eval.py --host/--port` or `--ports` to target the matching live
 game instance.
 Learner/coordinator service binds are validated against `security.bind_scope`:
-`localhost` requires a loopback bind, while `lan` rejects public IP literals and
-allows private, loopback, or wildcard binds for firewall-scoped LAN deployments.
+`localhost` requires a loopback bind, while `lan` accepts loopback, private LAN
+addresses, or hostnames but rejects wildcard binds such as `0.0.0.0` / `::` and
+public IP literals. The checked-in `remote_learner.yaml` defaults to localhost;
+cross-machine runs should pass an explicit private LAN bind, for example
+`--bind 192.168.1.20:5600`, and keep token auth enabled.
 
 ## 6. Transport for batches/weights
 

@@ -576,7 +576,7 @@ def test_run_learner_requires_token_for_non_loopback_intake(tmp_path: Path) -> N
     module = _load_script("run_learner.py")
     args = argparse.Namespace(
         config=str(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml"),
-        bind="0.0.0.0:0",
+        bind="192.168.1.20:0",
         batch_dir=None,
         intake_count=1,
         intake_timeout_s=1.0,
@@ -593,6 +593,31 @@ def test_run_learner_requires_token_for_non_loopback_intake(tmp_path: Path) -> N
     )
 
     with pytest.raises(ValueError, match="require_token"):
+        module.run_from_args(args)
+
+
+def test_run_learner_rejects_wildcard_bind_for_lan_scope(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    root = Path(__file__).parents[2]
+    args = argparse.Namespace(
+        config=str(root / "configs/train/remote_learner.yaml"),
+        bind="0.0.0.0:5600",
+        batch_dir=None,
+        intake_count=0,
+        intake_timeout_s=1.0,
+        serve_forever=False,
+        checkpoint_dir=str(tmp_path),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    with pytest.raises(ValueError, match="wildcard"):
         module.run_from_args(args)
 
 

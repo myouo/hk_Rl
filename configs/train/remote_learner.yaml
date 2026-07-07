@@ -8,17 +8,17 @@ algorithm: appo
 
 # Learner / distributed settings consumed by hkrl.learner / hkrl.coordinator.
 learner:
-  bind: 0.0.0.0:5600
+  bind: 127.0.0.1:5600
   max_staleness: 4              # drop rollouts older than this many versions
   checkpoint_dir: checkpoints/
   publish_every_updates: 10
 
 coordinator:
-  bind: 0.0.0.0:5610
+  bind: 127.0.0.1:5610
   num_workers: 4
 
 # Security (PRD §9.10): LAN/localhost only; token auth; hash-verified checkpoints.
 security:
-  bind_scope: lan              # lan | localhost
+  bind_scope: lan              # lan | localhost; LAN runs must use an explicit private IP bind
   require_token: true
   auth_token_env: HKRL_AUTH_TOKEN

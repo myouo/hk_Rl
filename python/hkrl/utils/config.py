@@ -88,7 +88,7 @@ class TransportConfig(StrictConfigModel):
 class LearnerRuntimeConfig(StrictConfigModel):
     """Remote learner runtime settings (docs/distributed_training.md §5)."""
 
-    bind: str = Field(default="0.0.0.0:5600", min_length=1)
+    bind: str = Field(default="127.0.0.1:5600", min_length=1)
     max_staleness: int = Field(default=4, ge=0)
     checkpoint_dir: str = Field(default="checkpoints", min_length=1)
     publish_every_updates: int = Field(default=1, ge=1)
@@ -97,7 +97,7 @@ class LearnerRuntimeConfig(StrictConfigModel):
 class CoordinatorRuntimeConfig(StrictConfigModel):
     """Coordinator runtime settings for worker fleets."""
 
-    bind: str = Field(default="0.0.0.0:5610", min_length=1)
+    bind: str = Field(default="127.0.0.1:5610", min_length=1)
     num_workers: int = Field(default=1, ge=1)
     heartbeat_timeout_s: float = Field(default=30.0, gt=0)
 
@@ -228,6 +228,11 @@ def validate_bind_address(bind: str, bind_scope: Literal["lan", "localhost"]) ->
         return bind
 
     if bind_scope == "lan":
+        if _is_unspecified_host(host):
+            raise ValueError(
+                f"bind_scope='lan' requires an explicit loopback or private LAN "
+                f"bind address, got wildcard bind {bind!r}"
+            )
         if _is_public_ip_literal(host):
             raise ValueError(f"bind_scope='lan' must not bind to public IP {host!r}")
         return bind
@@ -277,3 +282,10 @@ def _is_public_ip_literal(host: str) -> bool:
     if address.is_unspecified:
         return False
     return address.is_global
+
+
+def _is_unspecified_host(host: str) -> bool:
+    try:
+        return ip_address(host).is_unspecified
+    except ValueError:
+        return False

@@ -72,6 +72,9 @@ the project version tracks the **schema_version** + roadmap phase.
   (`enable_macro_actions`, `n_macro_actions`), and HKRLEnv/HKRLEnvMod now use
   them so mod action masks match task-driven macro settings instead of assuming
   the default 11-macro layout.
+- Distributed learner/coordinator defaults now bind to localhost, and service
+  bind validation rejects wildcard addresses for LAN scope; cross-machine runs
+  must opt in with an explicit private LAN address plus token auth.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
 - Task action configs now expose `n_macro_actions` so Python action spaces,

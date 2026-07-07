@@ -130,4 +130,6 @@ Bind to `localhost` or LAN only; never expose a public port. Optional token auth
 uses an initial length-prefixed `HKRL_AUTH\0<token>` frame before any
 FlatBuffers `StepRequest`; the mod consumes that frame on the network thread and
 never forwards it to the StepController. Workers execute only whitelisted
-commands. Checkpoints are hash-verified before load.
+commands. Learner/coordinator binds reject wildcard addresses; cross-machine
+runs must use an explicit private LAN address plus token auth. Checkpoints are
+hash-verified before load.

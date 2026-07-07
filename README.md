@@ -200,6 +200,9 @@ python scripts/run_learner.py \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
   --checkpoint-dir checkpoints
 
+# 跨机器部署时不要绑定 0.0.0.0；显式绑定 GPU 机器的私有 LAN 地址，并保持 token auth。
+# python scripts/run_learner.py ... --bind 192.168.1.20:5600
+
 # learner 启动时会立即发布或恢复 registry latest checkpoint；
 # 先启动/恢复 learner，再把该 checkpoint registry 暴露给 worker。
 

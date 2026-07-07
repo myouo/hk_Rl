@@ -189,6 +189,8 @@ Before a LAN release, verify:
 - `security.bind_scope` is `localhost` or LAN-scoped as intended.
 - `security.require_token` is true for non-loopback services.
 - `HKRL_AUTH_TOKEN` is configured where required.
+- Learner/coordinator services bind to loopback or an explicit private LAN
+  address, not a wildcard address such as `0.0.0.0` or `::`.
 - Checkpoint registries remain local, LAN, or authenticated HTTP(S), and workers
   keep sha256 verification enabled.
 - No service is intentionally exposed to a public network.

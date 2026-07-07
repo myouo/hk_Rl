@@ -107,11 +107,11 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     config = load_train_config(Path("../configs/train/remote_learner.yaml"))
 
     assert config.algorithm == "appo"
-    assert config.learner.bind == "0.0.0.0:5600"
+    assert config.learner.bind == "127.0.0.1:5600"
     assert config.learner.max_staleness == 4
     assert config.learner.checkpoint_dir == "checkpoints/"
     assert config.learner.publish_every_updates == 10
-    assert config.coordinator.bind == "0.0.0.0:5610"
+    assert config.coordinator.bind == "127.0.0.1:5610"
     assert config.coordinator.num_workers == 4
     assert config.security.bind_scope == "lan"
     assert config.security.require_token is True
@@ -248,13 +248,17 @@ def test_resolve_auth_token_returns_none_when_disabled() -> None:
 def test_validate_bind_address_accepts_scoped_binds() -> None:
     assert validate_bind_address("127.0.0.1:5600", "localhost") == "127.0.0.1:5600"
     assert validate_bind_address("[::1]:5600", "localhost") == "[::1]:5600"
-    assert validate_bind_address("0.0.0.0:5600", "lan") == "0.0.0.0:5600"
     assert validate_bind_address("192.168.1.20:5600", "lan") == "192.168.1.20:5600"
+    assert validate_bind_address("10.0.0.4:5600", "lan") == "10.0.0.4:5600"
 
 
 def test_validate_bind_address_rejects_out_of_scope_binds() -> None:
     with pytest.raises(ValueError, match="loopback"):
         validate_bind_address("0.0.0.0:5600", "localhost")
+    with pytest.raises(ValueError, match="wildcard"):
+        validate_bind_address("0.0.0.0:5600", "lan")
+    with pytest.raises(ValueError, match="wildcard"):
+        validate_bind_address("[::]:5600", "lan")
     with pytest.raises(ValueError, match="public IP"):
         validate_bind_address("8.8.8.8:5600", "lan")
     with pytest.raises(ValueError, match="host:port"):
@@ -266,6 +270,6 @@ def test_validate_service_auth_requires_token_for_non_loopback_bind() -> None:
     remote = load_train_config(Path("../configs/train/remote_learner.yaml"))
 
     validate_service_auth("127.0.0.1:5600", local)
-    validate_service_auth("0.0.0.0:5600", remote)
+    validate_service_auth("192.168.1.20:5600", remote)
     with pytest.raises(ValueError, match="require_token"):
-        validate_service_auth("0.0.0.0:5600", local)
+        validate_service_auth("192.168.1.20:5600", local)

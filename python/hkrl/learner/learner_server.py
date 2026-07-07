@@ -27,7 +27,7 @@ class LearnerServer:
         model: ActorCritic,
         config: TrainConfig,
         registry: CheckpointRegistry,
-        bind: str = "0.0.0.0:5600",
+        bind: str = "127.0.0.1:5600",
         max_staleness: int = 4,
         publish_every_updates: int = 1,
     ) -> None:

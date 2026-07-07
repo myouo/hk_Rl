@@ -33,7 +33,7 @@ class Coordinator:
     def __init__(
         self,
         task_sampler: TaskSampler,
-        bind: str = "0.0.0.0:5610",
+        bind: str = "127.0.0.1:5610",
         heartbeat_timeout_s: float = 30.0,
         clock: Callable[[], float] | None = None,
     ) -> None:
