@@ -263,6 +263,8 @@ def _serve_network_forever(
         while True:
             try:
                 result = intake.serve_once()
+            except TimeoutError:
+                continue
             except KeyboardInterrupt:
                 break
             submitted += 1

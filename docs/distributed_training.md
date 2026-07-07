@@ -79,6 +79,9 @@ instead of being counted as successful uploads.
 For long-running training, `scripts/run_learner.py --serve-forever` keeps the
 same authenticated intake socket open and calls the learner update/publish path
 after each accepted batch until interrupted.
+Idle listener timeouts are treated as "no worker connected yet" and the learner
+continues waiting, so workers can start late or reconnect without killing the
+remote training process.
 `scripts/run_learner.py --tasks ...` can infer the learner model's
 `max_entities`, observation tier, macro enablement, and macro count from task
 YAML, and rejects task groups whose model/action layout would not fit a single

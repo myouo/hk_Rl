@@ -316,6 +316,48 @@ def test_run_learner_serve_forever_updates_after_accepted_batch(
     assert fake_server.serve_calls == 1
 
 
+def test_run_learner_serve_forever_waits_through_idle_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    events: list[BaseException | _FakeResult] = [
+        TimeoutError("idle"),
+        _FakeResult(accepted=True),
+        KeyboardInterrupt(),
+    ]
+    fake_server = _FakeServer()
+
+    class FakeIntake:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeIntake:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def serve_once(self) -> _FakeResult:
+            event = events.pop(0)
+            if isinstance(event, BaseException):
+                raise event
+            return event
+
+    monkeypatch.setattr(module, "BatchIntakeServer", FakeIntake)
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+
+    submitted, accepted = module._serve_network_forever(
+        fake_server,
+        "127.0.0.1:0",
+        cfg,
+        timeout_s=1.0,
+    )
+
+    assert submitted == 1
+    assert accepted == 1
+    assert fake_server.serve_calls == 1
+
+
 def test_run_learner_uses_nested_config_defaults(tmp_path: Path) -> None:
     module = _load_script("run_learner.py")
     config = tmp_path / "remote.yaml"

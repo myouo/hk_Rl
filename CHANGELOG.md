@@ -122,6 +122,8 @@ the project version tracks the **schema_version** + roadmap phase.
   win rates to TaskSampler weights/mastered-task tracking.
 - `run_learner.py` now supports `--serve-forever` for long-running authenticated
   TCP rollout intake with update/publish after each accepted batch.
+- `run_learner.py --serve-forever` now waits through idle intake socket timeouts
+  instead of exiting when no worker connects during the listener timeout window.
 - Test coverage now checks Python action-mask/button layout against the C# mod
   `ActionMasker`/`InputInjector` constants to catch cross-language drift.
 - Recurrent rollout sequence chunking now splits at both terminated and truncated
