@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import math
+import socket
+import threading
+import time
 from pathlib import Path
 from types import ModuleType
 
 import numpy as np
 import pytest
+from hkrl.learner.batch_intake import BatchIntakeClient
 from hkrl.spaces import action_mask_layout, make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
@@ -103,25 +107,7 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
 def test_run_learner_ingests_recurrent_batch_dir_and_updates(tmp_path: Path) -> None:
     module = _load_script("run_learner.py")
     config = tmp_path / "appo_gru.yaml"
-    config.write_text(
-        "\n".join(
-            [
-                "algorithm: appo",
-                "epochs: 1",
-                "minibatch_size: 2",
-                "learning_rate: 0.001",
-                "entropy_coef: 0.0",
-                "model:",
-                "  name: entity_attention_gru",
-                "  entity_hidden: 8",
-                "  attention_layers: 1",
-                "  attention_heads: 2",
-                "  rnn_type: gru",
-                "  rnn_hidden: 16",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    _write_recurrent_appo_config(config)
     batch_dir = tmp_path / "batches"
     save_rollout_batch(
         batch_dir / "worker_00000001_v000000.npz",
@@ -155,6 +141,60 @@ def test_run_learner_ingests_recurrent_batch_dir_and_updates(tmp_path: Path) -> 
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
     assert summary["submitted_batches"] == 1
+
+
+def test_run_learner_network_intake_accepts_recurrent_batch_and_updates(
+    tmp_path: Path,
+) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "appo_gru.yaml"
+    _write_recurrent_appo_config(config)
+    port = _unused_localhost_port()
+    args = argparse.Namespace(
+        config=str(config),
+        bind=f"127.0.0.1:{port}",
+        batch_dir=None,
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        intake_count=1,
+        intake_timeout_s=3.0,
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=True,
+        n_macro_actions=0,
+        serve_forever=False,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+    summaries: list[dict[str, object]] = []
+    errors: list[BaseException] = []
+
+    thread = threading.Thread(
+        target=_run_learner_thread,
+        args=(module, args, summaries, errors),
+    )
+    thread.start()
+
+    accepted = _submit_batch_when_ready(
+        f"127.0.0.1:{port}",
+        _recurrent_learner_batch(rnn_hidden=16),
+    )
+    thread.join(timeout=6.0)
+
+    assert not thread.is_alive()
+    assert errors == []
+    assert accepted is True
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary["accepted_batches"] == 1
+    assert summary["latest_checkpoint"] == 1
+    assert summary["network_accepted_batches"] == 1
+    assert summary["network_submitted_batches"] == 1
+    assert summary["policy_version"] == 1
+    assert summary["queued_batches"] == 0
+    assert summary["rejected_batches"] == 0
+    assert summary["submitted_batches"] == 0
 
 
 def test_run_learner_rejects_serve_forever_with_intake_count(tmp_path: Path) -> None:
@@ -478,6 +518,58 @@ def _load_script(name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _write_recurrent_appo_config(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "epochs: 1",
+                "minibatch_size: 2",
+                "learning_rate: 0.001",
+                "entropy_coef: 0.0",
+                "model:",
+                "  name: entity_attention_gru",
+                "  entity_hidden: 8",
+                "  attention_layers: 1",
+                "  attention_heads: 2",
+                "  rnn_type: gru",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _run_learner_thread(
+    module: ModuleType,
+    args: argparse.Namespace,
+    summaries: list[dict[str, object]],
+    errors: list[BaseException],
+) -> None:
+    try:
+        summaries.append(module.run_from_args(args))
+    except BaseException as exc:
+        errors.append(exc)
+
+
+def _submit_batch_when_ready(endpoint: str, batch: RolloutBatch) -> bool:
+    deadline = time.monotonic() + 3.0
+    last_error: BaseException | None = None
+    while time.monotonic() < deadline:
+        try:
+            return BatchIntakeClient(endpoint, timeout_s=0.5).submit(batch)
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.05)
+    raise AssertionError(f"learner intake did not accept connections at {endpoint}") from last_error
+
+
+def _unused_localhost_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 class _FakeResult:
