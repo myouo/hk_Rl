@@ -578,6 +578,35 @@ def test_game_worker_switches_task_from_provider_through_wrappers() -> None:
     assert int(batch.task_ids[0, 0]) == 2
 
 
+def test_game_worker_switches_task_when_scene_differs_with_same_wire_id() -> None:
+    inner = SwitchableEnv(TaskConfig(task_id="a", wire_id=1, scene="A"))
+    env = EnvWrapper(inner)
+    target_task = TaskConfig(task_id="b", wire_id=1, scene="B")
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+        task_provider=lambda: target_task,
+    )
+
+    batch = worker.collect_rollout()
+
+    assert inner.set_task_wire_ids == [1]
+    assert inner.task.task_id == "b"
+    assert inner.task.scene == "B"
+    assert int(batch.task_ids[0, 0]) == 1
+
+
 def test_game_worker_limits_repeated_runtime_failures() -> None:
     env = AlwaysFailEnv()
     model = MlpActorCritic(

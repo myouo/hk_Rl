@@ -75,6 +75,10 @@ the project version tracks the **schema_version** + roadmap phase.
 - Schema version 4 adds `task_scene` to `StepRequest`; HKRLEnv now sends the
   configured task scene on reset/task switch, and HKRLEnvMod loads that scene
   before falling back to the legacy numeric task map.
+- Multi-task learner/worker/evaluator/coordinator entry points now reject
+  duplicate task `task_id` or `wire_id` values before live env connections or
+  rollout writes, keeping protocol task ids, evaluator metrics, and curriculum
+  assignments unambiguous.
 - Distributed learner/coordinator defaults now bind to localhost, and service
   bind validation rejects wildcard addresses for LAN scope; cross-machine runs
   must opt in with an explicit private LAN address plus token auth.

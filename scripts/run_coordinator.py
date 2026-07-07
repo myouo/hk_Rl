@@ -30,6 +30,7 @@ from hkrl.utils.config import (
     load_task_config,
     load_train_config,
     validate_bind_address,
+    validate_task_collection,
 )
 
 
@@ -125,6 +126,7 @@ def _load_tasks(paths: list[str]) -> list[TaskConfig]:
     ]
     if not tasks:
         raise ValueError("at least one task is required")
+    validate_task_collection(tasks, context="coordinator tasks")
     return tasks
 
 

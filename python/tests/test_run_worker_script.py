@@ -102,6 +102,20 @@ def test_run_worker_rejects_incompatible_task_layouts() -> None:
         raise AssertionError("expected incompatible macro layouts to fail")
 
 
+def test_run_worker_rejects_duplicate_task_wire_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_worker.py")
+    tasks = {
+        "a.yaml": module.TaskConfig(task_id="a", wire_id=1, scene="A"),
+        "b.yaml": module.TaskConfig(task_id="b", wire_id=1, scene="B"),
+    }
+    monkeypatch.setattr(module, "load_task_config", lambda path: tasks[str(path)])
+
+    with pytest.raises(ValueError, match="wire_id"):
+        module._load_tasks(argparse.Namespace(task="a.yaml", tasks=["a.yaml", "b.yaml"]))
+
+
 @pytest.mark.parametrize(
     "field,value,match",
     [

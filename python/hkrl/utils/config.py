@@ -8,7 +8,7 @@ a train run references a task config and a model config.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, Literal
@@ -189,6 +189,51 @@ def load_train_config(path: str | Path) -> TrainConfig:
 def load_task_config(path: str | Path) -> TaskConfig:
     """Load and validate a task config."""
     return TaskConfig.model_validate(load_yaml(path))
+
+
+def validate_task_collection(
+    tasks: Sequence[TaskConfig],
+    *,
+    context: str = "tasks",
+) -> None:
+    """Validate a multi-task set before worker/evaluator/coordinator startup.
+
+    ``task_id`` names are used by dashboards/eval/curriculum; ``wire_id`` values
+    are stored in rollout batches and sent over the mod protocol. Duplicates make
+    multi-boss training ambiguous, so fail before opening live env connections.
+    """
+    duplicate_task_ids = _duplicate_task_ids(tasks)
+    duplicate_wire_ids = _duplicate_wire_ids(tasks)
+    if not duplicate_task_ids and not duplicate_wire_ids:
+        return
+
+    details: list[str] = []
+    if duplicate_task_ids:
+        details.append(f"duplicate task_id(s): {', '.join(duplicate_task_ids)}")
+    if duplicate_wire_ids:
+        formatted = ", ".join(
+            f"{wire_id} ({', '.join(task_ids)})" for wire_id, task_ids in duplicate_wire_ids
+        )
+        details.append(f"duplicate wire_id(s): {formatted}")
+    raise ValueError(f"{context} must have unique task_id and wire_id; {'; '.join(details)}")
+
+
+def _duplicate_task_ids(tasks: Sequence[TaskConfig]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for task in tasks:
+        task_id = task.task_id
+        if task_id in seen and task_id not in duplicates:
+            duplicates.append(task_id)
+        seen.add(task_id)
+    return duplicates
+
+
+def _duplicate_wire_ids(tasks: Sequence[TaskConfig]) -> list[tuple[int, list[str]]]:
+    wire_to_tasks: dict[int, list[str]] = {}
+    for task in tasks:
+        wire_to_tasks.setdefault(task.wire_id, []).append(task.task_id)
+    return [(wire_id, task_ids) for wire_id, task_ids in wire_to_tasks.items() if len(task_ids) > 1]
 
 
 def resolve_auth_token(

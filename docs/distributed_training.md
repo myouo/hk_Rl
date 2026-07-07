@@ -47,6 +47,12 @@ states only; LSTM tuple states must stay on the sequence-batch `RecurrentPPO`
 path until the batch format grows an explicit `(h, c)` representation.
 `task_ids` are the numeric task `wire_id` values from task YAML, not the
 human-readable task names used in evaluator output.
+Every multi-task learner/worker/evaluator/coordinator entry point now validates
+that the loaded task set has unique human-readable `task_id` values and unique
+numeric `wire_id` values before opening live env connections or writing rollout
+batches. A repeated `wire_id` would make rollout `task_ids` ambiguous and can
+make a worker skip a required `SET_TASK`, so it is a startup error rather than a
+dashboard-only warning.
 
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner

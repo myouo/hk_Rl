@@ -305,6 +305,20 @@ def test_run_eval_rejects_incompatible_model_task_layouts() -> None:
         module._validate_model_task_layouts(tasks)
 
 
+def test_run_eval_rejects_duplicate_task_wire_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_eval.py")
+    tasks = {
+        "a.yaml": TaskConfig(task_id="a", wire_id=1, scene="A"),
+        "b.yaml": TaskConfig(task_id="b", wire_id=1, scene="B"),
+    }
+    monkeypatch.setattr(module, "load_task_config", lambda path: tasks[str(path)])
+
+    with pytest.raises(ValueError, match="wire_id"):
+        module._load_tasks(["a.yaml", "b.yaml"])
+
+
 @pytest.mark.parametrize(
     ("field", "match"),
     [

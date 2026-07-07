@@ -315,6 +315,20 @@ def test_run_coordinator_rejects_duplicate_worker_ids() -> None:
         raise AssertionError("expected duplicate worker ids to fail")
 
 
+def test_run_coordinator_rejects_duplicate_task_wire_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_coordinator.py")
+    tasks = {
+        "a.yaml": module.TaskConfig(task_id="a", wire_id=8, scene="A"),
+        "b.yaml": module.TaskConfig(task_id="b", wire_id=8, scene="B"),
+    }
+    monkeypatch.setattr(module, "load_task_config", lambda path: tasks[str(path)])
+
+    with pytest.raises(ValueError, match="wire_id"):
+        module._load_tasks(["a.yaml", "b.yaml"])
+
+
 def test_run_coordinator_rejects_wildcard_bind_for_localhost_scope(tmp_path: Path) -> None:
     module = _load_script("run_coordinator.py")
     root = Path(__file__).parents[2]

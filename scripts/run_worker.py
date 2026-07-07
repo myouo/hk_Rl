@@ -33,6 +33,7 @@ from hkrl.utils.config import (
     load_task_config,
     load_train_config,
     resolve_auth_token,
+    validate_task_collection,
 )
 from hkrl.utils.registry import get
 from hkrl.worker.checkpoint_client import CheckpointClient
@@ -230,6 +231,7 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     tasks = [load_task_config(path) for path in paths]
     if not tasks:
         raise ValueError("at least one task is required")
+    validate_task_collection(tasks, context="worker tasks")
     _validate_task_layouts(tasks)
     return tasks
 

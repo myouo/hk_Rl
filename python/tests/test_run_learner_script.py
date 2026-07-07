@@ -662,6 +662,20 @@ def test_run_learner_rejects_incompatible_task_layouts() -> None:
         module._validate_task_layouts(tasks)
 
 
+def test_run_learner_rejects_duplicate_task_wire_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    tasks = {
+        "a.yaml": module.TaskConfig(task_id="a", wire_id=3, scene="A"),
+        "b.yaml": module.TaskConfig(task_id="b", wire_id=3, scene="B"),
+    }
+    monkeypatch.setattr(module, "load_task_config", lambda path: tasks[str(path)])
+
+    with pytest.raises(ValueError, match="wire_id"):
+        module._load_tasks(argparse.Namespace(task=None, tasks=["a.yaml", "b.yaml"]))
+
+
 def test_run_learner_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None:
     module = _load_script("run_learner.py")
     cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")

@@ -193,6 +193,20 @@ def test_run_phase8_smoke_rejects_empty_worker_count(tmp_path: Path) -> None:
         raise AssertionError("expected num_workers=0 to fail")
 
 
+def test_run_phase8_smoke_rejects_duplicate_task_wire_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    tasks = {
+        "a.yaml": module.TaskConfig(task_id="a", wire_id=4, scene="A"),
+        "b.yaml": module.TaskConfig(task_id="b", wire_id=4, scene="B"),
+    }
+    monkeypatch.setattr(module, "load_task_config", lambda path: tasks[str(path)])
+
+    with pytest.raises(ValueError, match="wire_id"):
+        module._load_tasks(["a.yaml", "b.yaml"])
+
+
 def _smoke_args(**overrides: object) -> argparse.Namespace:
     values: dict[str, object] = {
         "config": "configs/train/remote_learner.yaml",

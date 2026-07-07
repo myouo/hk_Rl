@@ -69,6 +69,10 @@ numeric `wire_id` for `StepRequest.task_id`, and a `scene` string for
 boss/task is a YAML/config change instead of a C# core edit. The numeric
 `task_id` remains in rollout buffers as `task_ids` and is still accepted by the
 mod as a compatibility fallback when `task_scene` is empty.
+Within one multi-task run, both `task_id` and `wire_id` must be unique; Python
+entry points reject duplicate task identities before connecting to live envs so
+rollout `task_ids`, evaluator metrics, curriculum weights, and mod task switches
+cannot silently refer to different bosses.
 Python exposes task switching via `HKRLEnv.set_task(task)`, which sends
 `SET_TASK`, rebuilds task-driven spaces/reward defaults, and waits for the clean
 reset lifecycle to reach `RUNNING`. Unknown numeric task ids with no

@@ -255,9 +255,7 @@ class GameWorker:
             return False
 
         current_task = _find_attr(self.env, "task")
-        current_wire_id = getattr(current_task, "wire_id", None)
-        next_wire_id = getattr(task, "wire_id", None)
-        if next_wire_id is not None and current_wire_id == next_wire_id:
+        if _task_identity(current_task) == _task_identity(task):
             return False
 
         set_task = _find_set_task(self.env)
@@ -584,3 +582,14 @@ def _find_attr(env: Any, name: str) -> Any | None:
             return getattr(current, name)
         current = getattr(current, "env", None)
     return None
+
+
+def _task_identity(task: Any) -> tuple[Any, ...] | None:
+    if task is None:
+        return None
+    return (
+        getattr(task, "task_id", None),
+        getattr(task, "wire_id", None),
+        getattr(task, "scene", None),
+        getattr(task, "difficulty", None),
+    )

@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 import yaml
 from hkrl.utils.config import (
+    TaskConfig,
     load_task_config,
     load_train_config,
     load_yaml,
     resolve_auth_token,
     validate_bind_address,
     validate_service_auth,
+    validate_task_collection,
 )
 
 
@@ -82,6 +84,25 @@ def test_load_task_config_preserves_wire_id() -> None:
     assert gruz.action.n_macro_actions == 11
     assert hornet.wire_id == 1
     assert mantis.wire_id == 2
+
+
+def test_validate_task_collection_rejects_duplicate_task_identity() -> None:
+    tasks = [
+        TaskConfig(task_id="same", wire_id=1, scene="A"),
+        TaskConfig(task_id="same", wire_id=2, scene="B"),
+        TaskConfig(task_id="other", wire_id=1, scene="C"),
+    ]
+
+    with pytest.raises(ValueError, match="multi-task config"):
+        validate_task_collection(tasks, context="multi-task config")
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_task_collection(tasks)
+    message = str(exc_info.value)
+    assert "duplicate task_id" in message
+    assert "same" in message
+    assert "duplicate wire_id" in message
+    assert "1 (same, other)" in message
 
 
 def test_mod_scene_controller_uses_config_scene_with_wire_id_fallback() -> None:

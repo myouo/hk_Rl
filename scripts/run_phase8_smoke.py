@@ -28,7 +28,7 @@ import torch
 
 from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
 from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
-from hkrl.utils.config import load_task_config
+from hkrl.utils.config import TaskConfig, load_task_config, validate_task_collection
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -83,7 +83,7 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
     heartbeat_jsonl = work_dir / "worker-heartbeats.jsonl"
     eval_metrics_json = work_dir / "eval-metrics.json"
     task_paths = [str(path) for path in args.tasks]
-    tasks = [load_task_config(path) for path in task_paths]
+    tasks = _load_tasks(task_paths)
     worker_ids = [f"worker-{idx}" for idx in range(args.num_workers)]
 
     run_learner = _load_script_module("run_learner.py")
@@ -170,6 +170,12 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
     }
 
 
+def _load_tasks(paths: Sequence[str]) -> list[TaskConfig]:
+    tasks = [load_task_config(path) for path in paths]
+    validate_task_collection(tasks, context="phase8 smoke tasks")
+    return tasks
+
+
 def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[CheckpointMeta]:
     registry = CheckpointRegistry(str(checkpoint_dir))
     latest = registry.latest()
@@ -251,7 +257,9 @@ def _write_eval_metrics(path: Path, task_ids: list[str]) -> None:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -259,11 +267,16 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _write_requested_artifacts(summary: dict[str, Any], args: argparse.Namespace) -> None:
+def _write_requested_artifacts(
+    summary: dict[str, Any], args: argparse.Namespace
+) -> None:
     dashboard_html = getattr(args, "dashboard_html", None)
     dashboard_json = getattr(args, "dashboard_json", None)
     if dashboard_html or dashboard_json:
-        from hkrl.coordinator.dashboard import build_dashboard_model, render_dashboard_html
+        from hkrl.coordinator.dashboard import (
+            build_dashboard_model,
+            render_dashboard_html,
+        )
 
         dashboard = build_dashboard_model(summary)
         if dashboard_html:
@@ -364,7 +377,9 @@ def _work_dir_lock(
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"timed out waiting for smoke work-dir lock: {lock_path}")
+                raise TimeoutError(
+                    f"timed out waiting for smoke work-dir lock: {lock_path}"
+                )
             time.sleep(poll_s)
 
     try:

@@ -42,6 +42,7 @@ from hkrl.utils.config import (
     resolve_auth_token,
     validate_bind_address,
     validate_service_auth,
+    validate_task_collection,
 )
 from hkrl.utils.registry import get
 
@@ -356,6 +357,7 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     paths = task_paths if task_paths else ([task_path] if task_path else [])
     tasks = [load_task_config(path) for path in paths]
     if tasks:
+        validate_task_collection(tasks, context="learner tasks")
         _validate_task_layouts(tasks)
     return tasks
 

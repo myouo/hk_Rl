@@ -50,6 +50,7 @@ from hkrl.utils.config import (
     TrainConfig,
     load_task_config,
     load_train_config,
+    validate_task_collection,
 )
 from hkrl.utils.registry import get
 from hkrl.wrappers import NormalizeObservation
@@ -106,9 +107,11 @@ def main(argv: list[str] | None = None) -> int:
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     _validate_eval_args(args)
     baseline_metrics = (
-        _load_baseline_metrics(Path(args.baseline)) if getattr(args, "baseline", None) else None
+        _load_baseline_metrics(Path(args.baseline))
+        if getattr(args, "baseline", None)
+        else None
     )
-    tasks = [load_task_config(path) for path in args.tasks]
+    tasks = _load_tasks(args.tasks)
     if args.policy in {"mlp", "model"}:
         _validate_model_task_layouts(tasks)
     train_cfg = load_train_config(args.train_config)
@@ -116,7 +119,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     next_port = _make_port_provider(args)
 
     def env_factory(task: TaskConfig) -> Any:
-        env = HKRLEnv(transport=_build_transport(args, train_cfg, port=next_port()), task=task)
+        env = HKRLEnv(
+            transport=_build_transport(args, train_cfg, port=next_port()), task=task
+        )
         return env if args.no_normalize else NormalizeObservation(env)
 
     evaluator = Evaluator(
@@ -138,6 +143,12 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         output["regression"] = evaluator.regression_report(baseline_metrics, metrics)
 
     return output
+
+
+def _load_tasks(paths: Sequence[str]) -> list[TaskConfig]:
+    tasks = [load_task_config(path) for path in paths]
+    validate_task_collection(tasks, context="evaluator tasks")
+    return tasks
 
 
 def _build_metadata(
@@ -202,7 +213,9 @@ def _build_policy(
         if args.policy == "mlp"
         else _build_configured_policy(task, train_cfg)
     )
-    state = _extract_model_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
+    state = _extract_model_state_dict(
+        torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
     model.load_state_dict(state)
     model.eval()
     return model
@@ -273,7 +286,9 @@ def _build_transport(
     *,
     port: int | None = None,
 ) -> Transport:
-    return make_transport(train_cfg, host=args.host, port=args.port if port is None else port)
+    return make_transport(
+        train_cfg, host=args.host, port=args.port if port is None else port
+    )
 
 
 def _make_port_provider(args: argparse.Namespace) -> Any:
@@ -306,7 +321,9 @@ def _validate_eval_args(args: argparse.Namespace) -> None:
         _non_empty_path_like(task, name=f"tasks[{index}]")
     _positive_int(getattr(args, "episodes", None), name="episodes")
     _positive_int(getattr(args, "max_steps", None), name="max_steps")
-    eval_workers = _positive_int(getattr(args, "eval_workers", None), name="eval_workers")
+    eval_workers = _positive_int(
+        getattr(args, "eval_workers", None), name="eval_workers"
+    )
     _non_empty_string(getattr(args, "host", "127.0.0.1"), name="host")
     _optional_path_arg(getattr(args, "baseline", None), name="baseline")
     _optional_path_arg(getattr(args, "checkpoint", None), name="checkpoint")
