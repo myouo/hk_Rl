@@ -31,6 +31,7 @@ from hkrl.spaces import (
 )
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
+from hkrl.worker.checkpoint_client import CheckpointClient
 from hkrl.worker.game_worker import GameWorker
 
 
@@ -136,6 +137,75 @@ def test_recurrent_game_worker_uploads_tcp_batch_for_learner_update(
     assert server.last_checkpoint == latest
 
 
+def test_worker_upload_learner_checkpoint_feedback_loop(tmp_path: Path) -> None:
+    torch.manual_seed(123)
+    env = _WorkerIntakeEnv()
+    obs_dims = _env_obs_dims(env)
+    worker_model = _recurrent_model(obs_dims)
+    learner_model = _recurrent_model(obs_dims)
+    learner_model.load_state_dict(worker_model.state_dict())
+    cfg = TrainConfig(
+        algorithm="appo",
+        rollout_steps=4,
+        epochs=1,
+        minibatch_size=2,
+        entropy_coef=0.0,
+    )
+    server = LearnerServer(
+        model=learner_model,
+        config=cfg,
+        registry=CheckpointRegistry(str(tmp_path)),
+        bind="127.0.0.1:0",
+        publish_every_updates=1,
+    )
+    checkpoint_client = CheckpointClient(str(tmp_path))
+    results: list[BatchIntakeResult] = []
+    errors: list[BaseException] = []
+
+    with BatchIntakeServer(server, "127.0.0.1:0", timeout_s=3.0) as intake:
+        assert intake.endpoint is not None
+        client = BatchIntakeClient(intake.endpoint, timeout_s=3.0)
+        worker = GameWorker(
+            env=env,
+            model=worker_model,
+            config=cfg,
+            checkpoint_client=checkpoint_client,
+            learner_endpoint=intake.endpoint,
+            batch_uploader=client.submit,
+        )
+
+        _run_one_worker_upload(worker, intake, results, errors)
+        assert worker.last_batch is not None
+        assert worker.last_batch.policy_version == 0
+        server.serve()
+
+        first = server.registry.latest()
+        assert first is not None
+        assert first.version == 1
+        assert server.policy_version == 1
+
+        _run_one_worker_upload(worker, intake, results, errors)
+        assert worker.last_batch is not None
+        assert worker.last_batch.policy_version == 1
+        server.serve()
+
+    assert errors == []
+    assert [result.accepted for result in results] == [True, True]
+    assert checkpoint_client.current_version == 1
+    assert worker.checkpoint_version == 1
+    assert worker.policy_version == 1
+    assert worker.learner_upload_submitted_batches == 2
+    assert worker.learner_upload_accepted_batches == 2
+    assert worker.learner_upload_failed_batches == 0
+
+    latest = server.registry.latest()
+    assert latest is not None
+    assert latest.version == 2
+    assert server.policy_version == 2
+    assert server.accepted_batches == 2
+    assert server.rejected_batches == 0
+
+
 def test_batch_intake_rejects_invalid_auth_token() -> None:
     with pytest.raises(PermissionError, match="auth token"):
         _validate_header({"type": BATCH_INTAKE_TYPE, "token": "wrong"}, "secret")
@@ -163,6 +233,19 @@ def _serve_once(
         results.append(intake.serve_once())
     except BaseException as exc:
         errors.append(exc)
+
+
+def _run_one_worker_upload(
+    worker: GameWorker,
+    intake: BatchIntakeServer,
+    results: list[BatchIntakeResult],
+    errors: list[BaseException],
+) -> None:
+    thread = threading.Thread(target=_serve_once, args=(intake, results, errors))
+    thread.start()
+    worker.run(total_steps=4)
+    thread.join(timeout=3.0)
+    assert not thread.is_alive()
 
 
 def _rollout_batch(model: MlpActorCritic, policy_version: int) -> RolloutBatch:
