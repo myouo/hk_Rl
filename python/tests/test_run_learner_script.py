@@ -100,6 +100,63 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     assert summary["submitted_batches"] == 1
 
 
+def test_run_learner_ingests_recurrent_batch_dir_and_updates(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "appo_gru.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "epochs: 1",
+                "minibatch_size: 2",
+                "learning_rate: 0.001",
+                "entropy_coef: 0.0",
+                "model:",
+                "  name: entity_attention_gru",
+                "  entity_hidden: 8",
+                "  attention_layers: 1",
+                "  attention_heads: 2",
+                "  rnn_type: gru",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    batch_dir = tmp_path / "batches"
+    save_rollout_batch(
+        batch_dir / "worker_00000001_v000000.npz",
+        _recurrent_learner_batch(rnn_hidden=16),
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        bind="127.0.0.1:0",
+        batch_dir=str(batch_dir),
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        intake_count=0,
+        intake_timeout_s=1.0,
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=True,
+        n_macro_actions=0,
+        serve_forever=False,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["accepted_batches"] == 1
+    assert summary["enable_macro_actions"] is False
+    assert summary["latest_checkpoint"] == 1
+    assert summary["model"] == "entity_attention_gru"
+    assert summary["policy_version"] == 1
+    assert summary["queued_batches"] == 0
+    assert summary["rejected_batches"] == 0
+    assert summary["submitted_batches"] == 1
+
+
 def test_run_learner_rejects_serve_forever_with_intake_count(tmp_path: Path) -> None:
     module = _load_script("run_learner.py")
     config = tmp_path / "appo_mlp.yaml"
@@ -467,6 +524,42 @@ def _learner_batch() -> RolloutBatch:
         prev_actions=np.zeros((time_steps, 1, action_dim), dtype=np.int64),
         prev_rewards=np.zeros((time_steps, 1), dtype=np.float32),
         rnn_states=None,
+        episode_ids=np.ones((time_steps, 1), dtype=np.uint64),
+        task_ids=np.ones((time_steps, 1), dtype=np.int64),
+        policy_version=0,
+    )
+
+
+def _recurrent_learner_batch(*, rnn_hidden: int) -> RolloutBatch:
+    observation_space = make_observation_space(max_entities=4, tier="privileged")
+    time_steps = 4
+    action_dim = 12
+    mask_dim = len(action_mask_layout(enable_macro=False))
+    actions = np.zeros((time_steps, 1, action_dim), dtype=np.int64)
+    actions[:, :, 0] = np.arange(time_steps, dtype=np.int64).reshape(time_steps, 1) % 3
+    actions[:, :, 1] = 1
+    actions[:, :, 11] = 0
+
+    return RolloutBatch(
+        obs_global=np.zeros((time_steps, 1, *observation_space["global"].shape), dtype=np.float32),
+        obs_player=np.zeros((time_steps, 1, *observation_space["player"].shape), dtype=np.float32),
+        obs_entities=np.zeros(
+            (time_steps, 1, *observation_space["entities"].shape),
+            dtype=np.float32,
+        ),
+        entity_mask=np.ones((time_steps, 1, *observation_space["entity_mask"].shape), dtype=bool),
+        actions=actions,
+        log_probs=np.full((time_steps, 1), -1.0, dtype=np.float32),
+        values=np.zeros((time_steps, 1), dtype=np.float32),
+        advantages=np.arange(1, time_steps + 1, dtype=np.float32).reshape(time_steps, 1),
+        returns=np.arange(1, time_steps + 1, dtype=np.float32).reshape(time_steps, 1),
+        rewards=np.ones((time_steps, 1), dtype=np.float32),
+        dones=np.array([[False], [False], [False], [True]]),
+        truncateds=np.zeros((time_steps, 1), dtype=bool),
+        action_masks=np.ones((time_steps, 1, mask_dim), dtype=bool),
+        prev_actions=np.zeros((time_steps, 1, action_dim), dtype=np.int64),
+        prev_rewards=np.zeros((time_steps, 1), dtype=np.float32),
+        rnn_states=np.zeros((time_steps, 1, 1, rnn_hidden), dtype=np.float32),
         episode_ids=np.ones((time_steps, 1), dtype=np.uint64),
         task_ids=np.ones((time_steps, 1), dtype=np.int64),
         policy_version=0,
