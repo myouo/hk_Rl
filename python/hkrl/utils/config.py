@@ -79,7 +79,7 @@ class ModelConfig(StrictConfigModel):
 class TransportConfig(StrictConfigModel):
     name: Literal["tcp", "shm"] = "tcp"
     host: str = Field(default="127.0.0.1", min_length=1)
-    port: int = Field(default=5555, ge=0, le=65535)
+    port: int = Field(default=5555, ge=1, le=65535)
     shm_name: str = Field(default="hkrl_env", min_length=1)
     req_slots: int = Field(default=8, ge=1)
     resp_slots: int = Field(default=8, ge=1)

@@ -322,8 +322,9 @@ def _validate_eval_args(args: argparse.Namespace) -> None:
     ports = _ports(args)
     if len(set(ports)) != len(ports):
         raise ValueError("ports must be unique")
-    if len(ports) < eval_workers:
-        raise ValueError("ports must include at least one port per eval worker")
+    active_workers = min(eval_workers, len(tasks))
+    if len(ports) < active_workers:
+        raise ValueError("ports must include at least one port per active eval worker")
 
 
 def _positive_int(value: Any, *, name: str) -> int:

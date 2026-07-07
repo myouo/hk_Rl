@@ -164,10 +164,25 @@ def test_run_eval_port_provider_cycles_configured_ports() -> None:
 
 def test_run_eval_validates_live_eval_worker_port_coverage() -> None:
     module = _load_script("run_eval.py")
-    args = _eval_args(eval_workers=2, ports=[6000])
+    args = _eval_args(
+        eval_workers=2,
+        ports=[6000],
+        tasks=["configs/tasks/gruz_mother.yaml", "configs/tasks/hornet_protector.yaml"],
+    )
 
-    with pytest.raises(ValueError, match="one port per eval worker"):
+    with pytest.raises(ValueError, match="one port per active eval worker"):
         module._validate_eval_args(args)
+
+
+def test_run_eval_allows_worker_count_above_task_count_with_task_ports() -> None:
+    module = _load_script("run_eval.py")
+    args = _eval_args(
+        eval_workers=4,
+        ports=[6000, 6001],
+        tasks=["configs/tasks/gruz_mother.yaml", "configs/tasks/hornet_protector.yaml"],
+    )
+
+    module._validate_eval_args(args)
 
 
 @pytest.mark.parametrize(

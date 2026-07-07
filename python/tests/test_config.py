@@ -158,6 +158,14 @@ def test_load_train_config_rejects_invalid_numeric_ranges(tmp_path: Path) -> Non
         load_train_config(config)
 
 
+def test_load_train_config_rejects_zero_env_transport_port(tmp_path: Path) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(config, {"transport": {"port": 0}})
+
+    with pytest.raises(ValueError, match="greater than or equal to 1"):
+        load_train_config(config)
+
+
 def test_load_task_config_rejects_invalid_action_repeat(tmp_path: Path) -> None:
     config = tmp_path / "task.yaml"
     _write_yaml(

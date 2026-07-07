@@ -608,6 +608,10 @@ the project version tracks the **schema_version** + roadmap phase.
   `run_worker`, `run_learner`, `run_eval`).
 
 ### Fixed
+- Env TCP transport config now rejects `transport.port: 0` during config loading,
+  and multi-task evaluator port validation now requires ports only for the
+  active task-level workers (`min(--eval-workers, task_count)`), avoiding both
+  late client-connect failures and over-strict live eval startup checks.
 - Config-driven env transport now rejects `transport.name: shm` by default
   because the current HKRLEnvMod does not ship a live shared-memory server; set
   `HKRL_ENABLE_INPROCESS_SHM=1` only for the explicit Python prototype/test

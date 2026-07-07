@@ -266,8 +266,9 @@ evaluations through a task-level worker pool while keeping training separate
 from evaluator envs. Use `N` only when the target machine has enough live mod
 instances/ports for the selected task set; `run_eval.py` rejects invalid ports,
 duplicate port pools, empty seed lists, non-positive episode/step/worker counts,
-and port pools smaller than `--eval-workers`. The default `1` and single
-`--port` preserve single-instance behavior.
+and port pools smaller than the active task-level worker count
+(`min(--eval-workers, task_count)`). The default `1` and single `--port`
+preserve single-instance behavior.
 
 ## 9. PyTorch + CUDA note
 

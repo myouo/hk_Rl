@@ -52,8 +52,9 @@ live env instances, and preloads optional baseline metrics before starting a
 fixed-seed eval run.
 `scripts/run_eval.py --eval-workers N --ports P0 P1 ...` evaluates tasks through
 a task-level worker pool so multi-boss regression checks can use multiple live
-env instances when available. The default is `1` worker and the single `--port`
-value to preserve deterministic single-instance behavior.
+env instances when available. The port pool must cover the active concurrent
+task workers (`min(N, task_count)`). The default is `1` worker and the single
+`--port` value to preserve deterministic single-instance behavior.
 `scripts/render_eval_report.py --eval-json runs/eval.json` renders the fixed-seed
 metrics and optional regression deltas into stable JSON/Markdown release
 artifacts. If `win_rate` is absent or invalid for a task, the report uses
