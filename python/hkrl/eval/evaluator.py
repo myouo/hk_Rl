@@ -212,11 +212,14 @@ class Evaluator:
             )
             mask_tensor = None
             if action_mask is not None:
+                mask_array = np.asarray(action_mask, dtype=bool)
                 mask_tensor = torch.as_tensor(
-                    np.asarray(action_mask, dtype=bool)[None, :],
+                    mask_array[None, :],
                     dtype=torch.bool,
                     device=device,
                 )
+            else:
+                mask_array = None
             action, _, _, next_state = self.model.act(
                 obs_tensor,
                 rnn_state=rnn_state,
@@ -224,9 +227,15 @@ class Evaluator:
                 deterministic=True,
             )
             enable_macro = "macro" in env.action_space.spaces
+            n_macros = int(env.action_space["macro"].n - 1) if enable_macro else 0
             action_array = action.detach().cpu().numpy().reshape(1, -1).astype(np.int64, copy=True)
             return (
-                action_tensor_to_env_action(action[0], enable_macro=enable_macro),
+                action_tensor_to_env_action(
+                    action[0],
+                    enable_macro=enable_macro,
+                    n_macros=n_macros,
+                    action_mask=mask_array,
+                ),
                 next_state,
                 action_array,
             )

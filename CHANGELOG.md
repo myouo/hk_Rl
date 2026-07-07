@@ -343,6 +343,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - GitHub Actions now includes a `C# Mod Build` workflow that generates
   FlatBuffers C# bindings and compiles `HKRLEnvMod` against checked-in CI stub
   assemblies for Unity/Hollow Knight/Modding API references.
+- `scripts/run_eval.py --policy model` now preserves the task's configured
+  macro-action count and validates model actions against the live action mask
+  before stepping the env.
 - `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
   provider for multi-task rollout smoke/curriculum runs.
 - `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,

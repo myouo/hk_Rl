@@ -223,6 +223,42 @@ def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
     assert model.seen_prev_rewards == [0.0, 1.0]
 
 
+def test_evaluator_model_policy_preserves_macro_action_ids() -> None:
+    task = TaskConfig(task_id="fake_boss", scene="FakeScene")
+    env = MacroEvalEnv(n_macros=3)
+    evaluator = Evaluator(
+        MacroActorCritic(macro=2),
+        tasks=[task],
+        seeds=[0],
+        env_factory=lambda _: env,
+        max_steps_per_episode=1,
+    )
+
+    results = evaluator.evaluate(episodes_per_task=1)
+
+    assert results["fake_boss"]["win_rate"] == 1.0
+    assert env.actions[0]["macro"] == 2
+    assert env.closed
+
+
+def test_evaluator_model_policy_rejects_masked_macro_before_env_step() -> None:
+    task = TaskConfig(task_id="fake_boss", scene="FakeScene")
+    env = MacroEvalEnv(n_macros=3, blocked_macro=2)
+    evaluator = Evaluator(
+        MacroActorCritic(macro=2),
+        tasks=[task],
+        seeds=[0],
+        env_factory=lambda _: env,
+        max_steps_per_episode=1,
+    )
+
+    with pytest.raises(ValueError, match="macro=2"):
+        evaluator.evaluate(episodes_per_task=1)
+
+    assert env.actions == []
+    assert env.closed
+
+
 class StatefulActorCritic(ActorCritic):
     def __init__(self) -> None:
         super().__init__()
@@ -259,6 +295,50 @@ class StatefulActorCritic(ActorCritic):
         action[:, 0] = 1
         action[:, 1] = 1
         return action, torch.zeros((1,)), torch.zeros((1,)), rnn_state + 1
+
+    def evaluate_actions(
+        self,
+        obs: dict[str, Tensor],
+        actions: Tensor,
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        del obs, actions, rnn_state, action_mask
+        return torch.zeros((1,)), torch.zeros((1,)), torch.zeros((1,))
+
+
+class MacroActorCritic(ActorCritic):
+    def __init__(self, *, macro: int) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(()))
+        self.macro = macro
+
+    def initial_state(self, batch_size: int, device: torch.device | None = None) -> RnnState:
+        del batch_size, device
+        return None
+
+    def forward(
+        self,
+        obs: dict[str, Tensor],
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+    ) -> tuple[object, Tensor, RnnState]:
+        del obs, action_mask
+        return object(), torch.zeros((1,)), rnn_state
+
+    def act(
+        self,
+        obs: dict[str, Tensor],
+        rnn_state: RnnState = None,
+        action_mask: Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[Tensor, Tensor, Tensor, RnnState]:
+        del obs, action_mask, deterministic
+        action = torch.zeros((1, 13), dtype=torch.long)
+        action[:, 0] = 1
+        action[:, 1] = 1
+        action[:, 12] = self.macro
+        return action, torch.zeros((1,)), torch.zeros((1,)), rnn_state
 
     def evaluate_actions(
         self,
@@ -322,6 +402,45 @@ class FakeEvalEnv:
 
     def close(self) -> None:
         self.closed = True
+
+
+class MacroEvalEnv:
+    def __init__(self, *, n_macros: int, blocked_macro: int | None = None) -> None:
+        self.observation_space = spaces.make_observation_space(max_entities=2, tier="privileged")
+        self.action_space = spaces.make_action_space(enable_macro=True, n_macros=n_macros)
+        self.n_macros = n_macros
+        self.blocked_macro = blocked_macro
+        self.actions: list[dict[str, Any]] = []
+        self.closed = False
+
+    def reset(self, *, seed: int | None = None) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        del seed
+        return _obs(), {"action_mask": self._action_mask()}
+
+    def step(
+        self, action: dict[str, Any]
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        self.actions.append(action)
+        return (
+            _obs(),
+            1.0,
+            True,
+            False,
+            {
+                "action_mask": self._action_mask(),
+                "reward_events": [protocol.RewardEvent(protocol.RewardEventKind.BOSS_KILLED)],
+            },
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+    def _action_mask(self) -> np.ndarray:
+        layout = spaces.action_mask_layout(enable_macro=True, n_macros=self.n_macros)
+        mask = np.ones((len(layout),), dtype=bool)
+        if self.blocked_macro is not None:
+            mask[layout.index(f"macro:{self.blocked_macro}")] = False
+        return mask
 
 
 def _obs() -> dict[str, np.ndarray]:
