@@ -35,6 +35,10 @@ the project version tracks the **schema_version** + roadmap phase.
 - Python TCP entry points now honor `security.require_token` by reading
   `security.auth_token_env`, and the mod TCP server consumes/verifies the auth
   frame before forwarding protocol requests.
+- Env TCP clients now also send a non-empty configured auth token
+  opportunistically when present, so local smoke/training/eval connects cleanly
+  to token-enabled HKRLEnvMod instances even if the local train config does not
+  require token auth.
 - Mod TCP server now drains outbound response frames only after authentication,
   preventing stale responses from being exposed to unauthenticated clients.
 - `scripts/run_eval.py` now uses the same security token config for evaluator TCP
