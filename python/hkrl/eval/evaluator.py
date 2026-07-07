@@ -66,22 +66,31 @@ class Evaluator:
         if self.env_factory is None:
             raise ValueError("env_factory is required for evaluation")
 
-        if self.num_workers == 1 or len(self.tasks) == 1:
-            return {
-                task.task_id: self._evaluate_task(task, episodes_per_task) for task in self.tasks
-            }
+        was_training = self.model.training if isinstance(self.model, ActorCritic) else None
+        if isinstance(self.model, ActorCritic):
+            self.model.eval()
+        try:
+            if self.num_workers == 1 or len(self.tasks) == 1:
+                return {
+                    task.task_id: self._evaluate_task(task, episodes_per_task)
+                    for task in self.tasks
+                }
 
-        worker_count = min(self.num_workers, len(self.tasks))
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            task_metrics = list(
-                executor.map(
-                    lambda task: self._evaluate_task(task, episodes_per_task),
-                    self.tasks,
+            worker_count = min(self.num_workers, len(self.tasks))
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                task_metrics = list(
+                    executor.map(
+                        lambda task: self._evaluate_task(task, episodes_per_task),
+                        self.tasks,
+                    )
                 )
-            )
-        return {
-            task.task_id: metrics for task, metrics in zip(self.tasks, task_metrics, strict=True)
-        }
+            return {
+                task.task_id: metrics
+                for task, metrics in zip(self.tasks, task_metrics, strict=True)
+            }
+        finally:
+            if was_training is not None:
+                self.model.train(was_training)
 
     def _evaluate_task(
         self,
@@ -220,12 +229,13 @@ class Evaluator:
                 )
             else:
                 mask_array = None
-            action, _, _, next_state = self.model.act(
-                obs_tensor,
-                rnn_state=rnn_state,
-                action_mask=mask_tensor,
-                deterministic=True,
-            )
+            with torch.no_grad():
+                action, _, _, next_state = self.model.act(
+                    obs_tensor,
+                    rnn_state=rnn_state,
+                    action_mask=mask_tensor,
+                    deterministic=True,
+                )
             enable_macro = "macro" in env.action_space.spaces
             n_macros = int(env.action_space["macro"].n - 1) if enable_macro else 0
             action_array = action.detach().cpu().numpy().reshape(1, -1).astype(np.int64, copy=True)

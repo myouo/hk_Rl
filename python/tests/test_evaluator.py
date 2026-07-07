@@ -284,6 +284,24 @@ def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
     assert model.seen_prev_rewards == [0.0, 1.0]
 
 
+def test_evaluator_sets_actor_critic_eval_mode_and_restores_training() -> None:
+    task = TaskConfig(task_id="fake_boss", scene="FakeScene")
+    model = StatefulActorCritic()
+    model.train()
+    evaluator = Evaluator(
+        model,
+        tasks=[task],
+        seeds=[0],
+        env_factory=lambda _: FakeEvalEnv(),
+        max_steps_per_episode=1,
+    )
+
+    evaluator.evaluate(episodes_per_task=1)
+
+    assert model.seen_training_modes == [False]
+    assert model.training is True
+
+
 def test_evaluator_model_policy_preserves_macro_action_ids() -> None:
     task = TaskConfig(task_id="fake_boss", scene="FakeScene")
     env = MacroEvalEnv(n_macros=3)
@@ -327,6 +345,7 @@ class StatefulActorCritic(ActorCritic):
         self.seen_states: list[float] = []
         self.seen_prev_actions: list[np.ndarray] = []
         self.seen_prev_rewards: list[float] = []
+        self.seen_training_modes: list[bool] = []
 
     def initial_state(self, batch_size: int, device: torch.device | None = None) -> RnnState:
         return torch.zeros((1, batch_size, 1), device=device)
@@ -349,6 +368,7 @@ class StatefulActorCritic(ActorCritic):
     ) -> tuple[Tensor, Tensor, Tensor, RnnState]:
         del action_mask, deterministic
         assert rnn_state is not None
+        self.seen_training_modes.append(self.training)
         self.seen_states.append(float(rnn_state.reshape(-1)[0].detach().cpu()))
         self.seen_prev_actions.append(obs["prev_action"].detach().cpu().numpy().copy())
         self.seen_prev_rewards.append(float(obs["prev_reward"].reshape(-1)[0].detach().cpu()))

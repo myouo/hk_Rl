@@ -38,6 +38,9 @@ Decisions are driven by **shaping-free** metrics, in priority order:
 The evaluator ([`../python/hkrl/eval/evaluator.py`](../python/hkrl/eval/evaluator.py))
 computes these on fixed seeds/tasks, isolated from training, to catch the
 "reward up, win rate down" failure (PRD §9.4).
+Model-policy evaluation forces `ActorCritic` checkpoints through `eval()` and
+no-grad inference, then restores the original training mode, so fixed-seed
+evidence is not affected by stochastic training layers or autograd bookkeeping.
 Because evaluator output is keyed by task/boss, each task record includes
 `per_boss_win_rate` as an alias of `win_rate` and `per_boss_damage_ratio` as
 `damage_taken / damage_dealt` with a zero value when no damage was dealt.

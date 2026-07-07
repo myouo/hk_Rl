@@ -608,6 +608,9 @@ the project version tracks the **schema_version** + roadmap phase.
   `run_worker`, `run_learner`, `run_eval`).
 
 ### Fixed
+- Evaluator model-policy runs now force `ActorCritic` models into `eval()` /
+  no-grad inference for fixed-seed evaluation, then restore the original
+  training mode after the run.
 - Evaluator reward-event metric extraction now rejects malformed evidence
   (unknown event kinds, non-finite amounts, negative damage/heal/soul amounts,
   and malformed direct metric fields) before aggregate win-rate/damage reports
