@@ -13,7 +13,9 @@ from types import ModuleType
 
 import numpy as np
 import pytest
+import torch
 from hkrl.learner.batch_intake import BatchIntakeClient
+from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.spaces import action_mask_layout, make_observation_space
 from hkrl.training.batch_io import save_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
@@ -44,7 +46,7 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["bind"] == "127.0.0.1:0"
     assert summary["checkpoint_dir"] == str(tmp_path.resolve())
     assert summary["enable_macro_actions"] is True
-    assert summary["latest_checkpoint"] is None
+    assert summary["latest_checkpoint"] == 1
     assert summary["max_entities"] == 4
     assert summary["max_staleness"] == 2
     assert summary["model"] == "entity_attention_gru"
@@ -53,6 +55,7 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["policy_version"] == 0
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
+    assert summary["startup_checkpoint"] == 1
     assert summary["submitted_batches"] == 0
     assert summary["task_ids"] == []
     assert summary["tier"] == "privileged"
@@ -97,10 +100,11 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
 
     assert summary["accepted_batches"] == 1
     assert summary["batch_dir"] == str(batch_dir)
-    assert summary["latest_checkpoint"] == 1
+    assert summary["latest_checkpoint"] == 2
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
+    assert summary["startup_checkpoint"] == 1
     assert summary["submitted_batches"] == 1
 
 
@@ -135,11 +139,12 @@ def test_run_learner_ingests_recurrent_batch_dir_and_updates(tmp_path: Path) -> 
 
     assert summary["accepted_batches"] == 1
     assert summary["enable_macro_actions"] is False
-    assert summary["latest_checkpoint"] == 1
+    assert summary["latest_checkpoint"] == 2
     assert summary["model"] == "entity_attention_gru"
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
+    assert summary["startup_checkpoint"] == 1
     assert summary["submitted_batches"] == 1
 
 
@@ -188,13 +193,140 @@ def test_run_learner_network_intake_accepts_recurrent_batch_and_updates(
     assert len(summaries) == 1
     summary = summaries[0]
     assert summary["accepted_batches"] == 1
-    assert summary["latest_checkpoint"] == 1
+    assert summary["latest_checkpoint"] == 2
     assert summary["network_accepted_batches"] == 1
     assert summary["network_submitted_batches"] == 1
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
+    assert summary["startup_checkpoint"] == 1
     assert summary["submitted_batches"] == 0
+
+
+def test_run_learner_resumes_latest_registry_checkpoint(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "appo_mlp.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = module.load_train_config(config)
+    observation_space = make_observation_space(max_entities=4, tier="privileged")
+    model = module._build_model(
+        cfg,
+        {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+        },
+        max_entities=4,
+        enable_macro=True,
+        n_macros=11,
+    )
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.fill_(0.125)
+    checkpoint_dir = tmp_path / "checkpoints"
+    registry = CheckpointRegistry(str(checkpoint_dir))
+    meta = registry.publish(
+        {
+            "model_state_dict": model.state_dict(),
+            "policy_version": 7,
+            "update": 3,
+            "metrics": {"loss": 0.5},
+        },
+        policy_version=7,
+        step=3,
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        bind="127.0.0.1:0",
+        batch_dir=None,
+        checkpoint_dir=str(checkpoint_dir),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["latest_checkpoint"] == meta.version
+    assert summary["policy_version"] == 7
+    assert summary["startup_checkpoint"] == meta.version
+    assert CheckpointRegistry(str(checkpoint_dir)).latest() == meta
+
+
+def test_run_learner_rejects_tampered_startup_checkpoint(tmp_path: Path) -> None:
+    module = _load_script("run_learner.py")
+    config = tmp_path / "appo_mlp.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = module.load_train_config(config)
+    observation_space = make_observation_space(max_entities=4, tier="privileged")
+    model = module._build_model(
+        cfg,
+        {
+            "global": observation_space["global"].shape,
+            "player": observation_space["player"].shape,
+            "entities": observation_space["entities"].shape,
+            "entity_mask": observation_space["entity_mask"].shape,
+        },
+        max_entities=4,
+        enable_macro=True,
+        n_macros=11,
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    registry = CheckpointRegistry(str(checkpoint_dir))
+    meta = registry.publish(
+        {
+            "model_state_dict": model.state_dict(),
+            "policy_version": 0,
+            "update": 0,
+            "metrics": {},
+        },
+        policy_version=0,
+        step=0,
+    )
+    registry.resolve_path(meta).write_bytes(b"not the published checkpoint")
+    args = argparse.Namespace(
+        config=str(config),
+        bind="127.0.0.1:0",
+        batch_dir=None,
+        checkpoint_dir=str(checkpoint_dir),
+        max_staleness=2,
+        publish_every_updates=1,
+        max_entities=4,
+        disable_macro_actions=False,
+        n_macro_actions=11,
+        task=None,
+        tasks=None,
+        tier="privileged",
+    )
+
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        module.run_from_args(args)
 
 
 def test_run_learner_rejects_serve_forever_with_intake_count(tmp_path: Path) -> None:

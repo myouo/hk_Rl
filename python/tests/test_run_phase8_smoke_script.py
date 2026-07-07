@@ -42,7 +42,8 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     assert summary["task_ids"] == ["gruz_mother", "hornet_protector_attuned"]
     assert summary["worker_ids"] == ["worker-0", "worker-1"]
     assert summary["learner"]["task_ids"] == ["gruz_mother", "hornet_protector_attuned"]
-    assert summary["learner"]["latest_checkpoint"] is None
+    assert summary["learner"]["latest_checkpoint"] == 1
+    assert summary["learner"]["startup_checkpoint"] == 1
     assert summary["worker"]["dry_run"] is True
     assert summary["worker"]["latest_checkpoint"] == 2
     assert summary["worker"]["task_ids"] == ["gruz_mother", "hornet_protector_attuned"]

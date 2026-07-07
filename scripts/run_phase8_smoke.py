@@ -167,7 +167,12 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
 def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[int]:
     registry = CheckpointRegistry(str(checkpoint_dir))
     versions: list[int] = []
-    for policy_version in (1, 2):
+    latest = registry.latest()
+    if latest is not None:
+        versions.append(latest.version)
+
+    policy_version = 1
+    while len(versions) < 2:
         meta = registry.publish(
             {
                 "model_state_dict": {
@@ -179,6 +184,7 @@ def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[int]:
             step=policy_version,
         )
         versions.append(meta.version)
+        policy_version += 1
     return versions
 
 

@@ -15,6 +15,7 @@ until interrupted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -23,8 +24,10 @@ from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
+import torch
 from hkrl.learner.batch_intake import BatchIntakeServer
-from hkrl.learner.checkpoint_registry import CheckpointRegistry
+from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
+from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
 from hkrl.learner.learner_server import LearnerServer
 
 # Import model modules for registry side effects.
@@ -128,6 +131,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_staleness=max_staleness,
         publish_every_updates=publish_every_updates,
     )
+    startup_checkpoint = _prepare_startup_checkpoint(server, registry)
     submitted_batches = _submit_batch_dir(server, args.batch_dir)
     intake_count = int(getattr(args, "intake_count", 0) or 0)
     serve_forever = bool(getattr(args, "serve_forever", False))
@@ -169,6 +173,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
         "rejected_batches": server.rejected_batches,
         "serve_forever": serve_forever,
+        "startup_checkpoint": startup_checkpoint.version,
         "submitted_batches": submitted_batches,
         "task_ids": [task.task_id for task in tasks],
         "tier": layout["tier"],
@@ -219,6 +224,77 @@ def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
         server.submit(load_rollout_batch(path))
         submitted += 1
     return submitted
+
+
+def _prepare_startup_checkpoint(
+    server: LearnerServer,
+    registry: CheckpointRegistry,
+) -> CheckpointMeta:
+    """Publish or load the checkpoint workers should use before first rollout."""
+    latest = registry.latest()
+    if latest is None:
+        server.last_checkpoint = registry.publish(
+            {
+                "model_state_dict": server.model.state_dict(),
+                "policy_version": server.policy_version,
+                "update": server.update_count,
+                "metrics": {},
+            },
+            policy_version=server.policy_version,
+            step=server.update_count,
+        )
+        return server.last_checkpoint
+
+    path = registry.resolve_path(latest)
+    _verify_checkpoint_hash(path, latest)
+    state = validate_checkpoint_payload(
+        torch.load(
+            path,
+            map_location="cpu",
+            weights_only=True,
+        )
+    )
+    server.model.load_state_dict(state["model_state_dict"])
+    policy_version = _checkpoint_non_negative_int(
+        state.get("policy_version", latest.policy_version),
+        name="policy_version",
+    )
+    update = _checkpoint_non_negative_int(
+        state.get("update", latest.created_step),
+        name="update",
+    )
+    server.policy_version = policy_version
+    server.update_count = update
+    if hasattr(server.algo, "current_version"):
+        server.algo.current_version = policy_version
+    server.last_checkpoint = latest
+    return latest
+
+
+def _verify_checkpoint_hash(path: Path, meta: CheckpointMeta) -> None:
+    actual = _sha256_file(path)
+    if actual != meta.sha256:
+        raise ValueError(
+            f"checkpoint sha256 mismatch for version {meta.version}: "
+            f"expected {meta.sha256}, got {actual}"
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _checkpoint_non_negative_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"checkpoint {name} must be an integer")
+    result = int(value)
+    if result < 0:
+        raise ValueError(f"checkpoint {name} must be non-negative")
+    return result
 
 
 def _serve_network_intake(

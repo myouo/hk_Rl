@@ -82,6 +82,12 @@ after each accepted batch until interrupted.
 Idle listener timeouts are treated as "no worker connected yet" and the learner
 continues waiting, so workers can start late or reconnect without killing the
 remote training process.
+At startup, `scripts/run_learner.py` publishes a policy-version 0 checkpoint
+when the registry is empty, or loads the registry's latest checkpoint and syncs
+the learner policy/update counters from its payload. Start or resume the learner
+before pointing workers at the checkpoint registry; workers then hash-verify and
+load the same learner weights before collecting their first rollout instead of
+sampling with independent random initialization.
 `scripts/run_learner.py --tasks ...` can infer the learner model's
 `max_entities`, observation tier, macro enablement, and macro count from task
 YAML, and rejects task groups whose model/action layout would not fit a single

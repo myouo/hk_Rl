@@ -130,6 +130,10 @@ the project version tracks the **schema_version** + roadmap phase.
 - Checkpoint registries now publish relative checkpoint paths, and worker
   CheckpointClient can pull hash-verified checkpoints from local/file or HTTP(S)
   registry endpoints.
+- `run_learner.py` now publishes an initial checkpoint for empty registries and
+  resumes the latest registry checkpoint at startup, so workers collect their
+  first rollout from hash-verified learner weights instead of independent random
+  initialization.
 - `run_worker.py` can now append coordinator-compatible heartbeat JSONL for
   offline/fallback monitoring snapshots.
 - Evaluator and `run_eval.py` can now emit per-step replay JSONL for fixed-seed

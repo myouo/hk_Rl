@@ -200,6 +200,9 @@ python scripts/run_learner.py \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
   --checkpoint-dir checkpoints
 
+# learner 启动时会立即发布或恢复 registry latest checkpoint；
+# 先启动/恢复 learner，再把该 checkpoint registry 暴露给 worker。
+
 # 远程 batch intake smoke：learner 接收 1 个 TCP rollout batch 后更新一次
 export HKRL_AUTH_TOKEN=dev-secret
 python scripts/run_learner.py \
@@ -234,8 +237,10 @@ python scripts/run_worker.py \
 
 `--checkpoint-dir` 会写入 `CheckpointRegistry` 格式的 `index.jsonl` 与
 `checkpoint_v*.pt`，包含 `policy_version`、step、sha256 等元数据。registry
-中的 checkpoint 路径是相对路径，可用本地路径、`file://` 或 HTTP(S) 目录提供给
-worker 的 `--registry`，worker 会在加载前验证 sha256。
+中的 checkpoint 路径是相对路径。learner 在空 registry 启动时会发布初始
+policy version 0 checkpoint；重启时会加载 latest checkpoint 并继续使用其中的
+policy_version。可用本地路径、`file://` 或 HTTP(S) 目录提供给 worker 的
+`--registry`，worker 会在首个 rollout 前加载 latest 并验证 sha256。
 
 发布前检查见 [`docs/release.md`](./docs/release.md)，其中区分了 CI 可验证的
 Python/离线分布式门禁和必须在 Hollow Knight 机器上执行的 mod/live smoke 门禁；
