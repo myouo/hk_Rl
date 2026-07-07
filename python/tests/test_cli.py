@@ -17,11 +17,12 @@ from hkrl.cli import (
 )
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
-from hkrl.spaces import make_observation_space
+from hkrl.spaces import action_mask_layout, make_action_space, make_observation_space
 from hkrl.training.recurrent_ppo import RecurrentPPO
 from hkrl.utils.config import TaskConfig, TrainConfig
 from hkrl.utils.logging import JsonlSink
 from hkrl.utils.registry import get
+from hkrl.worker.game_worker import GameWorker
 
 
 class FakeEnv:
@@ -260,6 +261,92 @@ def test_run_ppo_training_loop_publishes_registry_checkpoint(tmp_path: Path) -> 
     assert "model_state_dict" in checkpoint
 
 
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        TrainConfig(
+            algorithm="ppo",
+            rollout_steps=6,
+            minibatch_size=3,
+            epochs=1,
+            model={"name": "mlp", "rnn_type": "none", "rnn_hidden": 16},
+        ),
+        TrainConfig(
+            algorithm="recurrent_ppo",
+            rollout_steps=8,
+            minibatch_size=4,
+            epochs=1,
+            sequence_length=4,
+            burn_in=1,
+            model={
+                "name": "entity_attention_gru",
+                "entity_hidden": 8,
+                "attention_layers": 1,
+                "attention_heads": 2,
+                "rnn_hidden": 16,
+            },
+        ),
+    ],
+)
+def test_run_ppo_training_loop_with_real_worker_macro_model_and_registry(
+    tmp_path: Path,
+    cfg: TrainConfig,
+) -> None:
+    task = TaskConfig(
+        task_id="gruz_mother",
+        scene="GG_Gruz_Mother",
+        observation={"max_entities": 4},
+        action={"enable_macro_actions": True, "n_macro_actions": 2},
+    )
+    env = MacroTrainingEnv(task)
+    obs_dims = {
+        "global": env.observation_space["global"].shape,
+        "player": env.observation_space["player"].shape,
+        "entities": env.observation_space["entities"].shape,
+        "entity_mask": env.observation_space["entity_mask"].shape,
+    }
+    model = _build_model(
+        cfg,
+        obs_dims,
+        enable_macro=task.action.enable_macro_actions,
+        n_macros=task.action.n_macro_actions,
+        max_entities=task.observation.max_entities,
+    )
+    worker = GameWorker(env=env, model=model, config=cfg)
+    algo = get("algo", cfg.algorithm)(model=model, config=cfg)
+
+    summary = run_ppo_training_loop(
+        worker=worker,
+        algo=algo,
+        sink=MemorySink(),
+        updates=1,
+        checkpoint_dir=tmp_path,
+        model=model,
+    )
+
+    assert summary["updates"] == 1
+    assert summary["total_steps"] == cfg.rollout_steps
+    assert summary["policy_version"] == 1
+    assert summary["last_checkpoint_version"] == 1
+    assert summary["last_checkpoint"] is not None
+    assert len(env.actions) == cfg.rollout_steps
+    assert all("macro" in action for action in env.actions)
+    assert {action["macro"] for action in env.actions} <= {0, 1, 2}
+    assert worker.policy_version == 1
+    assert worker.last_sps >= 0.0
+
+    checkpoint = torch.load(summary["last_checkpoint"], map_location="cpu", weights_only=True)
+    assert checkpoint["policy_version"] == 1
+    assert checkpoint["step"] == cfg.rollout_steps
+    assert "model_state_dict" in checkpoint
+    assert set(summary["last_metrics"]) >= {
+        "action_entropy",
+        "explained_variance",
+        "policy_loss",
+        "value_loss",
+    }
+
+
 class FakeBatch:
     def __init__(self, policy_version: int = 7) -> None:
         self.rewards = np.ones((3, 1), dtype=np.float32)
@@ -286,6 +373,66 @@ class FakeAlgo:
     def update(self, buffer: object) -> dict[str, float]:
         self.buffers.append(buffer)
         return {"policy_loss": -float(len(self.buffers)), "value_loss": 0.5}
+
+
+class MacroTrainingEnv:
+    def __init__(self, task: TaskConfig) -> None:
+        self.task = task
+        self.observation_space = make_observation_space(
+            max_entities=task.observation.max_entities,
+            tier=task.observation.tier,
+        )
+        self.action_space = make_action_space(
+            enable_macro=task.action.enable_macro_actions,
+            n_macros=task.action.n_macro_actions,
+        )
+        self.reset_count = 0
+        self.step_count = 0
+        self.actions: list[dict[str, Any]] = []
+
+    def reset(self) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        self.reset_count += 1
+        return self._obs(), self._info()
+
+    def step(
+        self,
+        action: dict[str, Any],
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        self.actions.append(action)
+        self.step_count += 1
+        terminated = self.step_count % 4 == 0
+        reward = 1.0 + 0.1 * float(action["macro"])
+        return self._obs(), reward, terminated, False, self._info()
+
+    def _obs(self) -> dict[str, np.ndarray]:
+        global_state = np.zeros(self.observation_space["global"].shape, dtype=np.float32)
+        player = np.zeros(self.observation_space["player"].shape, dtype=np.float32)
+        entities = np.zeros(self.observation_space["entities"].shape, dtype=np.float32)
+        entity_mask = np.ones(self.observation_space["entity_mask"].shape, dtype=np.int8)
+        global_state[8] = float(self.reset_count)
+        entities[:, 0] = np.arange(entities.shape[0], dtype=np.float32)
+        entities[:, 1] = 2.0
+        return {
+            "global": global_state,
+            "player": player,
+            "entities": entities,
+            "entity_mask": entity_mask,
+        }
+
+    def _info(self) -> dict[str, Any]:
+        return {
+            "episode_id": self.reset_count,
+            "task_id": self.task.wire_id,
+            "action_mask": np.ones(
+                len(
+                    action_mask_layout(
+                        enable_macro=self.task.action.enable_macro_actions,
+                        n_macros=self.task.action.n_macro_actions,
+                    )
+                ),
+                dtype=bool,
+            ),
+        }
 
 
 class MemorySink:
