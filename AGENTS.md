@@ -30,7 +30,7 @@ worker → remote learner → curriculum.
 Hollow Knight + HKRLEnvMod (C#)          Game PC                  Remote GPU
   Observation collect                    GameWorker  ─rollouts─▶  Learner (PPO/APPO)
   Action apply (FixedUpdate)   ◀──FB────  local infer            Checkpoint registry
-  Reward events                  TCP/SHM  Gym env    ◀─weights──  Coordinator/Evaluator
+  Reward events                  TCP      Gym env    ◀─weights──  Coordinator/Evaluator
   Clean episode lifecycle
 ```
 
@@ -44,8 +44,9 @@ Components & responsibilities: [`docs/architecture.md`](./docs/architecture.md) 
 2. **`schema/hkrl.fbs` is the single source of truth.** Change the schema, then
    `make gen-schema`. Never hand-edit generated bindings.
    ([ADR-0002](./docs/adr/0002-serialization-flatbuffers.md), [`schema/README.md`](./schema/README.md))
-3. **Transport is pluggable.** Everything goes through `Transport`; TCP and
-   shared-memory are interchangeable.
+3. **Transport is pluggable.** Everything goes through `Transport`. TCP is the
+   current live HKRLEnvMod transport; shared-memory is an explicit opt-in Python
+   prototype until the mod ships an OS shared-memory server.
 4. **Config-driven + registry.** Register components (`@register_model`, etc.) and
    select them from YAML. No core edits to add a boss/model/transport/reward.
    ([`hkrl/utils/registry.py`](./python/hkrl/utils/registry.py))
@@ -150,7 +151,8 @@ and the **action-mask index order** (`hkrl/spaces.py` ↔ mod `InputInjector` /
 - Training path reserves **`torch.compile` + AMP** and contiguous **sequence
   (truncated-BPTT) batching** for recurrent models.
 - `entity_mask` must gate attention/pooling — padded slots leak nothing.
-- Prefer shared-memory transport for single-machine high-SPS once TCP is stable.
+- Prefer shared-memory transport for single-machine high-SPS only after a real
+  mod-side OS shared-memory server lands; today live game runs use TCP.
 
 ## 9. Evaluation > reward (read this twice)
 

@@ -1,11 +1,12 @@
-"""Shared-memory ring-buffer transport (low-latency, single-machine).
+"""In-process shared-memory transport prototype.
 
-Highest-SPS path when the worker and the game run on the same PC: frames are
-written into a shared ring buffer instead of crossing a socket. Same payload as
-TCP (FlatBuffers), length in the slot header. Registered as ``"shm"``.
+This module preserves the Transport semantics for SHM experiments and tests, but
+it is not a live HKRLEnvMod bridge yet: the current implementation uses
+process-local queues and requires an explicit factory opt-in. Live game runs
+should use TCP until the mod ships a real OS shared-memory server.
 
-This is a performance optimization; correctness/parity with TCP is verified by
-the same protocol tests. See docs/architecture.md §5 and ADR-0002.
+The payload is still the same FlatBuffers frame as TCP, so protocol correctness
+can be exercised without changing env/model code.
 """
 
 from __future__ import annotations
@@ -21,8 +22,10 @@ from hkrl.utils.registry import register_transport
 class SharedMemoryTransport(Transport):
     """Two single-producer/single-consumer ring buffers (req out, resp in).
 
-    Synchronization via OS shared memory + lightweight signaling. The mod side
-    is implemented in ``mod/HKRLEnvMod/Transport`` (a future SHM server variant).
+    This is intentionally an in-process prototype. Use
+    ``hkrl.transport.factory.make_transport`` with ``HKRL_ENABLE_INPROCESS_SHM=1``
+    for explicit test/prototype construction; production HKRLEnvMod connections
+    currently use TCP.
     """
 
     def __init__(self, name: str = "hkrl_env", req_slots: int = 8, resp_slots: int = 8) -> None:

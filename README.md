@@ -23,7 +23,7 @@ Hollow Knight + HKRLEnvMod (C#)        Game PC                  Remote GPU
   ├─ Action 应用 (FixedUpdate)   <───>  │ GameWorker   │ ──────> │ Learner      │
   ├─ Reward events 上报                 │ 本地推理      │ rollout │ PPO/APPO     │
   └─ Clean Episode Lifecycle           │ Gym Env      │ <────── │ checkpoint   │
-       │ FlatBuffers over TCP/SHM      └──────────────┘ weights └──────────────┘
+       │ FlatBuffers over TCP          └──────────────┘ weights └──────────────┘
        └────────────────────────────────────┘
 ```
 
@@ -31,7 +31,7 @@ Hollow Knight + HKRLEnvMod (C#)        Game PC                  Remote GPU
 
 1. 实时 action loop 永不跨远程网络。
 2. `schema/hkrl.fbs` 是 observation/action/protocol 的唯一真相源。
-3. Transport 可插拔（TCP / shared-memory）。
+3. Transport 可插拔（当前 live mod 使用 TCP；shared-memory 是显式 opt-in 原型）。
 4. Config 驱动 + 组件注册表。
 5. Clean Episode Lifecycle，杜绝 reset 污染。
 6. 模型 encoder/attention/memory/heads 解耦，全程 entity_mask。
@@ -270,14 +270,16 @@ bindings，再执行格式检查、lint、typecheck 和 tests。如果本机有 
 
 ## 当前状态
 
-Roadmap 已推进到 **Phase 8**：本地 Gym env、step/reset lifecycle、TCP/SHM
+Roadmap 已推进到 **Phase 8**：本地 Gym env、step/reset lifecycle、TCP live
 transport、reward events、action mask、entity observation、PPO/RecurrentPPO/APPO、
 worker/learner/checkpoint/coordinator/evaluator 等核心路径均已落地并由
 `make check` 覆盖。
 
-本仓库当前仍有两个需要真实外部环境验证的边界：HKRLEnvMod 的 C# 编译依赖本机
-Hollow Knight Managed 程序集与 HK Modding API；端到端 smoke/eval/training 依赖
-运行中的 Hollow Knight + HKRLEnvMod TCP 服务。
+本仓库当前仍有三个需要真实外部环境或后续实现验证的边界：HKRLEnvMod 的 C# 编译
+依赖本机 Hollow Knight Managed 程序集与 HK Modding API；端到端
+smoke/eval/training 依赖运行中的 Hollow Knight + HKRLEnvMod TCP 服务；
+shared-memory transport 目前是 Python 进程内原型，不是可接入当前 mod 的 live
+transport。
 
 ## License
 

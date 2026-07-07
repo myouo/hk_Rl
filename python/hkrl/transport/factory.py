@@ -11,6 +11,8 @@ from hkrl.transport.base import Transport
 from hkrl.utils.config import TrainConfig, resolve_auth_token
 from hkrl.utils.registry import get
 
+INPROCESS_SHM_ENV = "HKRL_ENABLE_INPROCESS_SHM"
+
 
 def make_transport(
     config: TrainConfig,
@@ -30,6 +32,13 @@ def make_transport(
         )
 
     if config.transport.name == "shm":
+        if not _inprocess_shm_enabled(environ):
+            raise ValueError(
+                "transport.name='shm' is currently an in-process Python prototype, "
+                "not a live HKRLEnvMod shared-memory transport. Use transport.name='tcp' "
+                f"for live game runs, or set {INPROCESS_SHM_ENV}=1 for explicit "
+                "prototype/test use."
+            )
         return transport_cls(
             name=config.transport.shm_name,
             req_slots=config.transport.req_slots,
@@ -59,3 +68,8 @@ def _env_transport_auth_token(
     if token is None or token == "":
         return None
     return token
+
+
+def _inprocess_shm_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    env = os.environ if environ is None else environ
+    return env.get(INPROCESS_SHM_ENV, "").strip().lower() in {"1", "true", "yes", "on"}

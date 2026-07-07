@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hkrl.transport.factory import make_transport
 from hkrl.transport.shared_memory import SharedMemoryTransport
 from hkrl.transport.tcp import TcpTransport
@@ -57,7 +58,14 @@ def test_make_transport_ignores_empty_optional_env_auth_token() -> None:
     assert transport.auth_token is None
 
 
-def test_make_transport_builds_shared_memory_without_auth_token() -> None:
+def test_make_transport_rejects_shared_memory_for_live_env_by_default() -> None:
+    config = TrainConfig(transport={"name": "shm"})
+
+    with pytest.raises(ValueError, match="in-process Python prototype"):
+        make_transport(config, environ={})
+
+
+def test_make_transport_builds_explicit_inprocess_shared_memory() -> None:
     config = TrainConfig(
         transport={
             "name": "shm",
@@ -68,7 +76,7 @@ def test_make_transport_builds_shared_memory_without_auth_token() -> None:
         security={"require_token": True, "auth_token_env": "HKRL_TEST_TOKEN"},
     )
 
-    transport = make_transport(config, environ={})
+    transport = make_transport(config, environ={"HKRL_ENABLE_INPROCESS_SHM": "1"})
 
     assert isinstance(transport, SharedMemoryTransport)
     assert transport.name == "hkrl_test"

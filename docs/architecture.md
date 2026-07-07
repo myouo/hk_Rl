@@ -18,7 +18,7 @@
 +----------------------------------v-------------------------------+
 |                            Game PC                                |
 |   GameWorker (local inference, Gym Env)  <-->  HKRLEnvMod (C#)     |
-|        obs -> local policy -> action -> game   (FlatBuffers/TCP|SHM)|
+|        obs -> local policy -> action -> game   (FlatBuffers/TCP)    |
 +------------------------------------------------------------------+
 ```
 
@@ -38,10 +38,12 @@ These hold across the whole codebase. Violating one is a design regression.
    consume generated bindings. Change the schema, never the bindings. See
    [`../schema/README.md`](../schema/README.md), [ADR-0002](./adr/0002-serialization-flatbuffers.md).
 3. **Transport is pluggable.** Everything talks through the `Transport`
-   interface; TCP (MVP, cross-machine-capable) and shared-memory ring buffer
-   (lowest-latency local) are interchangeable without touching env/model code.
-   Python entry points construct transports through `hkrl.transport.factory`
-   from YAML config rather than instantiating TCP directly.
+   interface; TCP is the live HKRLEnvMod transport today. Shared-memory remains
+   an in-process Python prototype behind an explicit opt-in until the mod ships
+   a real OS shared-memory server. Env/model code still depends only on the
+   transport interface, and Python entry points construct transports through
+   `hkrl.transport.factory` from YAML config rather than instantiating TCP
+   directly.
 4. **Config-driven + component registry.** Models, transports, reward functions,
    tasks register by name (`hkrl.utils.registry`) and are selected from YAML
    (`hkrl.utils.config`). Adding a boss or a model variant requires no core edits.
@@ -67,11 +69,11 @@ These hold across the whole codebase. Violating one is a design regression.
 
 ```text
 GameWorker                         HKRLEnvMod (main thread)
-  build StepRequest(action)  ──TCP/SHM──▶  enqueue (network thread)
+  build StepRequest(action)  ──TCP──────▶  enqueue (network thread)
                                            FixedUpdate: dequeue latest action,
                                              apply, collect obs+reward events,
                                              write StepResponse to out-queue
-  decode StepResponse        ◀──TCP/SHM──  send (network thread)
+  decode StepResponse        ◀──TCP──────  send (network thread)
   reward = reward_fn(events)
   buffer.add(obs, action, reward, value, logprob, hidden, mask)
   if buffer full: upload RolloutBatch ──▶ Learner
@@ -89,7 +91,8 @@ final reward.
   render quality, parallel instances, fast reset.
 - Hot-path decode is zero-copy (FlatBuffers); `info` JSON is debug-only, never on
   the hot path.
-- Local shared-memory transport for single-machine high-SPS; TCP for portability.
+- TCP is the supported live transport. Local shared-memory remains the planned
+  high-SPS path for single-machine runs after the mod-side SHM server lands.
 - Training: large-batch on GPU, `torch.compile` + mixed precision, sequence
   (truncated-BPTT) batching for recurrent policies.
 

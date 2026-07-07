@@ -2,9 +2,8 @@
 
 A Transport carries length-prefixed FlatBuffers frames between the worker and the
 mod. Implementations MUST NOT interpret message contents beyond framing — decode
-belongs in ``hkrl.protocol``. Two implementations ship: ``tcp`` (portable,
-cross-machine) and ``shared_memory`` (low-latency local). They are interchangeable
-without touching env/model code.
+belongs in ``hkrl.protocol``. TCP is the supported live HKRLEnvMod transport;
+``shared_memory`` is currently an explicit opt-in in-process prototype.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ class Transport(Protocol):
     """
 
     def connect(self, timeout_s: float = 10.0) -> None:
-        """Establish the connection (or attach to shared memory). Blocking."""
+        """Establish or attach the transport backend. Blocking."""
         ...
 
     def send(self, frame: bytes) -> None:

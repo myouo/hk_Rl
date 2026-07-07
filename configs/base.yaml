@@ -18,7 +18,7 @@ max_grad_norm: 0.5
 seed: 0
 
 transport:
-  name: tcp        # tcp | shm
+  name: tcp        # tcp for live HKRLEnvMod; shm requires HKRL_ENABLE_INPROCESS_SHM=1 prototype opt-in
   host: 127.0.0.1
   port: 5555
   shm_name: hkrl_env

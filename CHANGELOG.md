@@ -608,6 +608,10 @@ the project version tracks the **schema_version** + roadmap phase.
   `run_worker`, `run_learner`, `run_eval`).
 
 ### Fixed
+- Config-driven env transport now rejects `transport.name: shm` by default
+  because the current HKRLEnvMod does not ship a live shared-memory server; set
+  `HKRL_ENABLE_INPROCESS_SHM=1` only for the explicit Python prototype/test
+  transport.
 - CheckpointClient now bypasses system HTTP proxies for localhost/private
   checkpoint registries, keeping worker checkpoint pulls local and stable in
   proxied developer environments.
