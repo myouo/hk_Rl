@@ -212,6 +212,27 @@ def test_mod_tcp_server_drains_outbound_only_after_auth() -> None:
     assert server.index("if (authenticated)") < server.index("DrainOutbound(stream);")
 
 
+def test_mod_tcp_server_accepts_reconnect_after_half_closed_client() -> None:
+    root = Path(__file__).parents[2]
+    server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
+
+    assert "IsClientDisconnected(client)" in server
+    assert "socket.Poll(0, SelectMode.SelectRead)" in server
+    assert "socket.Available == 0" in server
+    assert server.index("IsClientDisconnected(client)") < server.index("stream.DataAvailable")
+
+
+def test_mod_tcp_server_clears_connection_queues_between_clients() -> None:
+    root = Path(__file__).parents[2]
+    server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
+
+    assert "ClearConnectionQueues();" in server
+    assert "InboundRequests.TryDequeue" in server
+    assert "OutboundResponses.TryDequeue" in server
+    assert server.index("ConfigureClient(client);") < server.index("ClearConnectionQueues();")
+    assert server.index("ClearConnectionQueues();") < server.index("_client = client;")
+
+
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")

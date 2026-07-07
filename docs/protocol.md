@@ -88,8 +88,12 @@ lifecycle but does not apply input.
   unhealthy and attempts reconnect.
 - **Timeout:** every request has a deadline; on timeout the worker reconnects and
   forces a `RESET`.
-- **Reconnect:** the mod's network thread accepts a new connection and resets the
-  env; `env_id` + `episode_id` disambiguate stale buffers.
+- **Reconnect:** the mod's network thread accepts a new connection; the Python
+  worker/env then forces a `RESET` on the main-thread lifecycle path. `env_id`
+  + `episode_id` disambiguate stale buffers.
+  The TCP server detects half-closed clients and clears per-connection request /
+  response queues before accepting the next client, so stale responses from a
+  dead worker cannot be delivered to a reconnecting worker or evaluator.
 
 ## 6. Threading contract (mod side)
 

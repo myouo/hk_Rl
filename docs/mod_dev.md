@@ -52,6 +52,11 @@ Python env clients (`check_env.py`, local training, workers, evaluators) send
 the same non-empty token automatically when it is present. Sending the auth
 preface is harmless when mod auth is disabled, so local smoke commands do not
 need a separate config edit just to match a token-enabled mod.
+The TCP server treats each client connection as an isolated env session: when a
+worker/evaluator disconnects or reconnects, the network thread clears queued
+request/response frames and detects half-closed sockets before accepting the
+next client. The Python side still issues a clean `RESET` after reconnect; the
+network thread only moves frames and never touches Unity state.
 
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching

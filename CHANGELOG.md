@@ -41,6 +41,9 @@ the project version tracks the **schema_version** + roadmap phase.
   require token auth.
 - Mod TCP server now drains outbound response frames only after authentication,
   preventing stale responses from being exposed to unauthenticated clients.
+- Mod TCP server now detects half-closed clients and clears per-connection
+  request/response queues on reconnect so stale frames from a dead worker are
+  not delivered to the next live env client.
 - `scripts/run_eval.py` now uses the same security token config for evaluator TCP
   env connections.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with

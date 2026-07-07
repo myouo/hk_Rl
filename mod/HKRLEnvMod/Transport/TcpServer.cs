@@ -105,6 +105,7 @@ namespace HKRLEnvMod.Transport
 
                     using var client = listener.AcceptTcpClient();
                     ConfigureClient(client);
+                    ClearConnectionQueues();
                     _client = client;
                     ServeClient(client);
                 }
@@ -137,6 +138,11 @@ namespace HKRLEnvMod.Transport
 
             while (_running && client.Connected)
             {
+                if (IsClientDisconnected(client))
+                {
+                    return;
+                }
+
                 if (authenticated)
                 {
                     DrainOutbound(stream);
@@ -170,6 +176,23 @@ namespace HKRLEnvMod.Transport
                 }
 
                 InboundRequests.Enqueue(payload);
+            }
+        }
+
+        private static bool IsClientDisconnected(TcpClient client)
+        {
+            try
+            {
+                var socket = client.Client;
+                return socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0;
+            }
+            catch (SocketException)
+            {
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                return true;
             }
         }
 
@@ -254,7 +277,18 @@ namespace HKRLEnvMod.Transport
         {
             var client = _client;
             _client = null;
+            ClearConnectionQueues();
             client?.Close();
+        }
+
+        private void ClearConnectionQueues()
+        {
+            while (InboundRequests.TryDequeue(out _))
+            {
+            }
+            while (OutboundResponses.TryDequeue(out _))
+            {
+            }
         }
 
         private static void ConfigureClient(TcpClient client)
