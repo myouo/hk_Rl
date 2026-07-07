@@ -97,9 +97,11 @@ run: it loads task YAMLs, creates expected worker assignments, ingests optional
 heartbeat JSONL, applies optional evaluator win-rate metrics to task-sampler
 weights, and prints a JSON monitoring snapshot.
 `scripts/run_phase8_smoke.py` automates the offline version of that distributed
-smoke path. It builds the learner from task YAMLs, publishes a local checkpoint
-registry, runs a worker dry-run against that registry, writes synthetic
-heartbeats/evaluator metrics, and feeds them through the coordinator snapshot.
+smoke path. It builds the learner from task YAMLs, uses the learner startup
+checkpoint as a loadable registry seed, publishes a follow-up checkpoint from
+the same model state for stale-worker evidence, runs a worker dry-run against
+that registry, writes synthetic heartbeats/evaluator metrics from the registry
+checkpoint metadata, and feeds them through the coordinator snapshot.
 When `--work-dir` is provided, the script resets its generated checkpoints,
 batches, heartbeat JSONL, and evaluator metrics before writing new artifacts and
 holds a work-directory lock while running, so repeated or concurrent

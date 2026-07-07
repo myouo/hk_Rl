@@ -9,6 +9,8 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import torch
+from hkrl.learner.checkpoint_registry import CheckpointRegistry
 
 
 def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> None:
@@ -38,6 +40,10 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     summary = module.run_from_args(args)
 
     assert summary["ok"] is True
+    assert summary["checkpoint_policy_versions"] == [
+        {"policy_version": 0, "version": 1},
+        {"policy_version": 1, "version": 2},
+    ]
     assert summary["checkpoint_versions"] == [1, 2]
     assert summary["task_ids"] == ["gruz_mother", "hornet_protector_attuned"]
     assert summary["worker_ids"] == ["worker-0", "worker-1"]
@@ -53,7 +59,20 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     assert summary["coordinator"]["metrics"]["recovering_worker_count"] == 1.0
     assert summary["coordinator"]["metrics"]["stale_policy_worker_count"] == 1.0
     assert summary["coordinator"]["metrics"]["worker_policy_lag_max"] == 1.0
+    assert summary["coordinator"]["metrics"]["worker_policy_version_max"] == 1.0
+    assert summary["coordinator"]["metrics"]["worker_policy_version_min"] == 0.0
+    assert summary["coordinator"]["workers"]["worker-0"]["metrics"]["policy_version"] == 1.0
+    assert summary["coordinator"]["workers"]["worker-1"]["metrics"]["policy_version"] == 0.0
     assert Path(summary["artifacts"]["heartbeat_jsonl"]).exists()
+    registry = CheckpointRegistry(summary["artifacts"]["checkpoint_dir"])
+    checkpoint_state = torch.load(
+        registry.resolve_path(registry.get(2)),
+        map_location="cpu",
+        weights_only=True,
+    )
+    assert checkpoint_state["policy_version"] == 1
+    assert "smoke_weight" not in checkpoint_state["model_state_dict"]
+    assert checkpoint_state["model_state_dict"]
     assert json.loads(output.read_text(encoding="utf-8"))["ok"] is True
     assert "HKRL Phase 8 Dashboard" in dashboard_html.read_text(encoding="utf-8")
     assert json.loads(dashboard_json.read_text(encoding="utf-8"))["metrics"]["sps"] == 32.0

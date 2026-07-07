@@ -26,7 +26,8 @@ from typing import Any
 
 import torch
 
-from hkrl.learner.checkpoint_registry import CheckpointRegistry
+from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
+from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
 from hkrl.utils.config import load_task_config
 
 
@@ -108,11 +109,12 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
             tier=None,
         )
     )
-    checkpoint_versions = _publish_smoke_checkpoints(checkpoint_dir)
+    checkpoint_metas = _publish_smoke_checkpoints(checkpoint_dir)
+    checkpoint_versions = [meta.version for meta in checkpoint_metas]
     _write_heartbeat_jsonl(
         heartbeat_jsonl,
         worker_ids=worker_ids,
-        latest_checkpoint=checkpoint_versions[-1],
+        checkpoint_metas=checkpoint_metas,
     )
     _write_eval_metrics(eval_metrics_json, [task.task_id for task in tasks])
 
@@ -153,6 +155,10 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
             "heartbeat_jsonl": str(heartbeat_jsonl),
             "work_dir": str(work_dir),
         },
+        "checkpoint_policy_versions": [
+            {"policy_version": meta.policy_version, "version": meta.version}
+            for meta in checkpoint_metas
+        ],
         "checkpoint_versions": checkpoint_versions,
         "config": args.config,
         "coordinator": coordinator_summary,
@@ -164,48 +170,60 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
     }
 
 
-def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[int]:
+def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[CheckpointMeta]:
     registry = CheckpointRegistry(str(checkpoint_dir))
-    versions: list[int] = []
     latest = registry.latest()
-    if latest is not None:
-        versions.append(latest.version)
+    if latest is None:
+        raise RuntimeError("phase8 smoke requires learner startup checkpoint")
 
-    policy_version = 1
-    while len(versions) < 2:
+    source_state = validate_checkpoint_payload(
+        torch.load(
+            registry.resolve_path(latest),
+            map_location="cpu",
+            weights_only=True,
+        )
+    )
+    metas = [latest]
+    while len(metas) < 2:
+        policy_version = metas[-1].policy_version + 1
         meta = registry.publish(
             {
-                "model_state_dict": {
-                    "smoke_weight": torch.tensor([float(policy_version)]),
-                },
+                "model_state_dict": source_state["model_state_dict"],
                 "policy_version": policy_version,
+                "update": policy_version,
+                "metrics": {"phase8_smoke": 1.0},
             },
             policy_version=policy_version,
             step=policy_version,
         )
-        versions.append(meta.version)
-        policy_version += 1
-    return versions
+        metas.append(meta)
+    return metas
 
 
 def _write_heartbeat_jsonl(
     path: Path,
     *,
     worker_ids: list[str],
-    latest_checkpoint: int,
+    checkpoint_metas: list[CheckpointMeta],
 ) -> None:
+    if not checkpoint_metas:
+        raise ValueError("checkpoint_metas must not be empty")
+
+    current_meta = checkpoint_metas[-1]
+    stale_meta = checkpoint_metas[-2] if len(checkpoint_metas) > 1 else current_meta
     records: list[dict[str, Any]] = []
     for index, worker_id in enumerate(worker_ids):
         current = index == 0
+        meta = current_meta if current else stale_meta
         records.append(
             {
                 "payload": {
-                    "checkpoint_version": latest_checkpoint if current else latest_checkpoint - 1,
+                    "checkpoint_version": meta.version,
                     "learner_upload_accepted_batches": 0,
                     "learner_upload_failed_batches": 0,
                     "learner_upload_rejected_batches": 0,
                     "learner_upload_submitted_batches": 0,
-                    "policy_version": 2 if current else 1,
+                    "policy_version": meta.policy_version,
                     "rollout_duration_s": 4.0 if current else 0.0,
                     "rollout_steps": 128 if current else 0,
                     "sps": 32.0 if current else 0.0,

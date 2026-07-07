@@ -134,6 +134,9 @@ the project version tracks the **schema_version** + roadmap phase.
   resumes the latest registry checkpoint at startup, so workers collect their
   first rollout from hash-verified learner weights instead of independent random
   initialization.
+- Phase 8 smoke checkpoints now reuse the learner startup model state and report
+  checkpoint-to-policy-version metadata, so offline worker/coordinator evidence
+  no longer depends on an unloadable synthetic checkpoint payload.
 - `run_worker.py` can now append coordinator-compatible heartbeat JSONL for
   offline/fallback monitoring snapshots.
 - Evaluator and `run_eval.py` can now emit per-step replay JSONL for fixed-seed
