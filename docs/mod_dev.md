@@ -59,7 +59,8 @@ next client. The Python side still issues a clean `RESET` after reconnect; the
 network thread only moves frames and never touches Unity state. Request and
 response queue entries carry a mod-internal transport-session id so delayed
 main-thread responses from a disconnected client cannot be drained to the next
-client.
+client. The main-thread controller also clears held input/repeat state when
+client session state changes or a control command preempts a repeat.
 
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching

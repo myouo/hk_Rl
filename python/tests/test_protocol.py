@@ -239,6 +239,7 @@ def test_mod_tcp_server_tags_queued_frames_with_transport_session() -> None:
 
     assert "public readonly struct QueuedFrame" in server
     assert "public long SessionId { get; }" in server
+    assert "public bool HasClient => _client != null;" in server
     assert "Interlocked.Increment(ref _sessionId)" in server
     assert "InboundRequests.Enqueue(new QueuedFrame(sessionId, payload))" in server
     assert "OutboundResponses.Enqueue(new QueuedFrame(sessionId, frame))" in server
@@ -271,6 +272,20 @@ def test_mod_step_controller_cancels_repeated_steps_after_reconnect() -> None:
     )
 
 
+def test_mod_step_controller_clears_input_on_connection_state_change() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "RefreshConnectionControlState();" in controller
+    assert "_server.CurrentSessionId" in controller
+    assert "_server.HasClient" in controller
+    assert "_observedSessionId = currentSessionId" in controller
+    assert "_observedHasClient = hasClient" in controller
+    assert "ClearControlState();" in controller
+    assert "private void ClearControlState()" in controller
+    assert "_actions.Clear();" in controller
+
+
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
@@ -288,11 +303,11 @@ def test_mod_step_controller_new_requests_preempt_repeated_steps() -> None:
     drain_idx = controller.index("var pendingRequest = DrainLatestRequest();")
     repeat_idx = controller.index("var request = _repeatRequest;")
     assert drain_idx < repeat_idx
-    assert "CancelRepeatedStep();" in controller
+    assert "ClearControlState();" in controller
 
     reset_idx = controller.index("case HKRL.Command.Reset:")
     step_idx = controller.index("case HKRL.Command.Step:")
-    assert "CancelRepeatedStep();" in controller[reset_idx:step_idx]
+    assert "ClearControlState();" in controller[reset_idx:step_idx]
 
 
 def test_mod_step_controller_rejects_non_poll_step_before_running() -> None:
@@ -340,6 +355,7 @@ def test_mod_step_controller_guards_fixed_tick() -> None:
     assert "FixedTickCore()" in controller
     assert "catch (System.Exception exception)" in controller
     assert 'Logger.Error("StepController FixedTick failed"' in controller
+    assert "ClearControlState();" in controller
     assert "_repeatRequest = null;" in controller
     assert "_repeatTicksRemaining = 0;" in controller
 

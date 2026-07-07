@@ -47,6 +47,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod TCP request/response queues now carry an internal transport-session id so
   delayed main-thread responses and repeated-step completions from an old
   client connection are discarded after reconnect.
+- Mod StepController now clears held input state when TCP client/session state
+  changes or control commands preempt repeated actions, preventing stale inputs
+  after disconnect/reconnect.
 - `scripts/run_eval.py` now uses the same security token config for evaluator TCP
   env connections.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with

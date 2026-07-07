@@ -98,6 +98,9 @@ lifecycle but does not apply input.
   owned by the mod TCP server. The id is not part of `schema/hkrl.fbs`; it only
   prevents delayed main-thread responses or repeated-step completions from an old
   socket being written to the next client connection.
+  The main-thread controller also clears repeated-step and held-input state when
+  client/session state changes, or when a control command preempts an in-flight
+  repeat, so the next live client does not inherit a stale pressed input.
 
 ## 6. Threading contract (mod side)
 

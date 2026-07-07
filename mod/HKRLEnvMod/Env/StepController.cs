@@ -27,6 +27,8 @@ namespace HKRLEnvMod.Env
         private ulong _serverTick;
         private ulong _episodeStartServerTick;
         private ulong _runningEpisodeId;
+        private long _observedSessionId;
+        private bool _observedHasClient;
         private DecodedStepRequest? _repeatRequest;
         private long _repeatSessionId;
         private int _repeatTicksRemaining;
@@ -79,7 +81,7 @@ namespace HKRLEnvMod.Env
             }
             catch (System.Exception exception)
             {
-                CancelRepeatedStep();
+                ClearControlState();
                 global::HKRLEnvMod.Debug.Logger.Error("StepController FixedTick failed", exception);
             }
         }
@@ -87,6 +89,7 @@ namespace HKRLEnvMod.Env
         private void FixedTickCore()
         {
             _serverTick++;
+            RefreshConnectionControlState();
 
             var pendingRequest = DrainLatestRequest();
             var commandError = HKRL.StatusCode.Ok;
@@ -100,7 +103,7 @@ namespace HKRLEnvMod.Env
                     return;
                 }
 
-                CancelRepeatedStep();
+                ClearControlState();
                 commandError = Dispatch(request);
                 state = ShouldAdvanceLifecycle(request)
                     ? AdvanceLifecycle()
@@ -125,7 +128,7 @@ namespace HKRLEnvMod.Env
                 var sessionId = _repeatSessionId;
                 if (!_server.IsCurrentSession(sessionId))
                 {
-                    CancelRepeatedStep();
+                    ClearControlState();
                     return;
                 }
 
@@ -139,6 +142,20 @@ namespace HKRLEnvMod.Env
                 CancelRepeatedStep();
                 EnqueueStepResponse(sessionId, request, commandError, state);
             }
+        }
+
+        private void RefreshConnectionControlState()
+        {
+            var currentSessionId = _server.CurrentSessionId;
+            var hasClient = _server.HasClient;
+            if (currentSessionId == _observedSessionId && hasClient == _observedHasClient)
+            {
+                return;
+            }
+
+            _observedSessionId = currentSessionId;
+            _observedHasClient = hasClient;
+            ClearControlState();
         }
 
         private void EnqueueStepResponse(
@@ -278,8 +295,7 @@ namespace HKRLEnvMod.Env
                 {
                     case HKRL.Command.Reset:
                     case HKRL.Command.SetTask:
-                        CancelRepeatedStep();
-                        _actions.Clear();
+                        ClearControlState();
                         _rewards.Clear();
                         _rewardTracker.Reset();
                         _runningEpisodeId = 0;
@@ -326,6 +342,12 @@ namespace HKRLEnvMod.Env
             _repeatRequest = null;
             _repeatSessionId = 0;
             _repeatTicksRemaining = 0;
+        }
+
+        private void ClearControlState()
+        {
+            CancelRepeatedStep();
+            _actions.Clear();
         }
 
         private readonly struct PendingRequest

@@ -147,9 +147,11 @@ namespace HKRLEnvMod.Transport
 
         public long CurrentSessionId => Interlocked.Read(ref _sessionId);
 
+        public bool HasClient => _client != null;
+
         public bool IsCurrentSession(long sessionId)
         {
-            return sessionId == CurrentSessionId && _client != null;
+            return sessionId == CurrentSessionId && HasClient;
         }
 
         public void EnqueueResponse(long sessionId, byte[] frame)
