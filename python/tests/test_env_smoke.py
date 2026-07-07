@@ -6,7 +6,11 @@ Live rollout tests need a running HKRLEnvMod connection and are marked
 
 from __future__ import annotations
 
+import socket
+import struct
+import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import flatbuffers
@@ -80,6 +84,82 @@ class ScriptedTransport:
     def close(self) -> None:
         self.closed = True
         self.connected = False
+
+
+class TcpModStub:
+    def __init__(
+        self,
+        *,
+        auth_token: str | None = None,
+        response_lifecycles: list[protocol.LifecycleState] | None = None,
+    ) -> None:
+        self.auth_token = auth_token
+        self.response_lifecycles = response_lifecycles or [protocol.LifecycleState.RUNNING]
+        self.auth_payloads: list[bytes] = []
+        self.requests: list[Any] = []
+        self.error: BaseException | None = None
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> tuple[str, int]:
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen(1)
+        host, port = self._server.getsockname()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return str(host), int(port)
+
+    def join(self, *, timeout_s: float) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout=timeout_s)
+        self._server.close()
+        if self._thread is not None and self._thread.is_alive():
+            raise AssertionError("TCP mod stub did not stop")
+
+    def _run(self) -> None:
+        try:
+            self._server.settimeout(2.0)
+            conn, _ = self._server.accept()
+            with conn:
+                conn.settimeout(2.0)
+                self._serve(conn)
+        except BaseException as exc:
+            self.error = exc
+        finally:
+            self._server.close()
+
+    def _serve(self, conn: socket.socket) -> None:
+        expected_requests = len(self.response_lifecycles)
+        authenticated = self.auth_token is None
+        while len(self.requests) < expected_requests:
+            payload = _recv_tcp_frame(conn)
+            if payload.startswith(b"HKRL_AUTH\0"):
+                self.auth_payloads.append(payload)
+                token = payload.removeprefix(b"HKRL_AUTH\0").decode("utf-8")
+                if token != self.auth_token:
+                    raise AssertionError("invalid auth token")
+                authenticated = True
+                continue
+            if not authenticated:
+                raise AssertionError("request arrived before auth frame")
+
+            assert FbStepRequest.StepRequest.StepRequestBufferHasIdentifier(payload, 0)
+            request = FbStepRequest.StepRequest.GetRootAs(payload, 0)
+            self.requests.append(request)
+            lifecycle = self.response_lifecycles[len(self.requests) - 1]
+            response = _build_response(
+                request,
+                lifecycle=lifecycle,
+                reward_kind=(
+                    protocol.RewardEventKind.DAMAGE_DEALT
+                    if len(self.requests) == expected_requests
+                    else None
+                ),
+                reward_amount=2.0,
+                server_tick=100 + len(self.requests),
+            )
+            conn.sendall(struct.pack("<I", len(response)) + response)
 
 
 def test_env_module_imports() -> None:
@@ -186,6 +266,59 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     assert terminated is False
     assert truncated is False
     assert info["reward_events"][0].kind is protocol.RewardEventKind.DAMAGE_DEALT
+
+
+def test_env_reset_and_step_over_real_tcp_transport_with_auth() -> None:
+    from hkrl.env import HKRLEnv
+    from hkrl.transport.tcp import TcpTransport
+
+    task = load_task_config(_repo_root() / "configs/tasks/gruz_mother.yaml").model_copy(
+        update={"wire_id": 13}
+    )
+    server = TcpModStub(
+        auth_token="secret",
+        response_lifecycles=[
+            protocol.LifecycleState.COUNTDOWN,
+            protocol.LifecycleState.RUNNING,
+            protocol.LifecycleState.RUNNING,
+        ],
+    )
+    host, port = server.start()
+    env = HKRLEnv(transport=TcpTransport(host, port, auth_token="secret"), task=task)
+
+    try:
+        obs, info = env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.5})
+        _, reward, terminated, truncated, step_info = env.step(
+            {
+                "movement_x": 2,
+                "aim_y": 1,
+                "buttons": {"attack": True},
+                "duration": 0,
+                "macro": 1,
+            }
+        )
+    finally:
+        env.close()
+        server.join(timeout_s=1.0)
+
+    assert server.auth_payloads == [b"HKRL_AUTH\0secret"]
+    assert [protocol.Command(req.Command()) for req in server.requests] == [
+        protocol.Command.RESET,
+        protocol.Command.STEP,
+        protocol.Command.STEP,
+    ]
+    assert [req.TickId() for req in server.requests] == [0, 1, 2]
+    assert all(req.TaskId() == 13 for req in server.requests)
+    assert server.requests[-1].ActionRepeat() == task.action.action_repeat
+    assert server.requests[-1].Action().Buttons() == 1 << 3
+    assert server.requests[-1].Action().MacroId() == 0
+    assert env.observation_space.contains(obs)
+    assert info["lifecycle_state"] is protocol.LifecycleState.RUNNING
+    assert step_info["lifecycle_state"] is protocol.LifecycleState.RUNNING
+    assert reward == pytest.approx(2.0 + task.reward.time_penalty)
+    assert terminated is False
+    assert truncated is False
+    assert server.error is None
 
 
 def test_env_step_uses_server_tick_delta_for_reward_dt() -> None:
@@ -701,3 +834,25 @@ def _build_bool_vector(
     for value in reversed(values):
         builder.PrependBool(value)
     return builder.EndVector()
+
+
+def _recv_tcp_frame(conn: socket.socket) -> bytes:
+    header = _recv_exact(conn, 4)
+    (length,) = struct.unpack("<I", header)
+    return _recv_exact(conn, length)
+
+
+def _recv_exact(conn: socket.socket, size: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = size
+    while remaining > 0:
+        chunk = conn.recv(remaining)
+        if chunk == b"":
+            raise ConnectionError("TCP peer closed")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _repo_root() -> Path:
+    return Path(__file__).parents[2]
