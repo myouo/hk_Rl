@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PlayMaker</AssemblyName>
+    <RootNamespace>PlayMaker</RootNamespace>
+  </PropertyGroup>
+</Project>

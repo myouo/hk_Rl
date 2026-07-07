@@ -25,23 +25,23 @@
   <ItemGroup>
     <!-- Hollow Knight + Unity + Modding API assemblies (resolved from the local install). -->
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(HollowKnightManaged)\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(HollowKnightManaged)/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>$(HollowKnightManaged)\UnityEngine.dll</HintPath>
+      <HintPath>$(HollowKnightManaged)/UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(HollowKnightManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(HollowKnightManaged)/UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="MMHOOK_Assembly-CSharp">
-      <HintPath>$(HollowKnightManaged)\MMHOOK_Assembly-CSharp.dll</HintPath>
+      <HintPath>$(HollowKnightManaged)/MMHOOK_Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="PlayMaker">
-      <HintPath>$(HollowKnightManaged)\PlayMaker.dll</HintPath>
+      <HintPath>$(HollowKnightManaged)/PlayMaker.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
@@ -49,7 +49,8 @@
   <ItemGroup>
     <!-- FlatBuffers C# runtime + (generated) bindings. Generated code under
          Schema/ is gitignored; run `make gen-schema-cs`. -->
-    <PackageReference Include="Google.FlatBuffers" Version="24.3.25" />
+    <PackageReference Include="Google.FlatBuffers" Version="23.5.26" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

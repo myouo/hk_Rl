@@ -152,10 +152,10 @@ namespace HKRLEnvMod.Observation
             }
 
             var type = fsm.GetType();
-            var activeStateName = type.GetProperty("ActiveStateName")?.GetValue(
+            string? activeStateName = type.GetProperty("ActiveStateName")?.GetValue(
                 fsm,
                 null) as string;
-            if (!string.IsNullOrEmpty(activeStateName))
+            if (activeStateName is { Length: > 0 })
             {
                 return activeStateName;
             }

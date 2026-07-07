@@ -33,6 +33,7 @@ logs/
 replays/
 
 # ---- C# / .NET ----
+.refs/
 bin/
 obj/
 *.user

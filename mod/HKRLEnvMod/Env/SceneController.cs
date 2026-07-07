@@ -48,7 +48,7 @@ namespace HKRLEnvMod.Env
 
         public bool IsPlayerReady()
         {
-            global::HeroController hero = global::HeroController.instance;
+            global::HeroController? hero = global::HeroController.instance;
             return hero != null && hero.gameObject != null && hero.gameObject.activeInHierarchy;
         }
 

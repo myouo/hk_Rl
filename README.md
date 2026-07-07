@@ -247,9 +247,11 @@ GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
 `make check`。该目标会先运行 `make gen-schema`，再执行
 `make format-check`、`make lint`、`make typecheck`、`make test`。
 
-云端 CI 当前只覆盖 Python 包。C# mod 构建需要本机 Hollow Knight Managed
-程序集与 HK Modding API 路径，按 [`docs/mod_dev.md`](./docs/mod_dev.md) 在
-配置游戏安装的机器上验证。
+云端 CI 包含 Python 包检查和 C# mod 编译检查。C# workflow 会生成 FlatBuffers
+绑定，并用 `mod/ci-stubs/` 里的最小 Hollow Knight / Unity / Modding API stub
+assemblies 编译 `HKRLEnvMod`，用于持续捕获 C# 语法、项目引用和 schema 绑定问题。
+真实游戏程序集兼容性仍需按 [`docs/mod_dev.md`](./docs/mod_dev.md) 在配置
+Hollow Knight Managed assemblies 与 HK Modding API 的机器上验证。
 
 ## Git Hooks
 

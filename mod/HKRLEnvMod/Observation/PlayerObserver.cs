@@ -99,7 +99,7 @@ namespace HKRLEnvMod.Observation
 
         public PlayerObservation Read()
         {
-            global::HeroController hero = global::HeroController.instance;
+            global::HeroController? hero = global::HeroController.instance;
             if (hero == null)
             {
                 return new PlayerObservation(
@@ -120,7 +120,7 @@ namespace HKRLEnvMod.Observation
             }
 
             Vector3 position = hero.transform.position;
-            Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
+            Rigidbody2D? body = hero.GetComponent<Rigidbody2D>();
             Vector2 velocity = body != null ? body.velocity : Vector2.zero;
             sbyte facing = hero.transform.localScale.x < 0.0f ? (sbyte)(-1) : (sbyte)1;
             var playerData = FindSingleton("PlayerData", "instance");

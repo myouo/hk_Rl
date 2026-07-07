@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>MMHOOK_Assembly-CSharp</AssemblyName>
+    <RootNamespace>MMHOOK_AssemblyCSharp</RootNamespace>
+  </PropertyGroup>
+</Project>

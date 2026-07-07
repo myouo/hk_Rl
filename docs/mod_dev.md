@@ -33,6 +33,9 @@
 (`Managed/Assembly-CSharp.dll`, `UnityEngine.*`, the Modding API). These paths
 are machine-specific — keep them in a local `.csproj.user` / props file, not in
 source. Compilation is deferred until a machine with the game is configured.
+The GitHub `C# Mod Build` workflow compiles the mod against minimal CI stubs
+under `mod/ci-stubs/`; it catches repository-level C# compile/schema drift but
+does not replace a final build against real Hollow Knight assemblies.
 
 At runtime the mod starts the TCP environment server from the persistent
 `HKRLDriver`. Defaults are `127.0.0.1:5555`; set these environment variables

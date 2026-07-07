@@ -1,0 +1,5 @@
+name: hkrl-mod-build
+channels:
+  - conda-forge
+dependencies:
+  - flatbuffers=23.5.26

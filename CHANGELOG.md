@@ -340,6 +340,9 @@ the project version tracks the **schema_version** + roadmap phase.
   endpoint overrides for live smoke, training, and multi-instance worker runs.
 - `scripts/check_env.py` now provides a live HKRLEnvMod PING preflight that
   verifies TCP/schema/auth connectivity without resetting the game scene.
+- GitHub Actions now includes a `C# Mod Build` workflow that generates
+  FlatBuffers C# bindings and compiles `HKRLEnvMod` against checked-in CI stub
+  assemblies for Unity/Hollow Knight/Modding API references.
 - `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
   provider for multi-task rollout smoke/curriculum runs.
 - `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,

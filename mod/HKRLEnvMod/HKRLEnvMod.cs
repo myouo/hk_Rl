@@ -191,7 +191,7 @@ namespace HKRLEnvMod
             try
             {
                 string sceneName = SceneManager.GetActiveScene().name;
-                global::HeroController hero = global::HeroController.instance;
+                global::HeroController? hero = global::HeroController.instance;
 
                 if (hero == null)
                 {

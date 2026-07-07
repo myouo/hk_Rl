@@ -1,0 +1,39 @@
+name: C# Mod Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: mod-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hkrl-env-mod:
+    name: HKRLEnvMod compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up FlatBuffers compiler
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          environment-file: environment-mod-build.yml
+          activate-environment: hkrl-mod-build
+          auto-activate: false
+          mamba-version: "*"
+          use-mamba: true
+
+      - name: Build HKRLEnvMod with CI stubs
+        run: conda run -n hkrl-mod-build bash scripts/build_mod_ci.sh

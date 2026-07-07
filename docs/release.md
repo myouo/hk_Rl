@@ -139,6 +139,11 @@ python scripts/run_eval.py --policy scripted \
 make phase8-eval-report
 ```
 
+GitHub's `C# Mod Build` workflow is an earlier CI signal that compiles the mod
+against checked-in CI stubs. A passing stub build does not prove binary
+compatibility with the installed Hollow Knight assemblies, so the real
+`dotnet build` gate above remains blocking for release.
+
 For multi-instance evaluation, provide one live mod TCP port per intended worker:
 
 ```bash
