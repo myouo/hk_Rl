@@ -56,6 +56,8 @@ class APPO:
             return False
         if current_version - batch.policy_version > self.max_staleness:
             return False
+        if not _batch_is_model_compatible(self.model, batch):
+            return False
         self._queue.append(batch)
         return True
 
@@ -253,6 +255,61 @@ def _batch_has_finite_training_values(batch: RolloutBatch) -> bool:
         if not np.isfinite(np.asarray(getattr(batch, field))).all():
             return False
     return batch.rnn_states is None or bool(np.isfinite(np.asarray(batch.rnn_states)).all())
+
+
+def _batch_is_model_compatible(model: ActorCritic, batch: RolloutBatch) -> bool:
+    """Return False when a worker batch cannot be evaluated by this learner model."""
+    try:
+        device = _model_device(model)
+        tensor_batch = _tensor_batch([_first_transition_batch(batch)], device)
+        with torch.no_grad():
+            log_probs, entropy, values = model.evaluate_actions(
+                tensor_batch.obs,
+                tensor_batch.actions,
+                rnn_state=tensor_batch.rnn_state,
+                action_mask=tensor_batch.action_masks,
+            )
+    except Exception:
+        return False
+
+    expected = tensor_batch.old_log_probs.shape
+    return (
+        tuple(log_probs.shape) == tuple(expected)
+        and tuple(entropy.shape) == tuple(expected)
+        and tuple(values.shape) == tuple(expected)
+    )
+
+
+def _first_transition_batch(batch: RolloutBatch) -> RolloutBatch:
+    return RolloutBatch(
+        obs_global=_first_time_env(batch.obs_global),
+        obs_player=_first_time_env(batch.obs_player),
+        obs_entities=_first_time_env(batch.obs_entities),
+        entity_mask=_first_time_env(batch.entity_mask),
+        actions=_first_time_env(batch.actions),
+        log_probs=_first_time_env(batch.log_probs),
+        values=_first_time_env(batch.values),
+        advantages=_first_time_env(batch.advantages),
+        returns=_first_time_env(batch.returns),
+        rewards=_first_time_env(batch.rewards),
+        dones=_first_time_env(batch.dones),
+        truncateds=_first_time_env(batch.truncateds),
+        action_masks=_first_time_env(batch.action_masks),
+        prev_actions=_first_time_env(batch.prev_actions),
+        prev_rewards=_first_time_env(batch.prev_rewards),
+        rnn_states=None if batch.rnn_states is None else _first_rnn_state(batch.rnn_states),
+        episode_ids=_first_time_env(batch.episode_ids),
+        task_ids=_first_time_env(batch.task_ids),
+        policy_version=batch.policy_version,
+    )
+
+
+def _first_time_env(array: object) -> np.ndarray:
+    return np.asarray(array)[:1, :1].copy()
+
+
+def _first_rnn_state(array: object) -> np.ndarray:
+    return np.asarray(array)[:1, :, :1, :].copy()
 
 
 def _flatten_time_env(array: object, device: torch.device, *, dtype: torch.dtype) -> Tensor:

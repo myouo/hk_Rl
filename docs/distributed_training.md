@@ -62,6 +62,9 @@ if they use a different envelope. Deserialization rejects batches
 whose fields do not share the same `(time, env)` prefix, and rejects recurrent
 state payloads that are not `(time, layers, envs, hidden)`, so malformed worker
 uploads fail at the intake boundary instead of inside the optimizer.
+APPO additionally runs a no-gradient model-compatibility check during ingest so
+rollouts from a worker with the wrong action/mask/observation layout are counted
+as rejected batches instead of crashing the learner update.
 
 For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`

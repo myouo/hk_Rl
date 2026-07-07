@@ -50,6 +50,16 @@ def test_appo_ingest_rejects_non_finite_batches() -> None:
     assert appo.queued_batches == 0
 
 
+def test_appo_ingest_rejects_model_incompatible_batches() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rnn_batch(policy_version=3)
+    batch.actions = np.zeros((4, 1, 13), dtype=np.int64)
+
+    assert not appo.ingest(batch, current_version=3)
+    assert appo.queued_batches == 0
+
+
 def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> None:
     torch.manual_seed(123)
     model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
