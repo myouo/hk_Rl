@@ -56,7 +56,10 @@ The TCP server treats each client connection as an isolated env session: when a
 worker/evaluator disconnects or reconnects, the network thread clears queued
 request/response frames and detects half-closed sockets before accepting the
 next client. The Python side still issues a clean `RESET` after reconnect; the
-network thread only moves frames and never touches Unity state.
+network thread only moves frames and never touches Unity state. Request and
+response queue entries carry a mod-internal transport-session id so delayed
+main-thread responses from a disconnected client cannot be drained to the next
+client.
 
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching

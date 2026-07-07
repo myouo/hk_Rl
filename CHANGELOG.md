@@ -44,6 +44,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Mod TCP server now detects half-closed clients and clears per-connection
   request/response queues on reconnect so stale frames from a dead worker are
   not delivered to the next live env client.
+- Mod TCP request/response queues now carry an internal transport-session id so
+  delayed main-thread responses and repeated-step completions from an old
+  client connection are discarded after reconnect.
 - `scripts/run_eval.py` now uses the same security token config for evaluator TCP
   env connections.
 - SharedMemoryTransport now implements bounded ring send/recv semantics with

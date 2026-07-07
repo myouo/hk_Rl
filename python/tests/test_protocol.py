@@ -208,8 +208,8 @@ def test_mod_tcp_server_drains_outbound_only_after_auth() -> None:
     server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
 
     assert "if (authenticated)" in server
-    assert "DrainOutbound(stream);" in server
-    assert server.index("if (authenticated)") < server.index("DrainOutbound(stream);")
+    assert "DrainOutbound(stream, sessionId);" in server
+    assert server.index("if (authenticated)") < server.index("DrainOutbound(stream, sessionId);")
 
 
 def test_mod_tcp_server_accepts_reconnect_after_half_closed_client() -> None:
@@ -233,6 +233,44 @@ def test_mod_tcp_server_clears_connection_queues_between_clients() -> None:
     assert server.index("ClearConnectionQueues();") < server.index("_client = client;")
 
 
+def test_mod_tcp_server_tags_queued_frames_with_transport_session() -> None:
+    root = Path(__file__).parents[2]
+    server = (root / "mod/HKRLEnvMod/Transport/TcpServer.cs").read_text(encoding="utf-8")
+
+    assert "public readonly struct QueuedFrame" in server
+    assert "public long SessionId { get; }" in server
+    assert "Interlocked.Increment(ref _sessionId)" in server
+    assert "InboundRequests.Enqueue(new QueuedFrame(sessionId, payload))" in server
+    assert "OutboundResponses.Enqueue(new QueuedFrame(sessionId, frame))" in server
+    assert "DrainOutbound(stream, sessionId)" in server
+    assert "frame.SessionId != sessionId" in server
+
+
+def test_mod_step_controller_routes_responses_to_request_session() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "private readonly struct PendingRequest" in controller
+    assert "frame.SessionId" in controller
+    assert "new PendingRequest(frame.SessionId, request)" in controller
+    assert "EnqueueStepResponse(sessionId, request, commandError, state)" in controller
+    assert "_server.EnqueueResponse(sessionId, response)" in controller
+    assert "_server.IsCurrentSession(sessionId)" in controller
+
+
+def test_mod_step_controller_cancels_repeated_steps_after_reconnect() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "_repeatSessionId = sessionId" in controller
+    assert "var sessionId = _repeatSessionId" in controller
+    assert "_server.IsCurrentSession(sessionId)" in controller
+    assert "_repeatSessionId = 0;" in controller
+    assert controller.index("var sessionId = _repeatSessionId") < controller.index(
+        "commandError = ApplyRepeatedStep(request)"
+    )
+
+
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
@@ -247,8 +285,8 @@ def test_mod_step_controller_new_requests_preempt_repeated_steps() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
 
-    drain_idx = controller.index("var request = DrainLatestRequest();")
-    repeat_idx = controller.index("request = _repeatRequest;")
+    drain_idx = controller.index("var pendingRequest = DrainLatestRequest();")
+    repeat_idx = controller.index("var request = _repeatRequest;")
     assert drain_idx < repeat_idx
     assert "CancelRepeatedStep();" in controller
 

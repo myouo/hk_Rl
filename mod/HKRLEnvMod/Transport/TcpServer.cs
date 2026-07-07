@@ -8,6 +8,18 @@ using System.Threading;
 
 namespace HKRLEnvMod.Transport
 {
+    public readonly struct QueuedFrame
+    {
+        public QueuedFrame(long sessionId, byte[] payload)
+        {
+            SessionId = sessionId;
+            Payload = payload;
+        }
+
+        public long SessionId { get; }
+        public byte[] Payload { get; }
+    }
+
     /// <summary>
     /// TCP environment server (docs/protocol.md). Runs the accept/recv/send loop on
     /// a DEDICATED NETWORK THREAD. It only marshals length-prefixed FlatBuffers
@@ -28,12 +40,13 @@ namespace HKRLEnvMod.Transport
         private TcpClient? _client;
         private Thread? _thread;
         private bool _running;
+        private long _sessionId;
 
         /// <summary>Inbound StepRequest frames, drained by the main thread.</summary>
-        public readonly ConcurrentQueue<byte[]> InboundRequests = new();
+        public readonly ConcurrentQueue<QueuedFrame> InboundRequests = new();
 
         /// <summary>Outbound StepResponse frames, filled by the main thread.</summary>
-        public readonly ConcurrentQueue<byte[]> OutboundResponses = new();
+        public readonly ConcurrentQueue<QueuedFrame> OutboundResponses = new();
 
         public TcpServer(string host = "127.0.0.1", int port = 5555, string? authToken = null)
         {
@@ -106,8 +119,9 @@ namespace HKRLEnvMod.Transport
                     using var client = listener.AcceptTcpClient();
                     ConfigureClient(client);
                     ClearConnectionQueues();
+                    var sessionId = Interlocked.Increment(ref _sessionId);
                     _client = client;
-                    ServeClient(client);
+                    ServeClient(client, sessionId);
                 }
                 catch (SocketException)
                 {
@@ -131,7 +145,19 @@ namespace HKRLEnvMod.Transport
             }
         }
 
-        private void ServeClient(TcpClient client)
+        public long CurrentSessionId => Interlocked.Read(ref _sessionId);
+
+        public bool IsCurrentSession(long sessionId)
+        {
+            return sessionId == CurrentSessionId && _client != null;
+        }
+
+        public void EnqueueResponse(long sessionId, byte[] frame)
+        {
+            OutboundResponses.Enqueue(new QueuedFrame(sessionId, frame));
+        }
+
+        private void ServeClient(TcpClient client, long sessionId)
         {
             using var stream = client.GetStream();
             var authenticated = _authToken == null;
@@ -145,7 +171,7 @@ namespace HKRLEnvMod.Transport
 
                 if (authenticated)
                 {
-                    DrainOutbound(stream);
+                    DrainOutbound(stream, sessionId);
                 }
 
                 if (!stream.DataAvailable)
@@ -175,7 +201,7 @@ namespace HKRLEnvMod.Transport
                     return;
                 }
 
-                InboundRequests.Enqueue(payload);
+                InboundRequests.Enqueue(new QueuedFrame(sessionId, payload));
             }
         }
 
@@ -196,11 +222,16 @@ namespace HKRLEnvMod.Transport
             }
         }
 
-        private void DrainOutbound(NetworkStream stream)
+        private void DrainOutbound(NetworkStream stream, long sessionId)
         {
             while (_running && OutboundResponses.TryDequeue(out var frame))
             {
-                stream.Write(frame, 0, frame.Length);
+                if (frame.SessionId != sessionId)
+                {
+                    continue;
+                }
+
+                stream.Write(frame.Payload, 0, frame.Payload.Length);
             }
         }
 

@@ -94,6 +94,10 @@ lifecycle but does not apply input.
   The TCP server detects half-closed clients and clears per-connection request /
   response queues before accepting the next client, so stale responses from a
   dead worker cannot be delivered to a reconnecting worker or evaluator.
+  Internally, queued request/response frames also carry a transport-session id
+  owned by the mod TCP server. The id is not part of `schema/hkrl.fbs`; it only
+  prevents delayed main-thread responses or repeated-step completions from an old
+  socket being written to the next client connection.
 
 ## 6. Threading contract (mod side)
 

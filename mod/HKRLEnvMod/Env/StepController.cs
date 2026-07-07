@@ -28,6 +28,7 @@ namespace HKRLEnvMod.Env
         private ulong _episodeStartServerTick;
         private ulong _runningEpisodeId;
         private DecodedStepRequest? _repeatRequest;
+        private long _repeatSessionId;
         private int _repeatTicksRemaining;
 
         public StepController(TcpServer server)
@@ -87,11 +88,18 @@ namespace HKRLEnvMod.Env
         {
             _serverTick++;
 
-            var request = DrainLatestRequest();
+            var pendingRequest = DrainLatestRequest();
             var commandError = HKRL.StatusCode.Ok;
             HKRL.LifecycleState state;
-            if (request != null)
+            if (pendingRequest.HasValue)
             {
+                var request = pendingRequest.Value.Request;
+                var sessionId = pendingRequest.Value.SessionId;
+                if (!_server.IsCurrentSession(sessionId))
+                {
+                    return;
+                }
+
                 CancelRepeatedStep();
                 commandError = Dispatch(request);
                 state = ShouldAdvanceLifecycle(request)
@@ -100,17 +108,24 @@ namespace HKRLEnvMod.Env
                 if (ShouldDelayStepResponse(request, commandError, state))
                 {
                     _repeatRequest = request;
+                    _repeatSessionId = sessionId;
                     _repeatTicksRemaining = request.ActionRepeat - 1;
                     return;
                 }
 
-                EnqueueStepResponse(request, commandError, state);
+                EnqueueStepResponse(sessionId, request, commandError, state);
             }
             else
             {
-                request = _repeatRequest;
+                var request = _repeatRequest;
                 if (request == null)
                 {
+                    return;
+                }
+                var sessionId = _repeatSessionId;
+                if (!_server.IsCurrentSession(sessionId))
+                {
+                    CancelRepeatedStep();
                     return;
                 }
 
@@ -122,15 +137,21 @@ namespace HKRLEnvMod.Env
                 }
 
                 CancelRepeatedStep();
-                EnqueueStepResponse(request, commandError, state);
+                EnqueueStepResponse(sessionId, request, commandError, state);
             }
         }
 
         private void EnqueueStepResponse(
+            long sessionId,
             DecodedStepRequest request,
             HKRL.StatusCode commandError,
             HKRL.LifecycleState state)
         {
+            if (!_server.IsCurrentSession(sessionId))
+            {
+                return;
+            }
+
             if (state == HKRL.LifecycleState.ClearEvents)
             {
                 _rewards.Clear();
@@ -173,7 +194,7 @@ namespace HKRLEnvMod.Env
                 truncated: false,
                 episodeId: _lifecycle.EpisodeId,
                 observation: observation);
-            _server.OutboundResponses.Enqueue(response);
+            _server.EnqueueResponse(sessionId, response);
         }
 
         private bool ShouldDelayStepResponse(
@@ -205,29 +226,36 @@ namespace HKRLEnvMod.Env
                 && !BufferedTerminalEvent();
         }
 
-        private DecodedStepRequest? DrainLatestRequest()
+        private PendingRequest? DrainLatestRequest()
         {
-            DecodedStepRequest? latest = null;
-            while (_server.InboundRequests.TryDequeue(out var payload))
+            PendingRequest? latest = null;
+            while (_server.InboundRequests.TryDequeue(out var frame))
             {
                 try
                 {
-                    latest = MessageCodec.DecodeStepRequest(payload);
+                    var request = MessageCodec.DecodeStepRequest(frame.Payload);
+                    latest = new PendingRequest(frame.SessionId, request);
                 }
                 catch (SchemaMismatchException exception)
                 {
-                    EnqueueDecodeError(HKRL.StatusCode.SchemaMismatch, exception.Message);
+                    EnqueueDecodeError(
+                        frame.SessionId,
+                        HKRL.StatusCode.SchemaMismatch,
+                        exception.Message);
                 }
                 catch (System.Exception exception)
                 {
-                    EnqueueDecodeError(HKRL.StatusCode.InternalError, exception.Message);
+                    EnqueueDecodeError(
+                        frame.SessionId,
+                        HKRL.StatusCode.InternalError,
+                        exception.Message);
                 }
             }
 
             return latest;
         }
 
-        private void EnqueueDecodeError(HKRL.StatusCode errorCode, string info)
+        private void EnqueueDecodeError(long sessionId, HKRL.StatusCode errorCode, string info)
         {
             var response = MessageCodec.EncodeStepResponse(
                 envId: 0,
@@ -237,7 +265,7 @@ namespace HKRLEnvMod.Env
                 errorCode: errorCode,
                 info: info,
                 episodeId: _lifecycle.EpisodeId);
-            _server.OutboundResponses.Enqueue(response);
+            _server.EnqueueResponse(sessionId, response);
         }
 
         private HKRL.StatusCode Dispatch(DecodedStepRequest request)
@@ -296,7 +324,20 @@ namespace HKRLEnvMod.Env
         private void CancelRepeatedStep()
         {
             _repeatRequest = null;
+            _repeatSessionId = 0;
             _repeatTicksRemaining = 0;
+        }
+
+        private readonly struct PendingRequest
+        {
+            public PendingRequest(long sessionId, DecodedStepRequest request)
+            {
+                SessionId = sessionId;
+                Request = request;
+            }
+
+            public long SessionId { get; }
+            public DecodedStepRequest Request { get; }
         }
 
         private static bool IsNoopPollStep(DecodedStepRequest request)
