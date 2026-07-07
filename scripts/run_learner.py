@@ -139,7 +139,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     if serve_forever and intake_count:
         raise ValueError("--serve-forever cannot be combined with --intake-count")
     if serve_forever:
-        network_batches, network_accepted = _serve_network_forever(
+        network_batches, network_accepted, network_failed = _serve_network_forever(
             server,
             bind,
             cfg,
@@ -153,6 +153,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             intake_count=intake_count,
             timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
         )
+        network_failed = 0
     server.serve()
     latest = registry.latest()
     return {
@@ -168,6 +169,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "model": cfg.model.name,
         "n_macro_actions": layout["n_macro_actions"],
         "network_accepted_batches": network_accepted,
+        "network_failed_batches": network_failed,
         "network_submitted_batches": network_batches,
         "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
@@ -329,11 +331,12 @@ def _serve_network_forever(
     cfg: Any,
     *,
     timeout_s: float,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     validate_service_auth(bind, cfg)
     auth_token = resolve_auth_token(cfg)
     submitted = 0
     accepted = 0
+    failed = 0
     with BatchIntakeServer(
         server, bind, auth_token=auth_token, timeout_s=timeout_s
     ) as intake:
@@ -344,11 +347,15 @@ def _serve_network_forever(
                 continue
             except KeyboardInterrupt:
                 break
+            except Exception:
+                submitted += 1
+                failed += 1
+                continue
             submitted += 1
             if result.accepted:
                 accepted += 1
                 server.serve()
-    return submitted, accepted
+    return submitted, accepted, failed
 
 
 def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:

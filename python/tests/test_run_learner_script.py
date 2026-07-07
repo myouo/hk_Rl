@@ -195,6 +195,7 @@ def test_run_learner_network_intake_accepts_recurrent_batch_and_updates(
     assert summary["accepted_batches"] == 1
     assert summary["latest_checkpoint"] == 2
     assert summary["network_accepted_batches"] == 1
+    assert summary["network_failed_batches"] == 0
     assert summary["network_submitted_batches"] == 1
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
@@ -436,7 +437,7 @@ def test_run_learner_serve_forever_updates_after_accepted_batch(
     monkeypatch.setattr(module, "BatchIntakeServer", FakeIntake)
     cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
 
-    submitted, accepted = module._serve_network_forever(
+    submitted, accepted, failed = module._serve_network_forever(
         fake_server,
         "127.0.0.1:0",
         cfg,
@@ -445,6 +446,7 @@ def test_run_learner_serve_forever_updates_after_accepted_batch(
 
     assert submitted == 2
     assert accepted == 1
+    assert failed == 0
     assert fake_server.serve_calls == 1
 
 
@@ -478,7 +480,7 @@ def test_run_learner_serve_forever_waits_through_idle_timeouts(
     monkeypatch.setattr(module, "BatchIntakeServer", FakeIntake)
     cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
 
-    submitted, accepted = module._serve_network_forever(
+    submitted, accepted, failed = module._serve_network_forever(
         fake_server,
         "127.0.0.1:0",
         cfg,
@@ -487,6 +489,50 @@ def test_run_learner_serve_forever_waits_through_idle_timeouts(
 
     assert submitted == 1
     assert accepted == 1
+    assert failed == 0
+    assert fake_server.serve_calls == 1
+
+
+def test_run_learner_serve_forever_survives_bad_uploads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    events: list[BaseException | _FakeResult] = [
+        PermissionError("bad token"),
+        _FakeResult(accepted=True),
+        KeyboardInterrupt(),
+    ]
+    fake_server = _FakeServer()
+
+    class FakeIntake:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeIntake:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def serve_once(self) -> _FakeResult:
+            event = events.pop(0)
+            if isinstance(event, BaseException):
+                raise event
+            return event
+
+    monkeypatch.setattr(module, "BatchIntakeServer", FakeIntake)
+    cfg = module.load_train_config(Path(__file__).parents[2] / "configs/train/ppo_mlp.yaml")
+
+    submitted, accepted, failed = module._serve_network_forever(
+        fake_server,
+        "127.0.0.1:0",
+        cfg,
+        timeout_s=1.0,
+    )
+
+    assert submitted == 2
+    assert accepted == 1
+    assert failed == 1
     assert fake_server.serve_calls == 1
 
 

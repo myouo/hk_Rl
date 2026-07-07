@@ -88,6 +88,9 @@ after each accepted batch until interrupted.
 Idle listener timeouts are treated as "no worker connected yet" and the learner
 continues waiting, so workers can start late or reconnect without killing the
 remote training process.
+Malformed uploads, bad auth tokens, and half-closed upload connections are
+counted as `network_failed_batches` and the listener continues serving; a single
+bad worker upload must not terminate a long-running remote learner.
 At startup, `scripts/run_learner.py` publishes a policy-version 0 checkpoint
 when the registry is empty, or loads the registry's latest checkpoint and syncs
 the learner policy/update counters from its payload. Start or resume the learner
