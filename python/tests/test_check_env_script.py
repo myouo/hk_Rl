@@ -65,6 +65,80 @@ def test_check_env_pings_live_mod_endpoint(
     }
 
 
+def test_check_env_reports_connectivity_failure_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("check_env.py")
+    root = Path(__file__).parents[2]
+    transport = FakeTransport(host="127.0.0.2", port=6000)
+    envs: list[FailingEnv] = []
+
+    def fake_make_transport(cfg: Any, *, host: str | None, port: int | None) -> FakeTransport:
+        del cfg, host, port
+        return transport
+
+    class PatchedEnv(FailingEnv):
+        def __init__(self, *, transport: FakeTransport, task: Any) -> None:
+            super().__init__(transport=transport, task=task)
+            envs.append(self)
+
+    monkeypatch.setattr(module, "make_transport", fake_make_transport)
+    monkeypatch.setattr(module, "HKRLEnv", PatchedEnv)
+    args = argparse.Namespace(
+        config=str(root / "configs/train/ppo_mlp.yaml"),
+        task=str(root / "configs/tasks/gruz_mother.yaml"),
+        host="127.0.0.2",
+        port=6000,
+        timeout=3.0,
+        output=None,
+    )
+
+    summary = module.run_from_args(args)
+
+    assert envs[0].closed is True
+    assert summary["ok"] is False
+    assert summary["error_code"] == "CONNECT_FAILED"
+    assert summary["error_type"] == "ConnectionRefusedError"
+    assert summary["host"] == "127.0.0.2"
+    assert summary["port"] == 6000
+    assert summary["task_id"] == "gruz_mother"
+
+
+def test_check_env_main_returns_nonzero_for_failed_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_script("check_env.py")
+    root = Path(__file__).parents[2]
+    failure = {
+        "env_id": 0,
+        "error": "connection refused",
+        "error_code": "CONNECT_FAILED",
+        "error_type": "ConnectionRefusedError",
+        "host": "127.0.0.1",
+        "lifecycle_state": "UNAVAILABLE",
+        "ok": False,
+        "port": 5555,
+        "schema_version": 0,
+        "server_tick": 0,
+        "task_id": "gruz_mother",
+    }
+
+    monkeypatch.setattr(module, "run_from_args", lambda args: failure)
+
+    code = module.main(
+        [
+            "--config",
+            str(root / "configs/train/ppo_mlp.yaml"),
+            "--task",
+            str(root / "configs/tasks/gruz_mother.yaml"),
+        ]
+    )
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out) == failure
+
+
 @pytest.mark.parametrize(
     ("field", "value", "match"),
     [
@@ -121,6 +195,12 @@ class FakeEnv:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FailingEnv(FakeEnv):
+    def ping(self, *, timeout_s: float) -> dict[str, Any]:
+        self.ping_timeout = timeout_s
+        raise ConnectionRefusedError("connection refused")
 
 
 def _args(**overrides: object) -> argparse.Namespace:

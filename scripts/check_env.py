@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from hkrl import protocol
-from hkrl.env import HKRLEnv
+from hkrl.env import EnvProtocolError, HKRLEnv
 from hkrl.transport.factory import make_transport
 from hkrl.utils.config import load_task_config, load_train_config
 
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
     print(json.dumps(summary, sort_keys=True))
-    return 0
+    return 0 if bool(summary.get("ok", False)) else 2
 
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -57,7 +57,15 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     )
     env = HKRLEnv(transport=transport, task=task)
     try:
-        info = env.ping(timeout_s=float(args.timeout))
+        try:
+            info = env.ping(timeout_s=float(args.timeout))
+        except _DIAGNOSTIC_EXCEPTIONS as exc:
+            return _failure_summary(
+                exc,
+                host=transport.host,
+                port=transport.port,
+                task_id=task.task_id,
+            )
         return _summary_from_info(
             info, host=transport.host, port=transport.port, task_id=task.task_id
         )
@@ -85,6 +93,47 @@ def _summary_from_info(
         "server_tick": int(info.get("server_tick", 0)),
         "task_id": task_id,
     }
+
+
+_DIAGNOSTIC_EXCEPTIONS = (
+    ConnectionError,
+    EnvProtocolError,
+    OSError,
+    TimeoutError,
+    ValueError,
+)
+
+
+def _failure_summary(
+    error: BaseException,
+    *,
+    host: str,
+    port: int,
+    task_id: str,
+) -> dict[str, Any]:
+    return {
+        "env_id": 0,
+        "error": str(error),
+        "error_code": _failure_error_code(error),
+        "error_type": type(error).__name__,
+        "host": host,
+        "lifecycle_state": "UNAVAILABLE",
+        "ok": False,
+        "port": int(port),
+        "schema_version": 0,
+        "server_tick": 0,
+        "task_id": task_id,
+    }
+
+
+def _failure_error_code(error: BaseException) -> str:
+    if isinstance(error, TimeoutError):
+        return "TIMEOUT"
+    if isinstance(error, (EnvProtocolError, ValueError)):
+        return "PROTOCOL_ERROR"
+    if isinstance(error, (ConnectionError, OSError)):
+        return "CONNECT_FAILED"
+    return "ERROR"
 
 
 def _enum_name(value: Any) -> str:

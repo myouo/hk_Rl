@@ -69,7 +69,9 @@ each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching
 trusted LAN.
 Use `python scripts/check_env.py --host HOST --port PORT` as the first live
 diagnostic: it sends `PING` through the same FlatBuffers/TCP/auth path without
-resetting the scene.
+resetting the scene. Connection, timeout, and protocol failures print a JSON
+summary with `ok: false` and exit non-zero so CI or launch scripts can fail fast
+without scraping a Python traceback.
 
 ## 4. Module map (PRD §5.2)
 
