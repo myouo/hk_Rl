@@ -32,6 +32,9 @@ in the schema. Highlights:
 - `enable_macro_actions` and `n_macro_actions` ride on each request so the mod's
   returned `action_mask` matches the current task's Python action space instead
   of assuming the default macro layout.
+- `task_scene` rides on reset/task-switch requests so the mod can load the
+  scene declared by the YAML task config; an empty value falls back to the
+  legacy `task_id` mapping for older clients.
 
 ## 3. Commands
 
@@ -60,14 +63,17 @@ a reset poll (`movement=neutral`, `aim=neutral`, no buttons, `duration=0`,
 
 ## 4. Reset handshake (ack)
 
-Task configs use a human-readable string `task_id` for logs/evaluation and a
-numeric `wire_id` for `StepRequest.task_id`. The mod maps the numeric id to
-Godhome scenes; rollout buffers store the same numeric id in `task_ids`.
+Task configs use a human-readable string `task_id` for logs/evaluation, a
+numeric `wire_id` for `StepRequest.task_id`, and a `scene` string for
+`StepRequest.task_scene`. The mod loads `task_scene` first, so adding a new
+boss/task is a YAML/config change instead of a C# core edit. The numeric
+`task_id` remains in rollout buffers as `task_ids` and is still accepted by the
+mod as a compatibility fallback when `task_scene` is empty.
 Python exposes task switching via `HKRLEnv.set_task(task)`, which sends
 `SET_TASK`, rebuilds task-driven spaces/reward defaults, and waits for the clean
-reset lifecycle to reach `RUNNING`. Unknown numeric task ids are not mapped to a
-fallback arena; reset readiness fails instead of silently training on the wrong
-boss.
+reset lifecycle to reach `RUNNING`. Unknown numeric task ids with no
+`task_scene`, invalid scene names, or scenes that never become active make reset
+readiness fail instead of silently training on the wrong boss.
 
 `RESET` is **not** a single round-trip. The mod walks the lifecycle state
 machine ([`episode_lifecycle.md`](./episode_lifecycle.md)) and reports progress

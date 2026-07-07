@@ -1,6 +1,7 @@
 # HK-RL — Hollow Knight Reinforcement Learning
 
 [![CI](https://github.com/myouo/hk_Rl/actions/workflows/ci.yml/badge.svg)](https://github.com/myouo/hk_Rl/actions/workflows/ci.yml)
+[![C# Mod Build](https://github.com/myouo/hk_Rl/actions/workflows/mod-build.yml/badge.svg)](https://github.com/myouo/hk_Rl/actions/workflows/mod-build.yml)
 
 > 从 Hollow Knight Mod 获取结构化游戏状态，构建可扩展、高性能的强化学习环境，
 > 训练小骑士在 Godhome / Hall of Gods 中击败 Boss。

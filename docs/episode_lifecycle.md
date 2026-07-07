@@ -37,12 +37,16 @@ IDLE
 - After `done`, no new reward events are collected.
 - `RESET` / `SET_TASK` cancels any pending repeated `STEP`; old held/repeated
   actions must not carry into the next episode.
+- `RESET` / `SET_TASK` uses the task config's `scene` value from
+  `StepRequest.task_scene`; the legacy numeric `task_id` scene map is only a
+  fallback for older clients.
 - A reset **failure** returns a non-`Ok` `StatusCode` (e.g. `ResetTimeout`,
   `BossNotFound`) — never silently continue training on a bad episode.
 
 ## 3. Readiness checks
 
-- `WAIT_SCENE_READY`: target scene loaded and active.
+- `WAIT_SCENE_READY`: target scene loaded and active; invalid or unknown scene
+  targets fail with `StatusCode.SceneLoadFailed`.
 - `WAIT_PLAYER_READY`: `HeroController` spawned, controllable.
 - `WAIT_BOSS_READY`: required boss(es) present with valid `HealthManager`.
 

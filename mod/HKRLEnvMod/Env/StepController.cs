@@ -302,7 +302,7 @@ namespace HKRLEnvMod.Env
                         _rewards.Clear();
                         _rewardTracker.Reset();
                         _runningEpisodeId = 0;
-                        _resetManager.BeginReset(request.TaskId);
+                        _resetManager.BeginReset(request.TaskId, request.TaskScene);
                         _lifecycle.RequestReset();
                         break;
                     case HKRL.Command.Step:

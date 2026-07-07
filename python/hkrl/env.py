@@ -293,6 +293,7 @@ class HKRLEnv(gym.Env):
             time_scale=time_scale,
             enable_macro_actions=self.task.action.enable_macro_actions,
             n_macro_actions=self.task.action.n_macro_actions,
+            task_scene=self.task.scene,
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))

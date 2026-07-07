@@ -72,6 +72,9 @@ the project version tracks the **schema_version** + roadmap phase.
   (`enable_macro_actions`, `n_macro_actions`), and HKRLEnv/HKRLEnvMod now use
   them so mod action masks match task-driven macro settings instead of assuming
   the default 11-macro layout.
+- Schema version 4 adds `task_scene` to `StepRequest`; HKRLEnv now sends the
+  configured task scene on reset/task switch, and HKRLEnvMod loads that scene
+  before falling back to the legacy numeric task map.
 - Distributed learner/coordinator defaults now bind to localhost, and service
   bind validation rejects wildcard addresses for LAN scope; cross-machine runs
   must opt in with an explicit private LAN address plus token auth.

@@ -84,21 +84,24 @@ def test_load_task_config_preserves_wire_id() -> None:
     assert mantis.wire_id == 2
 
 
-def test_mod_scene_controller_matches_task_wire_ids() -> None:
+def test_mod_scene_controller_uses_config_scene_with_wire_id_fallback() -> None:
     root = Path(__file__).parents[2]
     source = (root / "mod/HKRLEnvMod/Env/SceneController.cs").read_text(encoding="utf-8")
     reset_manager = (root / "mod/HKRLEnvMod/Env/ResetManager.cs").read_text(encoding="utf-8")
-    tasks = [
-        load_task_config(Path("../configs/tasks/gruz_mother.yaml")),
-        load_task_config(Path("../configs/tasks/hornet_protector.yaml")),
-        load_task_config(Path("../configs/tasks/mantis_lords.yaml")),
-    ]
 
-    for task in tasks:
-        assert f'{task.wire_id} => "{task.scene}"' in source
+    assert "LoadTaskScene(int taskId, string? sceneName = null)" in source
+    assert "ResolveSceneName(taskId, sceneName)" in source
+    assert "return configuredSceneName.Trim()" in source
+    assert "SceneManager.LoadScene(_targetSceneName)" in source
+    assert "_targetSceneName = string.Empty" in source
+    assert '0 => "GG_Gruz_Mother"' in source
+    assert '1 => "GG_Hornet_1"' in source
+    assert '2 => "GG_Mantis_Lords"' in source
     assert "_ => string.Empty" in source
     assert "Unknown HKRL task id" in source
     assert "HasValidTarget" in source
+    assert "BeginReset(int taskId, string? sceneName = null)" in reset_manager
+    assert "_scene.LoadTaskScene(taskId, sceneName)" in reset_manager
     assert "!_scene.HasValidTarget" in reset_manager
     assert "HKRL.StatusCode.SceneLoadFailed" in reset_manager
 

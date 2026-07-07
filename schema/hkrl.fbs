@@ -223,6 +223,8 @@ table StepRequest {
   // Action-layout contract for task-driven mask generation. Append-only v3.
   enable_macro_actions:bool = true;
   n_macro_actions:int = 11;
+  // Config-driven scene selection for RESET/SET_TASK. Append-only v4.
+  task_scene:string;
 }
 
 table StepResponse {

@@ -35,7 +35,7 @@ from hkrl.spaces import BUTTON_BITS
 
 def test_schema_version_is_positive() -> None:
     assert isinstance(protocol.SCHEMA_VERSION, int)
-    assert protocol.SCHEMA_VERSION == 3
+    assert protocol.SCHEMA_VERSION == 4
 
 
 def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
@@ -47,6 +47,7 @@ def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
     assert "NotRunning = 7" in schema
     assert "enable_macro_actions:bool = true" in schema
     assert "n_macro_actions:int = 11" in schema
+    assert "task_scene:string" in schema
 
 
 def test_flatc_toolchain_matches_csharp_runtime() -> None:
@@ -108,6 +109,7 @@ def test_encode_step_request_builds_schema_payload() -> None:
         time_scale=2.0,
         enable_macro_actions=True,
         n_macro_actions=4,
+        task_scene="GG_Custom_Boss",
     )
 
     assert FbStepRequest.StepRequest.StepRequestBufferHasIdentifier(frame, 0)
@@ -124,6 +126,7 @@ def test_encode_step_request_builds_schema_payload() -> None:
     assert request.TimeScale() == 2.0
     assert request.EnableMacroActions() is True
     assert request.NMacroActions() == 4
+    assert request.TaskScene() == b"GG_Custom_Boss"
 
     action = request.Action()
     assert action is not None
@@ -141,6 +144,8 @@ def test_encode_step_request_rejects_invalid_action_layout() -> None:
         protocol.encode_step_request(n_macro_actions=True)
     with pytest.raises(ValueError, match="n_macro_actions"):
         protocol.encode_step_request(n_macro_actions=-1)
+    with pytest.raises(ValueError, match="task_scene"):
+        protocol.encode_step_request(task_scene=123)  # type: ignore[arg-type]
 
 
 def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
@@ -161,6 +166,7 @@ def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
     assert request.ActionRepeat() == 1
     assert request.EnableMacroActions() is True
     assert request.NMacroActions() == 11
+    assert request.TaskScene() is None
 
 
 def test_encode_step_request_rejects_non_binary_buttons() -> None:

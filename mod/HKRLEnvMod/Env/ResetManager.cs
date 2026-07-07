@@ -36,12 +36,12 @@ namespace HKRLEnvMod.Env
         public bool IsComplete { get; private set; }
 
         /// <summary>Begin a reset for the given task; drives EpisodeLifecycle waits.</summary>
-        public void BeginReset(int taskId)
+        public void BeginReset(int taskId, string? sceneName = null)
         {
             _elapsedSeconds = 0.0f;
             _active = true;
             IsComplete = false;
-            _scene.LoadTaskScene(taskId);
+            _scene.LoadTaskScene(taskId, sceneName);
         }
 
         /// <summary>Poll a pending reset; returns a StatusCode (Ok while in progress

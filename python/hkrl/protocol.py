@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 # Mirrors the schema_version carried in every StepRequest/StepResponse and the
 # C# Protocol.SCHEMA_VERSION. See schema/README.md evolution rules.
-SCHEMA_VERSION: int = 3
+SCHEMA_VERSION: int = 4
 
 # FlatBuffers file_identifier (must equal the one in hkrl.fbs).
 FILE_IDENTIFIER: bytes = b"HKRL"
@@ -161,6 +161,7 @@ def encode_step_request(
     time_scale: float = 0.0,
     enable_macro_actions: bool = True,
     n_macro_actions: int = DEFAULT_N_MACROS,
+    task_scene: str = "",
 ) -> bytes:
     """Encode a StepRequest FlatBuffers payload.
 
@@ -177,11 +178,14 @@ def encode_step_request(
         raise ValueError("n_macro_actions must be an integer")
     if n_macro_actions < 0:
         raise ValueError("n_macro_actions must be non-negative")
+    if not isinstance(task_scene, str):
+        raise ValueError("task_scene must be a string")
 
     action_fields = _action_fields(action)
     builder = flatbuffers.Builder(256)
 
     action_offset = _build_action(builder, action_fields)
+    task_scene_offset = builder.CreateString(task_scene) if task_scene else None
 
     fb = _generated("StepRequest")
     fb.StepRequestStart(builder)
@@ -197,6 +201,8 @@ def encode_step_request(
     fb.StepRequestAddTimeScale(builder, float(time_scale))
     fb.StepRequestAddEnableMacroActions(builder, bool(enable_macro_actions))
     fb.StepRequestAddNMacroActions(builder, int(n_macro_actions))
+    if task_scene_offset is not None:
+        fb.StepRequestAddTaskScene(builder, task_scene_offset)
     root = fb.StepRequestEnd(builder)
     builder.Finish(root, file_identifier=FILE_IDENTIFIER)
     return bytes(builder.Output())

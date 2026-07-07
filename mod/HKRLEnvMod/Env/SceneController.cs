@@ -16,10 +16,10 @@ namespace HKRLEnvMod.Env
         public bool HasValidTarget => !string.IsNullOrEmpty(_targetSceneName);
 
         /// <summary>Request loading the scene/arena for a task id.</summary>
-        public void LoadTaskScene(int taskId)
+        public void LoadTaskScene(int taskId, string? sceneName = null)
         {
             CurrentTaskId = taskId;
-            _targetSceneName = ResolveSceneName(taskId);
+            _targetSceneName = ResolveSceneName(taskId, sceneName);
             if (!HasValidTarget)
             {
                 global::HKRLEnvMod.Debug.Logger.Error(
@@ -32,7 +32,17 @@ namespace HKRLEnvMod.Env
                 return;
             }
 
-            SceneManager.LoadScene(_targetSceneName);
+            try
+            {
+                SceneManager.LoadScene(_targetSceneName);
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error(
+                    $"Failed to load HKRL task scene {_targetSceneName}",
+                    exception);
+                _targetSceneName = string.Empty;
+            }
         }
 
         public bool IsSceneReady()
@@ -64,8 +74,14 @@ namespace HKRLEnvMod.Env
             return healthManagers != null && healthManagers.Length > 0;
         }
 
-        private static string ResolveSceneName(int taskId)
+        private static string ResolveSceneName(int taskId, string? sceneName)
         {
+            string configuredSceneName = sceneName ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(configuredSceneName))
+            {
+                return configuredSceneName.Trim();
+            }
+
             return taskId switch
             {
                 0 => "GG_Gruz_Mother",
