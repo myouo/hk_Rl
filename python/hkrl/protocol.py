@@ -18,12 +18,14 @@ from typing import TYPE_CHECKING, Any
 
 import flatbuffers
 
+from hkrl.spaces import DEFAULT_N_MACROS
+
 if TYPE_CHECKING:
     import numpy as np
 
 # Mirrors the schema_version carried in every StepRequest/StepResponse and the
 # C# Protocol.SCHEMA_VERSION. See schema/README.md evolution rules.
-SCHEMA_VERSION: int = 2
+SCHEMA_VERSION: int = 3
 
 # FlatBuffers file_identifier (must equal the one in hkrl.fbs).
 FILE_IDENTIFIER: bytes = b"HKRL"
@@ -157,6 +159,8 @@ def encode_step_request(
     client_time: float = 0.0,
     task_id: int = 0,
     time_scale: float = 0.0,
+    enable_macro_actions: bool = True,
+    n_macro_actions: int = DEFAULT_N_MACROS,
 ) -> bytes:
     """Encode a StepRequest FlatBuffers payload.
 
@@ -167,6 +171,12 @@ def encode_step_request(
         raise ValueError("action_repeat must be in [1, 255]")
     if tick_id < 0:
         raise ValueError("tick_id must be non-negative")
+    if not isinstance(enable_macro_actions, bool):
+        raise ValueError("enable_macro_actions must be a bool")
+    if not isinstance(n_macro_actions, int) or isinstance(n_macro_actions, bool):
+        raise ValueError("n_macro_actions must be an integer")
+    if n_macro_actions < 0:
+        raise ValueError("n_macro_actions must be non-negative")
 
     action_fields = _action_fields(action)
     builder = flatbuffers.Builder(256)
@@ -185,6 +195,8 @@ def encode_step_request(
     fb.StepRequestAddClientTime(builder, float(client_time))
     fb.StepRequestAddTaskId(builder, int(task_id))
     fb.StepRequestAddTimeScale(builder, float(time_scale))
+    fb.StepRequestAddEnableMacroActions(builder, bool(enable_macro_actions))
+    fb.StepRequestAddNMacroActions(builder, int(n_macro_actions))
     root = fb.StepRequestEnd(builder)
     builder.Finish(root, file_identifier=FILE_IDENTIFIER)
     return bytes(builder.Output())

@@ -68,6 +68,10 @@ the project version tracks the **schema_version** + roadmap phase.
 - Python FlatBuffers StepRequest/StepResponse encode/decode helpers with schema
   version checks, action payload conversion, reward events, masks, and decoded
   observation views.
+- Schema version 3 adds task action-layout fields to `StepRequest`
+  (`enable_macro_actions`, `n_macro_actions`), and HKRLEnv/HKRLEnvMod now use
+  them so mod action masks match task-driven macro settings instead of assuming
+  the default 11-macro layout.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
 - Task action configs now expose `n_macro_actions` so Python action spaces,

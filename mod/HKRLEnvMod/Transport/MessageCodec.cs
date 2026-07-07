@@ -39,7 +39,9 @@ namespace HKRLEnvMod.Transport
             long policyVersion,
             double clientTime,
             int taskId,
-            float timeScale)
+            float timeScale,
+            bool enableMacroActions,
+            int nMacroActions)
         {
             SchemaVersion = schemaVersion;
             EnvId = envId;
@@ -51,6 +53,8 @@ namespace HKRLEnvMod.Transport
             ClientTime = clientTime;
             TaskId = taskId;
             TimeScale = timeScale;
+            EnableMacroActions = enableMacroActions;
+            NMacroActions = nMacroActions;
         }
 
         public int SchemaVersion { get; }
@@ -63,6 +67,8 @@ namespace HKRLEnvMod.Transport
         public double ClientTime { get; }
         public int TaskId { get; }
         public float TimeScale { get; }
+        public bool EnableMacroActions { get; }
+        public int NMacroActions { get; }
     }
 
     public sealed class SchemaMismatchException : InvalidOperationException
@@ -112,7 +118,9 @@ namespace HKRLEnvMod.Transport
                 request.PolicyVersion,
                 request.ClientTime,
                 request.TaskId,
-                request.TimeScale);
+                request.TimeScale,
+                request.EnableMacroActions,
+                request.NMacroActions);
         }
 
         /// <summary>Build a StepResponse into a length-prefixed frame.</summary>

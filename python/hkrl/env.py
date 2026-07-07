@@ -291,6 +291,8 @@ class HKRLEnv(gym.Env):
             action_repeat=action_repeat,
             task_id=self.task.wire_id,
             time_scale=time_scale,
+            enable_macro_actions=self.task.action.enable_macro_actions,
+            n_macro_actions=self.task.action.n_macro_actions,
         )
         self.transport.send(request)
         response = protocol.decode_step_response(self.transport.recv(timeout_s=timeout_s))

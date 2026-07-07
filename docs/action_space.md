@@ -24,9 +24,10 @@ macro      : Discrete(M+1) # 0=none, 1..M = macro action (optional, see §5)
 ```
 
 `M` defaults to `11` (`hkrl.spaces.DEFAULT_N_MACROS`) and is exposed as
-`action.n_macro_actions` in task YAML. It must match the mod-side
+`action.n_macro_actions` in task YAML. It may be reduced per task or disabled
+with `action.enable_macro_actions=false`, but it cannot exceed the mod-side
 `ActionMasker.DefaultMacroCount` / `MacroActionScheduler` set for the current
-mod build; otherwise the flat action-mask length will drift.
+mod build.
 
 On the wire these pack into `Action{movement_x, aim_y, buttons(bitmask),
 duration_idx, macro_id}`. The model has one head per component
@@ -73,6 +74,9 @@ aim_y:      up XOR down             (mutually exclusive by construction)
 Mask layout on the wire is a flat `action_mask[]` bool array; the canonical
 index order (movement, aim, each button, duration, macro) is defined as a
 constant in `hkrl/spaces.py` and MUST match the mod's `ActionMasker`.
+Every `StepRequest` carries `enable_macro_actions` and `n_macro_actions`; the
+mod uses those task-layout fields to size the returned action mask and to report
+macro ids outside the current task's range as `InvalidAction`.
 StepResponse masks are computed from the same tick's observed player readiness
 where available (`soul`, grounded/double-jump, and can-attack/cast/focus flags),
 with cooldown/lock timers defaulting open until the mod reader exposes them.

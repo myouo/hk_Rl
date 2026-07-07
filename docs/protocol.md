@@ -29,6 +29,9 @@ in the schema. Highlights:
   request/response and measure latency via `client_time`.
 - `policy_version` rides on each request so the learner can filter stale
   rollouts (PRD §9.5).
+- `enable_macro_actions` and `n_macro_actions` ride on each request so the mod's
+  returned `action_mask` matches the current task's Python action space instead
+  of assuming the default macro layout.
 
 ## 3. Commands
 

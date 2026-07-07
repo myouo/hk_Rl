@@ -48,7 +48,7 @@ class ObservationConfig(StrictConfigModel):
 class ActionConfig(StrictConfigModel):
     action_repeat: int = Field(default=2, ge=1, le=255)
     enable_macro_actions: bool = True
-    n_macro_actions: int = Field(default=DEFAULT_N_MACROS, ge=0)
+    n_macro_actions: int = Field(default=DEFAULT_N_MACROS, ge=0, le=DEFAULT_N_MACROS)
 
 
 class TaskConfig(StrictConfigModel):

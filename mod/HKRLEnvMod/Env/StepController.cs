@@ -199,7 +199,10 @@ namespace HKRLEnvMod.Env
             var errorCode = commandError == HKRL.StatusCode.Ok
                 ? _lifecycle.ErrorCode
                 : commandError;
-            var actionMask = _masker.Compute(ToPlayerActionState(observation.Player));
+            var actionMask = _masker.Compute(
+                ToPlayerActionState(observation.Player),
+                request.EnableMacroActions,
+                MacroCountFor(request));
             var response = MessageCodec.EncodeStepResponse(
                 request,
                 _serverTick,
@@ -310,7 +313,7 @@ namespace HKRLEnvMod.Env
                                 : HKRL.StatusCode.NotRunning;
                         }
 
-                        ReportInvalidAction(request.Action);
+                        ReportInvalidAction(request);
                         _actions.Apply(request.Action);
                         break;
                     case HKRL.Command.Pause:
@@ -398,8 +401,9 @@ namespace HKRLEnvMod.Env
             }
         }
 
-        private void ReportInvalidAction(DecodedAction action)
+        private void ReportInvalidAction(DecodedStepRequest request)
         {
+            var action = request.Action;
             if (action.MovementX > 2)
             {
                 AddInvalidActionEvent(actionId: 0, reason: 1);
@@ -416,10 +420,30 @@ namespace HKRLEnvMod.Env
             {
                 AddInvalidActionEvent(actionId: 3, reason: 1);
             }
-            if (action.MacroId < -1 || action.MacroId >= ActionMasker.DefaultMacroCount)
+            var macroLimit = MacroCountFor(request);
+            if (request.EnableMacroActions)
+            {
+                if (request.NMacroActions < 0 || action.MacroId < -1 || action.MacroId >= macroLimit)
+                {
+                    AddInvalidActionEvent(actionId: 4, reason: 1);
+                }
+            }
+            else if (action.MacroId >= 0)
             {
                 AddInvalidActionEvent(actionId: 4, reason: 1);
             }
+        }
+
+        private static int MacroCountFor(DecodedStepRequest request)
+        {
+            if (!request.EnableMacroActions || request.NMacroActions < 0)
+            {
+                return 0;
+            }
+
+            return request.NMacroActions > ActionMasker.DefaultMacroCount
+                ? ActionMasker.DefaultMacroCount
+                : request.NMacroActions;
         }
 
         private void AddInvalidActionEvent(int actionId, int reason)

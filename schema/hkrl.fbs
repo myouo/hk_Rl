@@ -220,6 +220,9 @@ table StepRequest {
   // For SET_TASK / SET_TIMESCALE commands:
   task_id:int;
   time_scale:float;
+  // Action-layout contract for task-driven mask generation. Append-only v3.
+  enable_macro_actions:bool = true;
+  n_macro_actions:int = 11;
 }
 
 table StepResponse {

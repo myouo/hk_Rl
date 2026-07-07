@@ -35,7 +35,7 @@ from hkrl.spaces import BUTTON_BITS
 
 def test_schema_version_is_positive() -> None:
     assert isinstance(protocol.SCHEMA_VERSION, int)
-    assert protocol.SCHEMA_VERSION == 2
+    assert protocol.SCHEMA_VERSION == 3
 
 
 def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
@@ -45,6 +45,8 @@ def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
 
     assert f"SchemaVersion = {protocol.SCHEMA_VERSION}" in csharp_protocol
     assert "NotRunning = 7" in schema
+    assert "enable_macro_actions:bool = true" in schema
+    assert "n_macro_actions:int = 11" in schema
 
 
 def test_flatc_toolchain_matches_csharp_runtime() -> None:
@@ -104,6 +106,8 @@ def test_encode_step_request_builds_schema_payload() -> None:
         client_time=12.5,
         task_id=11,
         time_scale=2.0,
+        enable_macro_actions=True,
+        n_macro_actions=4,
     )
 
     assert FbStepRequest.StepRequest.StepRequestBufferHasIdentifier(frame, 0)
@@ -118,6 +122,8 @@ def test_encode_step_request_builds_schema_payload() -> None:
     assert request.ClientTime() == 12.5
     assert request.TaskId() == 11
     assert request.TimeScale() == 2.0
+    assert request.EnableMacroActions() is True
+    assert request.NMacroActions() == 4
 
     action = request.Action()
     assert action is not None
@@ -126,6 +132,15 @@ def test_encode_step_request_builds_schema_payload() -> None:
     assert action.Buttons() == (1 << BUTTON_BITS["attack"]) | (1 << BUTTON_BITS["dash"])
     assert action.DurationIdx() == 3
     assert action.MacroId() == 1
+
+
+def test_encode_step_request_rejects_invalid_action_layout() -> None:
+    with pytest.raises(ValueError, match="enable_macro_actions"):
+        protocol.encode_step_request(enable_macro_actions=1)
+    with pytest.raises(ValueError, match="n_macro_actions"):
+        protocol.encode_step_request(n_macro_actions=True)
+    with pytest.raises(ValueError, match="n_macro_actions"):
+        protocol.encode_step_request(n_macro_actions=-1)
 
 
 def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
@@ -144,6 +159,8 @@ def test_encode_step_request_default_action_is_lifecycle_poll_noop() -> None:
     assert action.DurationIdx() == 0
     assert action.MacroId() == -1
     assert request.ActionRepeat() == 1
+    assert request.EnableMacroActions() is True
+    assert request.NMacroActions() == 11
 
 
 def test_encode_step_request_rejects_non_binary_buttons() -> None:
@@ -368,10 +385,12 @@ def test_mod_step_controller_reports_wire_invalid_actions() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
 
-    assert "ReportInvalidAction(request.Action)" in controller
+    assert "ReportInvalidAction(request)" in controller
     assert "HKRL.RewardEventKind.InvalidAction" in controller
     assert "PrimitiveInput.ButtonMask" in controller
     assert "action.DurationIdx > 3" in controller
+    assert "request.EnableMacroActions" in controller
+    assert "request.NMacroActions" in controller
 
 
 def test_mod_step_controller_guards_fixed_tick() -> None:
@@ -391,6 +410,8 @@ def test_mod_step_response_mask_uses_player_state() -> None:
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
 
     assert "ToPlayerActionState(observation.Player)" in controller
+    assert "request.EnableMacroActions" in controller
+    assert "MacroCountFor(request)" in controller
     assert "dashCooldown: player.DashCooldown" in controller
     assert "soul: player.Soul" in controller
     assert "attackLockTimer: player.AttackLockTimer" in controller

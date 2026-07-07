@@ -186,6 +186,21 @@ def test_load_task_config_rejects_invalid_action_repeat(tmp_path: Path) -> None:
         load_task_config(config)
 
 
+def test_load_task_config_rejects_unsupported_macro_count(tmp_path: Path) -> None:
+    config = tmp_path / "task.yaml"
+    _write_yaml(
+        config,
+        {
+            "task_id": "bad",
+            "scene": "Scene",
+            "action": {"n_macro_actions": 12},
+        },
+    )
+
+    with pytest.raises(ValueError, match="less than or equal to 11"):
+        load_task_config(config)
+
+
 def test_load_config_rejects_empty_required_strings(tmp_path: Path) -> None:
     train_config = tmp_path / "train.yaml"
     _write_yaml(

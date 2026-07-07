@@ -8,7 +8,7 @@ namespace HKRLEnvMod.Transport
     public static class Protocol
     {
         /// <summary>Mirrors SCHEMA_VERSION in python/hkrl/protocol.py.</summary>
-        public const int SchemaVersion = 2;
+        public const int SchemaVersion = 3;
 
         /// <summary>FlatBuffers file_identifier (must equal hkrl.fbs).</summary>
         public const string FileIdentifier = "HKRL";

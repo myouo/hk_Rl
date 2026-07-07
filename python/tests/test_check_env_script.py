@@ -59,7 +59,7 @@ def test_check_env_pings_live_mod_endpoint(
         "lifecycle_state": "IDLE",
         "ok": True,
         "port": 6000,
-        "schema_version": 2,
+        "schema_version": protocol.SCHEMA_VERSION,
         "server_tick": 42,
         "task_id": "gruz_mother",
     }

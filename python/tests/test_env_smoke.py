@@ -260,6 +260,8 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     assert protocol.Command(step_request.Command()) is protocol.Command.STEP
     assert step_request.ActionRepeat() == task.action.action_repeat
     assert step_request.TaskId() == 12
+    assert step_request.EnableMacroActions() is task.action.enable_macro_actions
+    assert step_request.NMacroActions() == task.action.n_macro_actions
     assert step_request.Action().Buttons() == 1 << 3
     assert env.observation_space.contains(obs)
     assert reward == pytest.approx(3.0 + task.reward.time_penalty * task.action.action_repeat)
@@ -309,6 +311,10 @@ def test_env_reset_and_step_over_real_tcp_transport_with_auth() -> None:
     ]
     assert [req.TickId() for req in server.requests] == [0, 1, 2]
     assert all(req.TaskId() == 13 for req in server.requests)
+    assert all(
+        req.EnableMacroActions() is task.action.enable_macro_actions for req in server.requests
+    )
+    assert all(req.NMacroActions() == task.action.n_macro_actions for req in server.requests)
     assert server.requests[-1].ActionRepeat() == task.action.action_repeat
     assert server.requests[-1].Action().Buttons() == 1 << 3
     assert server.requests[-1].Action().MacroId() == 0
