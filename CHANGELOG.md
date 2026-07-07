@@ -75,6 +75,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - Distributed learner/coordinator defaults now bind to localhost, and service
   bind validation rejects wildcard addresses for LAN scope; cross-machine runs
   must opt in with an explicit private LAN address plus token auth.
+- Scripted/random evaluation baselines now infer the current task action layout
+  from `action_mask`, so multi-task eval is not tied to the first task's macro
+  action settings.
 - Gymnasium action/observation space construction for hybrid actions,
   entity-list observations, ablation tiers, and action-mask layout tests.
 - Task action configs now expose `n_macro_actions` so Python action spaces,

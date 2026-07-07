@@ -35,15 +35,10 @@ class RandomPolicy:
         if action_mask is None:
             return self.action_space.sample()
 
-        enable_macro = "macro" in self.action_space.spaces
-        n_macros = int(self.action_space["macro"].n - 1) if enable_macro else 0
-        layout = spaces.action_mask_layout(enable_macro=enable_macro, n_macros=n_macros)
-        mask = np.asarray(action_mask, dtype=bool).reshape(-1)
-
-        if len(mask) != len(layout):
-            raise ValueError(
-                f"action_mask length {len(mask)} does not match layout length {len(layout)}"
-            )
+        mask, enable_macro, _n_macros = _validated_action_mask(
+            self.action_space,
+            action_mask,
+        )
 
         offset = 0
         movement_x = self._sample_discrete(
@@ -98,7 +93,10 @@ class ScriptedAggroPolicy:
         self.vertical_deadzone = vertical_deadzone
 
     def act(self, obs: Any, action_mask: Any | None = None) -> Any:
-        mask = _validated_action_mask(self.action_space, action_mask)
+        mask, enable_macro, _n_macros = _validated_action_mask(
+            self.action_space,
+            action_mask,
+        )
         rel_x, rel_y = _target_relative_position(obs)
 
         offset = 0
@@ -139,25 +137,36 @@ class ScriptedAggroPolicy:
             "buttons": buttons,
             "duration": duration,
         }
-        if "macro" in self.action_space.spaces:
+        if enable_macro:
             action["macro"] = _choose_discrete(mask[offset:], preferred=0, fallback=0, name="macro")
         return action
 
 
-def _validated_action_mask(action_space: Any, action_mask: Any | None) -> np.ndarray:
+def _validated_action_mask(
+    action_space: Any, action_mask: Any | None
+) -> tuple[np.ndarray, bool, int]:
+    """Return a mask and inferred action layout.
+
+    Live eval may reuse one scripted/random policy across tasks. When the mod
+    returns an action mask, that wire mask is authoritative for the current task's
+    macro layout; fall back to the construction action_space only before reset
+    info is available.
+    """
+    if action_mask is not None:
+        mask = np.asarray(action_mask, dtype=bool).reshape(-1)
+        base_len = len(spaces.action_mask_layout(enable_macro=False))
+        if len(mask) == base_len:
+            return mask, False, 0
+        if len(mask) > base_len:
+            return mask, True, len(mask) - base_len - 1
+        raise ValueError(
+            f"action_mask length {len(mask)} is shorter than base layout length {base_len}"
+        )
+
     enable_macro = "macro" in action_space.spaces
     n_macros = int(action_space["macro"].n - 1) if enable_macro else 0
     layout = spaces.action_mask_layout(enable_macro=enable_macro, n_macros=n_macros)
-
-    if action_mask is None:
-        return np.ones((len(layout),), dtype=bool)
-
-    mask = np.asarray(action_mask, dtype=bool).reshape(-1)
-    if len(mask) != len(layout):
-        raise ValueError(
-            f"action_mask length {len(mask)} does not match layout length {len(layout)}"
-        )
-    return mask
+    return np.ones((len(layout),), dtype=bool), enable_macro, n_macros
 
 
 def _choose_discrete(mask: np.ndarray, *, preferred: int, fallback: int, name: str) -> int:

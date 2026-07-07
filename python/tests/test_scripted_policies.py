@@ -35,6 +35,23 @@ def test_random_policy_respects_flat_action_mask() -> None:
     assert np.array_equal(action["buttons"], np.zeros(spaces.N_BUTTONS, dtype=np.int8))
 
 
+def test_random_policy_uses_current_mask_layout_across_task_changes() -> None:
+    action_space = spaces.make_action_space(enable_macro=True, n_macros=2)
+    policy = RandomPolicy(action_space, seed=123)
+    layout = spaces.action_mask_layout(enable_macro=False)
+    mask = np.zeros(len(layout), dtype=bool)
+
+    for name in ("movement_x:1", "aim_y:1", "duration:1"):
+        mask[layout.index(name)] = True
+
+    action = policy.act(obs=None, action_mask=mask)
+
+    assert "macro" not in action
+    assert action["movement_x"] == 1
+    assert action["aim_y"] == 1
+    assert action["duration"] == 0
+
+
 def test_random_policy_rejects_mask_with_no_valid_discrete_choice() -> None:
     action_space = spaces.make_action_space(enable_macro=False)
     policy = RandomPolicy(action_space, seed=123)
@@ -56,6 +73,23 @@ def test_scripted_aggro_policy_attacks_near_boss() -> None:
     assert action["movement_x"] == 1
     assert action["aim_y"] == 2
     assert action["buttons"][spaces.BUTTON_BITS["attack"]] == 1
+    assert action["macro"] == 0
+
+
+def test_scripted_aggro_policy_uses_current_mask_layout_across_task_changes() -> None:
+    action_space = spaces.make_action_space(enable_macro=False)
+    policy = ScriptedAggroPolicy(action_space)
+    layout = spaces.action_mask_layout(enable_macro=True, n_macros=3)
+    mask = np.zeros(len(layout), dtype=bool)
+
+    for name in ("movement_x:1", "aim_y:1", "duration:1", "macro:0"):
+        mask[layout.index(name)] = True
+
+    action = policy.act(_obs_with_entity(rel_x=0.0, rel_y=0.0), action_mask=mask)
+
+    assert action["movement_x"] == 1
+    assert action["aim_y"] == 1
+    assert action["duration"] == 0
     assert action["macro"] == 0
 
 

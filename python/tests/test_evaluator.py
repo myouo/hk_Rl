@@ -101,6 +101,30 @@ def test_evaluator_worker_pool_runs_tasks_and_closes_envs() -> None:
     assert all(env.closed for _, env in made_envs)
 
 
+def test_evaluator_scripted_policy_uses_env_mask_layout() -> None:
+    task = TaskConfig(task_id="fake_boss", scene="FakeScene")
+    policy = ScriptedAggroPolicy(spaces.make_action_space(enable_macro=True, n_macros=3))
+    made_envs: list[FakeEvalEnv] = []
+
+    def make_env(_task: TaskConfig) -> FakeEvalEnv:
+        env = FakeEvalEnv()
+        made_envs.append(env)
+        return env
+
+    evaluator = Evaluator(
+        policy,
+        tasks=[task],
+        seeds=[0],
+        env_factory=make_env,
+        max_steps_per_episode=2,
+    )
+
+    results = evaluator.evaluate(episodes_per_task=1)
+
+    assert results["fake_boss"]["win_rate"] == 1.0
+    assert made_envs[0].closed
+
+
 def test_evaluator_rejects_non_positive_worker_count() -> None:
     with pytest.raises(ValueError, match="num_workers"):
         Evaluator(
