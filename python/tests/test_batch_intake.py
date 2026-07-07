@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -19,9 +20,18 @@ from hkrl.learner.batch_intake import (
 from hkrl.learner.checkpoint_registry import CheckpointRegistry
 from hkrl.learner.learner_server import LearnerServer
 from hkrl.models.mlp import MlpActorCritic
-from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
+from hkrl.models.recurrent_policy import EntityAttentionRecurrentAC
+from hkrl.spaces import (
+    N_AIM_Y,
+    N_BUTTONS,
+    N_DURATION,
+    N_MOVEMENT_X,
+    make_action_space,
+    make_observation_space,
+)
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
+from hkrl.worker.game_worker import GameWorker
 
 
 def test_batch_intake_client_submits_to_learner_server(tmp_path: Path) -> None:
@@ -60,6 +70,70 @@ def test_batch_intake_client_submits_to_learner_server(tmp_path: Path) -> None:
     assert server.rejected_batches == 0
     assert len(results) == 1
     assert results[0].accepted is True
+
+
+def test_recurrent_game_worker_uploads_tcp_batch_for_learner_update(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(123)
+    env = _WorkerIntakeEnv()
+    obs_dims = _env_obs_dims(env)
+    worker_model = _recurrent_model(obs_dims)
+    learner_model = _recurrent_model(obs_dims)
+    learner_model.load_state_dict(worker_model.state_dict())
+    cfg = TrainConfig(
+        algorithm="appo",
+        rollout_steps=4,
+        epochs=1,
+        minibatch_size=2,
+        entropy_coef=0.0,
+    )
+    server = LearnerServer(
+        model=learner_model,
+        config=cfg,
+        registry=CheckpointRegistry(str(tmp_path)),
+        bind="127.0.0.1:0",
+        publish_every_updates=1,
+    )
+    results: list[BatchIntakeResult] = []
+    errors: list[BaseException] = []
+
+    with BatchIntakeServer(server, "127.0.0.1:0", timeout_s=3.0) as intake:
+        assert intake.endpoint is not None
+        client = BatchIntakeClient(intake.endpoint, timeout_s=3.0)
+        thread = threading.Thread(target=_serve_once, args=(intake, results, errors))
+        thread.start()
+        worker = GameWorker(
+            env=env,
+            model=worker_model,
+            config=cfg,
+            learner_endpoint=intake.endpoint,
+            batch_uploader=client.submit,
+        )
+
+        worker.run(total_steps=4)
+        thread.join(timeout=3.0)
+
+    assert not thread.is_alive()
+    assert errors == []
+    assert len(results) == 1
+    assert results[0].accepted is True
+    assert server.accepted_batches == 1
+    assert server.rejected_batches == 0
+    assert worker.last_batch is not None
+    assert worker.last_batch.rnn_states is not None
+    assert worker.last_batch.rnn_states.shape == (4, 1, 1, 16)
+    assert worker.learner_upload_submitted_batches == 1
+    assert worker.learner_upload_accepted_batches == 1
+    assert worker.learner_upload_failed_batches == 0
+
+    server.serve()
+
+    latest = server.registry.latest()
+    assert latest is not None
+    assert latest.version == 1
+    assert server.policy_version == 1
+    assert server.last_checkpoint == latest
 
 
 def test_batch_intake_rejects_invalid_auth_token() -> None:
@@ -156,3 +230,60 @@ def _torch_obs(obs: dict[str, np.ndarray]) -> dict[str, torch.Tensor]:
 
 def _mask_dim() -> int:
     return N_MOVEMENT_X + N_AIM_Y + N_BUTTONS + N_DURATION
+
+
+def _env_obs_dims(env: Any) -> dict[str, tuple[int, ...]]:
+    return {
+        "global": env.observation_space["global"].shape,
+        "player": env.observation_space["player"].shape,
+        "entities": env.observation_space["entities"].shape,
+        "entity_mask": env.observation_space["entity_mask"].shape,
+    }
+
+
+def _recurrent_model(obs_dims: dict[str, tuple[int, ...]]) -> EntityAttentionRecurrentAC:
+    return EntityAttentionRecurrentAC(
+        obs_dims,
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_hidden=16,
+        enable_macro=False,
+        max_entities=4,
+    )
+
+
+class _WorkerIntakeEnv:
+    def __init__(self) -> None:
+        self.observation_space = make_observation_space(max_entities=4, tier="privileged")
+        self.action_space = make_action_space(enable_macro=False)
+        self.reset_count = 0
+        self.step_count = 0
+        self.actions: list[dict[str, Any]] = []
+
+    def reset(self) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        self.reset_count += 1
+        return self._obs(), self._info()
+
+    def step(
+        self,
+        action: dict[str, Any],
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        self.actions.append(action)
+        self.step_count += 1
+        return self._obs(), 1.0, self.step_count % 4 == 0, False, self._info()
+
+    def _obs(self) -> dict[str, np.ndarray]:
+        return {
+            "global": np.zeros(self.observation_space["global"].shape, dtype=np.float32),
+            "player": np.zeros(self.observation_space["player"].shape, dtype=np.float32),
+            "entities": np.zeros(self.observation_space["entities"].shape, dtype=np.float32),
+            "entity_mask": np.ones(self.observation_space["entity_mask"].shape, dtype=bool),
+        }
+
+    def _info(self) -> dict[str, Any]:
+        return {
+            "action_mask": np.ones((_mask_dim(),), dtype=bool),
+            "episode_id": self.reset_count,
+            "task_id": 0,
+        }
