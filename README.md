@@ -70,7 +70,7 @@ make check
 # 可选：覆盖 mod TCP 监听地址；多实例评估/worker 时给每个游戏实例不同端口
 export HKRL_HOST=127.0.0.1
 export HKRL_PORT=5555
-# 若训练配置启用 security.require_token=true，同时设置：
+# 可选：设置后 mod 会启用 TCP auth；Python env client 会自动发送同名 token
 export HKRL_AUTH_TOKEN=dev-secret
 
 # 4. 先做轻量接入检查：只 PING mod，不重置场景

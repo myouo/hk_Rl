@@ -48,6 +48,11 @@ export HKRL_PORT=5555
 export HKRL_AUTH_TOKEN=dev-secret   # optional; enables TCP env auth
 ```
 
+Python env clients (`check_env.py`, local training, workers, evaluators) send
+the same non-empty token automatically when it is present. Sending the auth
+preface is harmless when mod auth is disabled, so local smoke commands do not
+need a separate config edit just to match a token-enabled mod.
+
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching
 `--port`/`--ports` or `--env-port` value to the Python entry point. Keep

@@ -25,11 +25,35 @@ def test_make_transport_builds_tcp_with_auth_token() -> None:
 def test_make_transport_applies_tcp_host_port_overrides() -> None:
     config = TrainConfig(transport={"name": "tcp", "host": "127.0.0.2", "port": 5556})
 
-    transport = make_transport(config, host="127.0.0.3", port=6000)
+    transport = make_transport(config, host="127.0.0.3", port=6000, environ={})
 
     assert isinstance(transport, TcpTransport)
     assert transport.host == "127.0.0.3"
     assert transport.port == 6000
+    assert transport.auth_token is None
+
+
+def test_make_transport_sends_optional_env_auth_token_for_tcp_env() -> None:
+    config = TrainConfig(
+        transport={"name": "tcp"},
+        security={"require_token": False, "auth_token_env": "HKRL_TEST_TOKEN"},
+    )
+
+    transport = make_transport(config, environ={"HKRL_TEST_TOKEN": "secret"})
+
+    assert isinstance(transport, TcpTransport)
+    assert transport.auth_token == "secret"
+
+
+def test_make_transport_ignores_empty_optional_env_auth_token() -> None:
+    config = TrainConfig(
+        transport={"name": "tcp"},
+        security={"require_token": False, "auth_token_env": "HKRL_TEST_TOKEN"},
+    )
+
+    transport = make_transport(config, environ={"HKRL_TEST_TOKEN": ""})
+
+    assert isinstance(transport, TcpTransport)
     assert transport.auth_token is None
 
 

@@ -138,11 +138,12 @@ publish cadence, max entities, and macro-action count are validated before
 model/server construction, so malformed gate parameters fail early instead of
 after partial learner startup.
 
-When `security.require_token` is true, Python TCP clients read the token from
-`security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the initial
-auth frame. This covers local training, workers, and evaluator env connections.
-The mod reads the same `HKRL_AUTH_TOKEN` environment variable to enable
-server-side token verification.
+When `security.require_token` is true, Python service clients read the token
+from `security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the
+initial auth frame. Env TCP clients for local training, workers, and evaluators
+also send a non-empty configured token opportunistically when the variable is
+present, because the mod enables server-side token verification directly from
+the same `HKRL_AUTH_TOKEN` environment variable.
 The mod also reads `HKRL_HOST` and `HKRL_PORT` at startup to choose its TCP env
 listener; local training uses `scripts/train.py --host/--port`, workers use
 `scripts/run_worker.py --env-host/--env-port`, and evaluators use
