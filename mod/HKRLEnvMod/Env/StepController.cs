@@ -94,7 +94,9 @@ namespace HKRLEnvMod.Env
             {
                 CancelRepeatedStep();
                 commandError = Dispatch(request);
-                state = AdvanceLifecycle();
+                state = ShouldAdvanceLifecycle(request)
+                    ? AdvanceLifecycle()
+                    : _lifecycle.State;
                 if (ShouldDelayStepResponse(request, commandError, state))
                 {
                     _repeatRequest = request;
@@ -184,6 +186,13 @@ namespace HKRLEnvMod.Env
                 && state == HKRL.LifecycleState.Running
                 && request.ActionRepeat > 1
                 && !BufferedTerminalEvent();
+        }
+
+        private static bool ShouldAdvanceLifecycle(DecodedStepRequest request)
+        {
+            return request.Command == HKRL.Command.Reset
+                || request.Command == HKRL.Command.SetTask
+                || request.Command == HKRL.Command.Step;
         }
 
         private bool ShouldContinueRepeat(

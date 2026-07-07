@@ -246,6 +246,24 @@ def test_mod_step_controller_rejects_non_poll_step_before_running() -> None:
     assert controller.index("HKRL.StatusCode.NotRunning") < controller.index("_actions.Apply")
 
 
+def test_mod_control_commands_do_not_advance_episode_lifecycle() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "private static bool ShouldAdvanceLifecycle(DecodedStepRequest request)" in controller
+    assert "state = ShouldAdvanceLifecycle(request)" in controller
+    assert "request.Command == HKRL.Command.Reset" in controller
+    assert "request.Command == HKRL.Command.SetTask" in controller
+    assert "request.Command == HKRL.Command.Step" in controller
+
+    start = controller.index("private static bool ShouldAdvanceLifecycle")
+    helper = controller[start : controller.index("private bool ShouldContinueRepeat", start)]
+    assert "HKRL.Command.Ping" not in helper
+    assert "HKRL.Command.Pause" not in helper
+    assert "HKRL.Command.Resume" not in helper
+    assert "HKRL.Command.SetTimescale" not in helper
+
+
 def test_mod_step_controller_reports_wire_invalid_actions() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")

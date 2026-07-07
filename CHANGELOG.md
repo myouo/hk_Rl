@@ -608,6 +608,9 @@ the project version tracks the **schema_version** + roadmap phase.
   `run_worker`, `run_learner`, `run_eval`).
 
 ### Fixed
+- Mod control commands (`PING`, `PAUSE`, `RESUME`, `SET_TIMESCALE`) no longer
+  advance the episode lifecycle; only `RESET`, `SET_TASK`, and reset-poll/normal
+  `STEP` requests move the clean reset state machine.
 - Env TCP transport config now rejects `transport.port: 0` during config loading,
   and multi-task evaluator port validation now requires ports only for the
   active task-level workers (`min(--eval-workers, task_count)`), avoiding both
