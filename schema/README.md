@@ -25,8 +25,15 @@ make gen-schema-cs     # C# only
 ```
 
 Requires [`flatc`](https://github.com/google/flatbuffers/releases) on `PATH`.
-Check with `flatc --version` (recommend ≥ 24.3.25 to match the `flatbuffers`
-Python runtime pinned in `python/pyproject.toml`).
+Python bindings use `FLATC_PY` (default `flatc`) and should track the Python
+`flatbuffers` runtime pinned by `environment.yml` / `python/pyproject.toml`.
+C# bindings use `FLATC_CS` (default `flatc`) and must report `flatc 23.5.26`,
+matching the `Google.FlatBuffers` C# runtime pinned in
+`mod/HKRLEnvMod/HKRLEnvMod.csproj`. Newer `flatc` versions emit C# generated
+bindings with newer `FlatBufferConstants` checks that do not compile against the
+current mod runtime. The checked-in `environment-mod-build.yml` provides the C#
+compiler; pass `FLATC_CS=/path/to/flatc-23.5.26` when generating both languages
+from a Python dev environment with a newer `flatc`.
 
 ## Evolution rules
 

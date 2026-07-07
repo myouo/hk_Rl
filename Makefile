@@ -3,6 +3,10 @@
 # Python and the C# mod from schema/hkrl.fbs (the single source of truth).
 
 PY        := python
+FLATC     ?= flatc
+FLATC_PY  ?= $(FLATC)
+FLATC_CS  ?= $(FLATC)
+CSHARP_FLATC_VERSION ?= 23.5.26
 PKG_DIR   := python
 FBS       := schema/hkrl.fbs
 PY_SCHEMA := python/hkrl/schema
@@ -21,10 +25,21 @@ help: ## Show this help
 gen-schema: gen-schema-py gen-schema-cs ## Regenerate all FlatBuffers bindings
 
 gen-schema-py: ## Generate Python FlatBuffers bindings
-	flatc --python -o $(PY_SCHEMA) $(FBS)
+	mkdir -p $(PY_SCHEMA)
+	rm -rf $(PY_SCHEMA)/HKRL
+	$(FLATC_PY) --python -o $(PY_SCHEMA) $(FBS)
 
 gen-schema-cs: ## Generate C# FlatBuffers bindings
-	flatc --csharp -o $(CS_SCHEMA) $(FBS)
+	@version="$$($(FLATC_CS) --version)"; \
+	case "$$version" in \
+	  *"$(CSHARP_FLATC_VERSION)"*) ;; \
+	  *) echo "error: C# schema generation requires flatc $(CSHARP_FLATC_VERSION); got: $$version" >&2; \
+	     echo "Use environment-mod-build.yml, or pass FLATC_CS=/path/to/flatc-$(CSHARP_FLATC_VERSION)." >&2; \
+	     exit 2 ;; \
+	esac
+	mkdir -p $(CS_SCHEMA)
+	rm -rf $(CS_SCHEMA)/HKRL
+	$(FLATC_CS) --csharp -o $(CS_SCHEMA) $(FBS)
 
 # ---- Python dev ------------------------------------------------------------
 install: ## Editable install with dev extras

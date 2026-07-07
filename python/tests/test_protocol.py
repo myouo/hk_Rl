@@ -47,6 +47,30 @@ def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
     assert "NotRunning = 7" in schema
 
 
+def test_flatc_toolchain_matches_csharp_runtime() -> None:
+    root = Path(__file__).parents[2]
+    makefile = (root / "Makefile").read_text(encoding="utf-8")
+    env = (root / "environment.yml").read_text(encoding="utf-8")
+    mod_env = (root / "environment-mod-build.yml").read_text(encoding="utf-8")
+    pyproject = (root / "python/pyproject.toml").read_text(encoding="utf-8")
+    csproj = (root / "mod/HKRLEnvMod/HKRLEnvMod.csproj").read_text(encoding="utf-8")
+    gen_script = (root / "scripts/gen_schema.sh").read_text(encoding="utf-8")
+    build_script = (root / "scripts/build_mod_ci.sh").read_text(encoding="utf-8")
+
+    assert 'Google.FlatBuffers" Version="23.5.26"' in csproj
+    assert "CSHARP_FLATC_VERSION ?= 23.5.26" in makefile
+    assert "FLATC_CS  ?= $(FLATC)" in makefile
+    assert '"flatbuffers>=24.3.25"' in env
+    assert "flatbuffers=23.5.26" in mod_env
+    assert '"flatbuffers>=24.3.25"' in pyproject
+    assert "HKRL_CSHARP_FLATC_VERSION:-23.5.26" in gen_script
+    assert "HKRL_CSHARP_FLATC:-${HKRL_FLATC:-flatc}" in gen_script
+    assert "HKRL_CSHARP_FLATC_VERSION:-23.5.26" in build_script
+    assert "FLATC_CS=/path/to/flatc-$(CSHARP_FLATC_VERSION)" in makefile
+    assert "rm -rf $(CS_SCHEMA)/HKRL" in makefile
+    assert 'rm -rf "$PY_OUT/HKRL" "$CS_OUT/HKRL"' in gen_script
+
+
 def test_file_identifier_is_four_bytes() -> None:
     # FlatBuffers file_identifier must be exactly 4 bytes (matches hkrl.fbs).
     assert protocol.FILE_IDENTIFIER == b"HKRL"

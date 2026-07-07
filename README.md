@@ -246,6 +246,9 @@ GitHub Actions 在 `push` / `pull_request` 到 `main` 时使用
 [`environment.yml`](./environment.yml) 创建 `hkrl` Conda 环境，并执行：
 `make check`。该目标会先运行 `make gen-schema`，再执行
 `make format-check`、`make lint`、`make typecheck`、`make test`。
+Python bindings 使用 `environment.yml` 中的当前 `flatc` 生成；C# bindings
+通过 `FLATC_CS` 使用 23.5.26 生成，以匹配 C# mod 的 `Google.FlatBuffers`
+runtime，避免 Python 检查生成出无法被 HKRLEnvMod 编译的 C# bindings。
 
 云端 CI 包含 Python 包检查和 C# mod 编译检查。C# workflow 会生成 FlatBuffers
 绑定，并用 `mod/ci-stubs/` 里的最小 Hollow Knight / Unity / Modding API stub
@@ -263,7 +266,9 @@ make install-hooks
 
 之后每次 `git commit` 前会运行 `make check`，也就是先生成 FlatBuffers
 bindings，再执行格式检查、lint、typecheck 和 tests。如果本机有 `hkrl` Conda
-环境，hook 会自动通过 `conda run -n hkrl` 执行检查。
+环境，hook 会自动通过 `conda run -n hkrl` 执行检查；如果同时存在
+`hkrl-mod-build` 环境，hook 会把其中固定为 23.5.26 的 `flatc` 作为
+`FLATC_CS` 传给 `make check`，避免 C# schema bindings 与 mod runtime 版本漂移。
 
 > ⚠️ Mod 的 C# 编译需 Hollow Knight 程序集与 HK Modding API，本机通常不具备，详见 [`docs/mod_dev.md`](./docs/mod_dev.md)。
 > 需要真实游戏进程的 smoke / eval / training 命令必须在运行 HKRLEnvMod 的机器上执行。

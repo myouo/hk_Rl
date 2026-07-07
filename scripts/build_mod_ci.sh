@@ -15,6 +15,8 @@ if [[ "${FLATC_VERSION}" != *"${REQUIRED_FLATC_VERSION}"* ]]; then
   exit 2
 fi
 
+mkdir -p mod/HKRLEnvMod/Schema
+rm -rf mod/HKRLEnvMod/Schema/HKRL
 "${FLATC}" --csharp -o mod/HKRLEnvMod/Schema schema/hkrl.fbs
 mkdir -p "${REFS_DIR}"
 

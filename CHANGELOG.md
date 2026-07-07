@@ -22,6 +22,10 @@ the project version tracks the **schema_version** + roadmap phase.
   logging, and distributed extras.
 - Local/CI quality gates generate FlatBuffers bindings before running checks,
   with generated code ignored and excluded from lint/typecheck.
+- FlatBuffers codegen now separates Python and C# `flatc` selection, pins C#
+  generation to the runtime-compatible 23.5.26 toolchain, and clears stale
+  generated schema files before regeneration, so `make gen-schema` output can
+  feed both Python checks and HKRLEnvMod builds.
 - CI now uses the Node 24-backed `actions/checkout@v6` action and the current
   setup-miniconda `auto-activate` input.
 - Python training foundations: config `defaults` composition, default reward

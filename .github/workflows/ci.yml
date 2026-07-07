@@ -39,5 +39,10 @@ jobs:
           python -V
           python -c "import hkrl; print(f'hkrl schema_version={hkrl.SCHEMA_VERSION}')"
 
+      - name: Set up C# FlatBuffers compiler
+        run: conda env create -f environment-mod-build.yml
+
       - name: Run quality gate
-        run: make check
+        run: |
+          MOD_FLATC="$(conda run -n hkrl-mod-build which flatc)"
+          make check FLATC_CS="$MOD_FLATC"

@@ -11,7 +11,14 @@ fi
 
 if command -v conda >/dev/null 2>&1 && conda env list | awk '{print $1}' | grep -qx "hkrl"; then
   echo "Running pre-commit checks in conda env: hkrl"
-  conda run --no-capture-output -n hkrl make check
+  make_args=(check)
+  if conda env list | awk '{print $1}' | grep -qx "hkrl-mod-build"; then
+    mod_flatc="$(conda run -n hkrl-mod-build which flatc 2>/dev/null | tail -n 1)"
+    if [[ -n "$mod_flatc" ]]; then
+      make_args+=("FLATC_CS=$mod_flatc")
+    fi
+  fi
+  conda run --no-capture-output -n hkrl make "${make_args[@]}"
 else
   echo "Running pre-commit checks with current shell environment"
   make check
