@@ -205,6 +205,9 @@ the project version tracks the **schema_version** + roadmap phase.
   before stepping the local environment.
 - GameWorker now rejects policy actions that select components disabled by the
   current action mask before stepping the local environment.
+- GameWorker now samples local policies under `torch.no_grad()` so custom
+  registered models cannot build autograd graphs during long-running rollout
+  collection.
 - GameWorker heartbeats and run summaries now report rollout duration and SPS
   directly for coordinator monitoring snapshots.
 - run_worker summaries now split learner batch uploads into submitted,

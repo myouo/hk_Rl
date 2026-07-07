@@ -102,6 +102,20 @@ def test_game_worker_rejects_non_finite_policy_outputs_before_env_step() -> None
     assert env.actions == []
 
 
+def test_game_worker_samples_policy_without_grad_tracking() -> None:
+    env = FakeEnv()
+    model = GradTrackingActModel()
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+    )
+
+    worker.collect_rollout()
+
+    assert model.grad_enabled_during_act == [False]
+
+
 def test_game_worker_collect_rollout_returns_batch() -> None:
     env = FakeEnv()
     model = MlpActorCritic(
@@ -776,6 +790,26 @@ class MaskedActionModel(NonFiniteActModel):
         batch_size = obs["global"].shape[0]
         action = torch.zeros((batch_size, 12), dtype=torch.long)
         action[:, 0] = 2
+        value = self.weight.expand(batch_size)
+        return action, value, value, None
+
+
+class GradTrackingActModel(NonFiniteActModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.grad_enabled_during_act: list[bool] = []
+
+    def act(
+        self,
+        obs: dict[str, torch.Tensor],
+        rnn_state: Any = None,
+        action_mask: torch.Tensor | None = None,
+        deterministic: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, None]:
+        self.grad_enabled_during_act.append(torch.is_grad_enabled())
+        del rnn_state, action_mask, deterministic
+        batch_size = obs["global"].shape[0]
+        action = torch.zeros((batch_size, 12), dtype=torch.long)
         value = self.weight.expand(batch_size)
         return action, value, value, None
 

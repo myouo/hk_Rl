@@ -168,11 +168,12 @@ class GameWorker:
                 device=self.device,
             )
             rnn_state = self._rnn_state
-            action, log_prob, value, next_rnn_state = self.model.act(
-                obs_tensor,
-                rnn_state=rnn_state,
-                action_mask=action_mask_tensor,
-            )
+            with torch.no_grad():
+                action, log_prob, value, next_rnn_state = self.model.act(
+                    obs_tensor,
+                    rnn_state=rnn_state,
+                    action_mask=action_mask_tensor,
+                )
             require_finite_tensor("worker log_prob", log_prob)
             require_finite_tensor("worker value", value)
             action_array = action.detach().cpu().numpy()
