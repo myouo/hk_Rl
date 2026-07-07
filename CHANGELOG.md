@@ -346,6 +346,9 @@ the project version tracks the **schema_version** + roadmap phase.
 - `scripts/run_eval.py --policy model` now preserves the task's configured
   macro-action count and validates model actions against the live action mask
   before stepping the env.
+- `GameWorker` now stores GRU hidden states in APPO rollout batches when using
+  recurrent local inference, keeping remote learner updates aligned with the
+  policy state used during sampling.
 - `scripts/run_worker.py` now accepts `--tasks` and installs a round-robin task
   provider for multi-task rollout smoke/curriculum runs.
 - `scripts/run_coordinator.py` now validates coordinator/task/worker wiring,

@@ -59,6 +59,10 @@ class GameWorker:
         self.max_consecutive_failures = max_consecutive_failures
         self._clock = clock or time.monotonic
         self.device = _model_device(model)
+        initial_rnn_state = model.initial_state(batch_size=1, device=self.device)
+        uses_recurrent_state = initial_rnn_state is not None
+        if config.algorithm == "appo" and isinstance(initial_rnn_state, tuple):
+            raise ValueError("APPO worker rollout upload supports tensor/GRU rnn_state, not LSTM")
         action_space: Any = env.action_space
         observation_space: Any = env.observation_space
         self.enable_macro = "macro" in action_space.spaces
@@ -75,7 +79,9 @@ class GameWorker:
             "action": (self.action_dim,),
             "action_mask": (self.action_mask_dim,),
         }
-        if config.algorithm == "recurrent_ppo":
+        if config.algorithm == "recurrent_ppo" or (
+            config.algorithm == "appo" and uses_recurrent_state
+        ):
             self.buffer: RolloutBuffer | RecurrentRolloutBuffer = RecurrentRolloutBuffer(
                 capacity=config.rollout_steps,
                 num_envs=1,
@@ -93,7 +99,7 @@ class GameWorker:
         self.checkpoint_version = -1
         self._obs: Any | None = None
         self._info: dict[str, Any] = {}
-        self._rnn_state = model.initial_state(batch_size=1, device=self.device)
+        self._rnn_state = initial_rnn_state
         self._prev_action: np.ndarray = np.zeros((1, self.action_dim), dtype=np.int64)
         self._prev_reward: np.ndarray = np.zeros((1,), dtype=np.float32)
         self.last_batch: RolloutBatch | None = None

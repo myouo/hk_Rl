@@ -198,6 +198,67 @@ def test_game_worker_collect_rollout_uses_recurrent_buffer() -> None:
     assert sequences[0].rnn_state is not None
 
 
+def test_game_worker_appo_recurrent_upload_batch_includes_rnn_states() -> None:
+    env = FakeEnv()
+    model = EntityAttentionRecurrentAC(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_hidden=16,
+        enable_macro=False,
+        max_entities=4,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(
+            algorithm="appo",
+            rollout_steps=4,
+            sequence_length=2,
+            burn_in=1,
+            minibatch_size=2,
+        ),
+    )
+
+    batch = worker.collect_rollout()
+
+    assert isinstance(worker.buffer, RecurrentRolloutBuffer)
+    assert batch.rnn_states is not None
+    assert batch.rnn_states.shape == (4, 1, 1, 16)
+
+
+def test_game_worker_appo_rejects_lstm_recurrent_state_upload() -> None:
+    env = FakeEnv()
+    model = EntityAttentionRecurrentAC(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        entity_hidden=8,
+        attention_layers=1,
+        attention_heads=2,
+        rnn_type="lstm",
+        rnn_hidden=16,
+        enable_macro=False,
+        max_entities=4,
+    )
+
+    with pytest.raises(ValueError, match="APPO worker rollout upload"):
+        GameWorker(
+            env=env,  # type: ignore[arg-type]
+            model=model,
+            config=TrainConfig(algorithm="appo", rollout_steps=4),
+        )
+
+
 def test_game_worker_hot_swaps_new_checkpoint_before_rollout() -> None:
     env = FakeEnv()
     model = MlpActorCritic(
