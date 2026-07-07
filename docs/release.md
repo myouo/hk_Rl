@@ -118,8 +118,9 @@ gh run list --branch main --limit 1
 
 The CI gate currently covers the Python package and generated FlatBuffers
 bindings through `make check`. Python codegen uses the Python environment's
-current `flatc`; C# codegen uses `FLATC_CS` pinned to 23.5.26 so those bindings
-remain compatible with the `Google.FlatBuffers` runtime used by HKRLEnvMod.
+current `flatc`; C# codegen uses the auto-detected `hkrl-mod-build` flatc, or an
+explicit `FLATC_CS`, pinned to 23.5.26 so those bindings remain compatible with
+the `Google.FlatBuffers` runtime used by HKRLEnvMod.
 
 ## 3. Game Machine Gates
 

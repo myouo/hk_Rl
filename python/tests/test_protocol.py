@@ -59,7 +59,9 @@ def test_flatc_toolchain_matches_csharp_runtime() -> None:
 
     assert 'Google.FlatBuffers" Version="23.5.26"' in csproj
     assert "CSHARP_FLATC_VERSION ?= 23.5.26" in makefile
-    assert "FLATC_CS  ?= $(FLATC)" in makefile
+    assert "CONDA_MOD_FLATC :=" in makefile
+    assert "conda run -n hkrl-mod-build which flatc" in makefile
+    assert "FLATC_CS  ?= $(if $(CONDA_MOD_FLATC),$(CONDA_MOD_FLATC),$(FLATC))" in makefile
     assert '"flatbuffers>=24.3.25"' in env
     assert "flatbuffers=23.5.26" in mod_env
     assert '"flatbuffers>=24.3.25"' in pyproject

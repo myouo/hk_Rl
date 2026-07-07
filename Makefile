@@ -5,8 +5,13 @@
 PY        := python
 FLATC     ?= flatc
 FLATC_PY  ?= $(FLATC)
-FLATC_CS  ?= $(FLATC)
 CSHARP_FLATC_VERSION ?= 23.5.26
+CONDA_MOD_FLATC := $(shell \
+	if command -v conda >/dev/null 2>&1 && \
+	   conda env list 2>/dev/null | awk '{print $$1}' | grep -qx "hkrl-mod-build"; then \
+		conda run -n hkrl-mod-build which flatc 2>/dev/null | tail -n 1; \
+	fi)
+FLATC_CS  ?= $(if $(CONDA_MOD_FLATC),$(CONDA_MOD_FLATC),$(FLATC))
 PKG_DIR   := python
 FBS       := schema/hkrl.fbs
 PY_SCHEMA := python/hkrl/schema

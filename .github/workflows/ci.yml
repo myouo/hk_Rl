@@ -43,6 +43,4 @@ jobs:
         run: conda env create -f environment-mod-build.yml
 
       - name: Run quality gate
-        run: |
-          MOD_FLATC="$(conda run -n hkrl-mod-build which flatc)"
-          make check FLATC_CS="$MOD_FLATC"
+        run: make check

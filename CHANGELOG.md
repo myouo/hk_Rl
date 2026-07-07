@@ -26,6 +26,9 @@ the project version tracks the **schema_version** + roadmap phase.
   generation to the runtime-compatible 23.5.26 toolchain, and clears stale
   generated schema files before regeneration, so `make gen-schema` output can
   feed both Python checks and HKRLEnvMod builds.
+- `make gen-schema` / `make check` now auto-detect the `hkrl-mod-build` conda
+  environment for C# FlatBuffers generation, letting the documented quick-start
+  command run without manually passing `FLATC_CS`.
 - CI now uses the Node 24-backed `actions/checkout@v6` action and the current
   setup-miniconda `auto-activate` input.
 - Python training foundations: config `defaults` composition, default reward

@@ -32,8 +32,10 @@ matching the `Google.FlatBuffers` C# runtime pinned in
 `mod/HKRLEnvMod/HKRLEnvMod.csproj`. Newer `flatc` versions emit C# generated
 bindings with newer `FlatBufferConstants` checks that do not compile against the
 current mod runtime. The checked-in `environment-mod-build.yml` provides the C#
-compiler; pass `FLATC_CS=/path/to/flatc-23.5.26` when generating both languages
-from a Python dev environment with a newer `flatc`.
+compiler, and `make gen-schema` / `make check` auto-detect its `flatc` when the
+`hkrl-mod-build` conda environment exists. Otherwise pass
+`FLATC_CS=/path/to/flatc-23.5.26` when generating both languages from a Python
+dev environment with a newer `flatc`.
 
 ## Evolution rules
 
