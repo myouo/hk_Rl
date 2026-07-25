@@ -45,12 +45,14 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["batch_dir"] is None
     assert summary["bind"] == "127.0.0.1:0"
     assert summary["checkpoint_dir"] == str(tmp_path.resolve())
+    assert summary["device"] == "cpu"
     assert summary["enable_macro_actions"] is True
     assert summary["latest_checkpoint"] == 1
     assert summary["max_entities"] == 4
     assert summary["max_staleness"] == 2
     assert summary["model"] == "entity_attention_gru"
     assert summary["n_macro_actions"] == 11
+    assert summary["optimizer_restored"] is False
     assert summary["publish_every_updates"] == 1
     assert summary["policy_version"] == 0
     assert summary["queued_batches"] == 0
@@ -59,6 +61,26 @@ def test_run_learner_builds_server_summary(tmp_path: Path) -> None:
     assert summary["submitted_batches"] == 0
     assert summary["task_ids"] == []
     assert summary["tier"] == "privileged"
+
+
+def test_resolve_learner_device_cpu_and_auto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+
+    assert str(module._resolve_device("cpu")) == "cpu"
+    assert str(module._resolve_device("auto")) == "cpu"
+
+
+def test_resolve_learner_device_rejects_unavailable_cuda(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script("run_learner.py")
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="requires CUDA"):
+        module._resolve_device("cuda")
 
 
 def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
@@ -106,6 +128,12 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     assert summary["rejected_batches"] == 0
     assert summary["startup_checkpoint"] == 1
     assert summary["submitted_batches"] == 1
+
+    resume_args = argparse.Namespace(**vars(args))
+    resume_args.batch_dir = None
+    resumed = module.run_from_args(resume_args)
+    assert resumed["optimizer_restored"] is True
+    assert resumed["policy_version"] == 1
 
 
 def test_run_learner_ingests_recurrent_batch_dir_and_updates(tmp_path: Path) -> None:
@@ -197,6 +225,7 @@ def test_run_learner_network_intake_accepts_recurrent_batch_and_updates(
     assert summary["network_accepted_batches"] == 1
     assert summary["network_failed_batches"] == 0
     assert summary["network_submitted_batches"] == 1
+    assert summary["optimizer_restored"] is False
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
@@ -266,6 +295,7 @@ def test_run_learner_resumes_latest_registry_checkpoint(tmp_path: Path) -> None:
 
     assert summary["latest_checkpoint"] == meta.version
     assert summary["policy_version"] == 7
+    assert summary["optimizer_restored"] is False
     assert summary["startup_checkpoint"] == meta.version
     assert CheckpointRegistry(str(checkpoint_dir)).latest() == meta
 

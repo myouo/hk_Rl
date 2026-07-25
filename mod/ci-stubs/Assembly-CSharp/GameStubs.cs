@@ -1,7 +1,18 @@
+using System;
 using UnityEngine;
 
 namespace Modding
 {
+    public static class ModHooks
+    {
+        public static event Action? HeroUpdateHook;
+
+        public static void RaiseHeroUpdateForTests()
+        {
+            HeroUpdateHook?.Invoke();
+        }
+    }
+
     public class Mod
     {
         public Mod(string name)

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using HKRLEnvMod.Action;
 using HKRLEnvMod.Observation;
@@ -12,7 +13,7 @@ namespace HKRLEnvMod.Env
     /// collect observation + reward events, and enqueue a StepResponse. Honors the
     /// command (STEP/RESET/PAUSE/...) and the episode lifecycle.
     /// </summary>
-    public sealed class StepController
+    public sealed class StepController : IDisposable
     {
         private readonly TcpServer _server;
         private readonly ActionApplier _actions;
@@ -84,6 +85,12 @@ namespace HKRLEnvMod.Env
                 ClearControlState();
                 global::HKRLEnvMod.Debug.Logger.Error("StepController FixedTick failed", exception);
             }
+        }
+
+        public void Dispose()
+        {
+            ClearControlState();
+            _actions.Dispose();
         }
 
         private void FixedTickCore()

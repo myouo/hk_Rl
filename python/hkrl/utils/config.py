@@ -89,6 +89,11 @@ class LearnerRuntimeConfig(StrictConfigModel):
     """Remote learner runtime settings (docs/distributed_training.md §5)."""
 
     bind: str = Field(default="127.0.0.1:5600", min_length=1)
+    device: str = Field(
+        default="auto",
+        min_length=1,
+        pattern=r"^(?:auto|cpu|cuda(?::[0-9]+)?)$",
+    )
     max_staleness: int = Field(default=4, ge=0)
     checkpoint_dir: str = Field(default="checkpoints", min_length=1)
     publish_every_updates: int = Field(default=1, ge=1)
@@ -183,7 +188,17 @@ def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[st
 
 def load_train_config(path: str | Path) -> TrainConfig:
     """Load and validate a training config."""
-    return TrainConfig.model_validate(load_yaml(path))
+    config = TrainConfig.model_validate(load_yaml(path))
+    if (
+        config.algorithm == "appo"
+        and config.learner.publish_every_updates > config.learner.max_staleness + 1
+    ):
+        raise ValueError(
+            "APPO learner.publish_every_updates must be <= "
+            "learner.max_staleness + 1 so workers can receive a new checkpoint "
+            "before their rollout policy becomes too stale"
+        )
+    return config
 
 
 def load_task_config(path: str | Path) -> TaskConfig:

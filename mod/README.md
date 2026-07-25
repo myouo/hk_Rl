@@ -41,7 +41,15 @@ uncommitted `Directory.Build.props` or `HKRLEnvMod.csproj.user`:
 Then `make gen-schema-cs` to generate `Schema/HKRL.*`, and build with `dotnet
 build` / your IDE. Drop the resulting DLL into the game's `Mods/` folder.
 
+For Windows, `scripts/windows/prepare_game_pc.ps1 -BuildAndInstallMod` performs
+the pinned schema generation, builds against the installed game's real
+assemblies, backs up an existing install, and copies both `HKRLEnvMod.dll` and
+`Google.FlatBuffers.dll`. See
+[`../docs/windows_ssh_deployment.md`](../docs/windows_ssh_deployment.md).
+
 The mod tree now contains the core environment-server components: transport,
 step/reset lifecycle, action application/masking, reward-event buffering,
-debugging helpers, and player/entity observation plumbing. Full compile and
-behavioral verification still require a local Hollow Knight + Modding API setup.
+debugging helpers, and player/entity observation plumbing. The action path now
+commits real InControl `PlayerAction` state from `HeroUpdateHook`; final binary
+compatibility and behavioral verification still require a local Hollow Knight +
+Modding API setup.

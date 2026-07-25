@@ -62,6 +62,14 @@ main-thread responses from a disconnected client cannot be drained to the next
 client. The main-thread controller also clears held input/repeat state when
 client session state changes or a control command preempts a repeat.
 
+`ActionApplier` stores the selected primitive during `FixedUpdate`.
+`InputInjector` then commits it from `ModHooks.HeroUpdateHook`, which runs
+immediately before the game's original `HeroController.Update` reads
+`InputHandler.Instance.inputActions`. This preserves the main-thread invariant
+while aligning injected `WasPressed`/`WasReleased` edges with the actual game
+input tick. Driver disposal neutralizes the action set and unsubscribes the hook
+so Mod reloads cannot accumulate callbacks.
+
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching
 `--port`/`--ports` or `--env-port` value to the Python entry point. Keep
@@ -112,6 +120,12 @@ the boundary.
 - Fallback entity fields when an FSM/field is missing on a game update.
 - Debug overlay (`Debug/Overlay.cs`) to visually verify entities/hitboxes.
 - Unit-test the critical hooks: enter scene, read boss, reset, death, kill.
+
+The repository C# gate also runs `InputInjectionSmoke`: a runtime stub raises
+`HeroUpdateHook` and verifies every movement/aim/button mapping, nail-art release
+edge, neutral-on-dispose behavior, and hook removal. It does not replace the
+real-game acceptance gates in
+[`windows_ssh_deployment.md`](./windows_ssh_deployment.md).
 
 ## 7. Time control (PRD §9.6)
 

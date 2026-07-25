@@ -114,5 +114,22 @@ environment contract stays primitive-based.
 
 ## 6. Input injection (PRD §9.2)
 
-Actions are injected **inside the mod** (main-thread `FixedUpdate`), not via an
-external virtual gamepad, eliminating `vgamepad` timing nondeterminism.
+Actions are injected **inside the mod**, not via an external virtual gamepad.
+`StepController.FixedTick()` selects the current primitive input on the Unity
+main thread. `InputInjector` subscribes to the Modding API
+`ModHooks.HeroUpdateHook` and commits that primitive into Hollow Knight's
+InControl `PlayerAction` set immediately before `HeroController.Update`
+consumes it.
+
+Movement/aim write `left/right/up/down` and refresh `moveVector`; spell `cast`
+maps to the game's `quickCast`, while `focus_hold` maps to the game's `cast`
+action. Nail-art hold asserts `attack`, and `nail_art_release` clears it to
+produce the release edge. The bridge uses InControl's same-tick internal
+`SetValue` + `Commit` when available so pending physical bindings do not OR into
+the agent value, then falls back to public `CommitWithState` only for compatible
+older builds.
+
+All reflection is resolved lazily because the game input singleton is not ready
+at Mod initialization. Hook bodies are exception-contained and log a single
+compatibility error. Disposing the driver commits neutral input and removes the
+hook, preventing held controls or duplicate callbacks after a Mod reload.

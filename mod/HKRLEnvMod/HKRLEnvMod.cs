@@ -122,9 +122,10 @@ namespace HKRLEnvMod
             }
             catch (Exception exception)
             {
+                _stepController?.Dispose();
+                _stepController = null;
                 _server?.Dispose();
                 _server = null;
-                _stepController = null;
                 _configured = false;
                 global::HKRLEnvMod.Debug.Logger.Error(
                     "Failed to start HKRL TCP environment server",
@@ -172,9 +173,10 @@ namespace HKRLEnvMod
 
         private void OnDestroy()
         {
+            _stepController?.Dispose();
+            _stepController = null;
             _server?.Dispose();
             _server = null;
-            _stepController = null;
             _configured = false;
         }
 

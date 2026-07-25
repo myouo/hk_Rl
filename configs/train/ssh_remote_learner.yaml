@@ -1,0 +1,18 @@
+# Remote GPU role for Windows-over-SSH distributed training.
+# Both services bind to loopback; Windows reaches them only through SSH
+# local-forward ports 5600 (rollout intake) and 5601 (checkpoint HTTP).
+defaults:
+  - ./remote_learner.yaml
+
+learner:
+  bind: 127.0.0.1:5600
+  device: cuda
+  checkpoint_dir: runs/ssh-distributed/checkpoints
+
+coordinator:
+  bind: 127.0.0.1:5610
+
+security:
+  bind_scope: localhost
+  require_token: true
+  auth_token_env: HKRL_AUTH_TOKEN

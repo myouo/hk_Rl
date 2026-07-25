@@ -74,6 +74,22 @@ def test_load_train_config_composes_repo_defaults() -> None:
     assert config.model.name == "mlp"
 
 
+def test_windows_ssh_role_configs_keep_live_action_loop_local() -> None:
+    remote = load_train_config(Path("../configs/train/ssh_remote_learner.yaml"))
+    worker = load_train_config(Path("../configs/train/windows_game_worker.yaml"))
+
+    assert remote.algorithm == worker.algorithm == "appo"
+    assert remote.model == worker.model
+    assert remote.learner.bind == "127.0.0.1:5600"
+    assert remote.learner.device == "cuda"
+    assert worker.learner.bind == "127.0.0.1:5600"
+    assert worker.transport.name == "tcp"
+    assert worker.transport.host == "127.0.0.1"
+    assert worker.transport.port == 5555
+    assert remote.security.bind_scope == worker.security.bind_scope == "localhost"
+    assert remote.security.require_token is worker.security.require_token is True
+
+
 def test_load_task_config_preserves_wire_id() -> None:
     gruz = load_task_config(Path("../configs/tasks/gruz_mother.yaml"))
     hornet = load_task_config(Path("../configs/tasks/hornet_protector.yaml"))
@@ -132,9 +148,10 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
 
     assert config.algorithm == "appo"
     assert config.learner.bind == "127.0.0.1:5600"
+    assert config.learner.device == "auto"
     assert config.learner.max_staleness == 4
     assert config.learner.checkpoint_dir == "checkpoints/"
-    assert config.learner.publish_every_updates == 10
+    assert config.learner.publish_every_updates == 4
     assert config.coordinator.bind == "127.0.0.1:5610"
     assert config.coordinator.num_workers == 4
     assert config.security.bind_scope == "lan"
@@ -154,6 +171,33 @@ def test_load_train_config_rejects_unknown_fields(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        load_train_config(config)
+
+
+def test_load_train_config_rejects_invalid_learner_device(tmp_path: Path) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(config, {"learner": {"device": "gpu"}})
+
+    with pytest.raises(ValueError, match="String should match pattern"):
+        load_train_config(config)
+
+
+def test_load_train_config_rejects_appo_checkpoint_cadence_past_staleness(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "bad.yaml"
+    _write_yaml(
+        config,
+        {
+            "algorithm": "appo",
+            "learner": {
+                "max_staleness": 2,
+                "publish_every_updates": 4,
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match=r"publish_every_updates.*max_staleness"):
         load_train_config(config)
 
 

@@ -71,6 +71,11 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir"
     )
+    p.add_argument(
+        "--device",
+        default=None,
+        help="override config.learner.device (auto, cpu, cuda, or cuda:N)",
+    )
     p.add_argument("--max-staleness", type=int, default=None)
     p.add_argument("--publish-every-updates", type=int, default=None)
     p.add_argument("--max-entities", type=int, default=None)
@@ -96,6 +101,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     _validate_learner_args(args)
     cfg = load_train_config(args.config)
     bind = validate_bind_address(args.bind or cfg.learner.bind, cfg.security.bind_scope)
+    device = _resolve_device(
+        getattr(args, "device", None) or cfg.learner.device,
+    )
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
     max_staleness = (
         cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
@@ -122,7 +130,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_entities=layout["max_entities"],
         enable_macro=layout["enable_macro_actions"],
         n_macros=layout["n_macro_actions"],
-    )
+    ).to(device)
     registry = CheckpointRegistry(str(Path(checkpoint_dir)))
     server = LearnerServer(
         model=model,
@@ -132,13 +140,28 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_staleness=max_staleness,
         publish_every_updates=publish_every_updates,
     )
-    startup_checkpoint = _prepare_startup_checkpoint(server, registry)
+    startup_checkpoint, optimizer_restored = _prepare_startup_checkpoint(
+        server,
+        registry,
+    )
     submitted_batches = _submit_batch_dir(server, args.batch_dir)
     intake_count = int(getattr(args, "intake_count", 0) or 0)
     serve_forever = bool(getattr(args, "serve_forever", False))
     if serve_forever and intake_count:
         raise ValueError("--serve-forever cannot be combined with --intake-count")
     if serve_forever:
+        _emit_event(
+            "learner_ready",
+            {
+                "bind": bind,
+                "checkpoint_dir": registry.root,
+                "device": str(device),
+                "optimizer_restored": optimizer_restored,
+                "policy_version": server.policy_version,
+                "startup_checkpoint": startup_checkpoint.version,
+                "task_ids": [task.task_id for task in tasks],
+            },
+        )
         network_batches, network_accepted, network_failed = _serve_network_forever(
             server,
             bind,
@@ -162,6 +185,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "batch_dir": args.batch_dir,
         "bind": bind,
         "checkpoint_dir": registry.root,
+        "device": str(device),
         "enable_macro_actions": layout["enable_macro_actions"],
         "latest_checkpoint": None if latest is None else latest.version,
         "max_entities": layout["max_entities"],
@@ -171,6 +195,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "network_accepted_batches": network_accepted,
         "network_failed_batches": network_failed,
         "network_submitted_batches": network_batches,
+        "optimizer_restored": optimizer_restored,
         "publish_every_updates": publish_every_updates,
         "policy_version": server.policy_version,
         "queued_batches": int(getattr(server.algo, "queued_batches", 0)),
@@ -212,6 +237,37 @@ def _build_model(
     )
 
 
+def _resolve_device(requested: str) -> torch.device:
+    normalized = requested.strip().lower()
+    if normalized == "auto":
+        normalized = "cuda:0" if torch.cuda.is_available() else "cpu"
+    elif normalized == "cuda":
+        normalized = "cuda:0"
+
+    try:
+        device = torch.device(normalized)
+    except (RuntimeError, ValueError) as exc:
+        raise ValueError("learner device must be auto, cpu, cuda, or cuda:N") from exc
+
+    if device.type not in {"cpu", "cuda"}:
+        raise ValueError("learner device must be auto, cpu, cuda, or cuda:N")
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                f"learner device {normalized!r} requires CUDA, but "
+                "torch.cuda.is_available() is false"
+            )
+        device_index = 0 if device.index is None else device.index
+        device_count = torch.cuda.device_count()
+        if device_index >= device_count:
+            raise RuntimeError(
+                f"learner device cuda:{device_index} is unavailable; "
+                f"torch reports {device_count} CUDA device(s)"
+            )
+        return torch.device(f"cuda:{device_index}")
+    return device
+
+
 def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
     if batch_dir is None:
         return 0
@@ -232,21 +288,16 @@ def _submit_batch_dir(server: LearnerServer, batch_dir: str | None) -> int:
 def _prepare_startup_checkpoint(
     server: LearnerServer,
     registry: CheckpointRegistry,
-) -> CheckpointMeta:
+) -> tuple[CheckpointMeta, bool]:
     """Publish or load the checkpoint workers should use before first rollout."""
     latest = registry.latest()
     if latest is None:
         server.last_checkpoint = registry.publish(
-            {
-                "model_state_dict": server.model.state_dict(),
-                "policy_version": server.policy_version,
-                "update": server.update_count,
-                "metrics": {},
-            },
+            server.checkpoint_payload(),
             policy_version=server.policy_version,
             step=server.update_count,
         )
-        return server.last_checkpoint
+        return server.last_checkpoint, False
 
     path = registry.resolve_path(latest)
     _verify_checkpoint_hash(path, latest)
@@ -258,6 +309,9 @@ def _prepare_startup_checkpoint(
         )
     )
     server.model.load_state_dict(state["model_state_dict"])
+    optimizer_restored = server.restore_optimizer_state(
+        state.get("optimizer_state_dict")
+    )
     policy_version = _checkpoint_non_negative_int(
         state.get("policy_version", latest.policy_version),
         name="policy_version",
@@ -271,7 +325,7 @@ def _prepare_startup_checkpoint(
     if hasattr(server.algo, "current_version"):
         server.algo.current_version = policy_version
     server.last_checkpoint = latest
-    return latest
+    return latest, optimizer_restored
 
 
 def _verify_checkpoint_hash(path: Path, meta: CheckpointMeta) -> None:
@@ -347,15 +401,55 @@ def _serve_network_forever(
                 continue
             except KeyboardInterrupt:
                 break
-            except Exception:
+            except Exception as exc:
                 submitted += 1
                 failed += 1
+                _emit_event(
+                    "rollout_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "failed_batches": failed,
+                        "policy_version": int(getattr(server, "policy_version", 0)),
+                        "submitted_batches": submitted,
+                    },
+                )
                 continue
             submitted += 1
             if result.accepted:
                 accepted += 1
                 server.serve()
+                last_checkpoint = getattr(server, "last_checkpoint", None)
+                _emit_event(
+                    "learner_update",
+                    {
+                        "accepted_batches": accepted,
+                        "checkpoint_version": (
+                            None if last_checkpoint is None else last_checkpoint.version
+                        ),
+                        "metrics": getattr(server, "last_metrics", {}),
+                        "peer": getattr(result, "peer", "unknown"),
+                        "policy_version": int(getattr(server, "policy_version", 0)),
+                        "submitted_batches": submitted,
+                    },
+                )
+            else:
+                _emit_event(
+                    "rollout_rejected",
+                    {
+                        "accepted_batches": accepted,
+                        "peer": getattr(result, "peer", "unknown"),
+                        "policy_version": int(getattr(server, "policy_version", 0)),
+                        "submitted_batches": submitted,
+                    },
+                )
     return submitted, accepted, failed
+
+
+def _emit_event(event: str, payload: dict[str, Any]) -> None:
+    print(
+        json.dumps({"event": event, **payload}, sort_keys=True),
+        flush=True,
+    )
 
 
 def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
@@ -409,6 +503,7 @@ def _validate_learner_args(args: argparse.Namespace) -> None:
         for index, task_path in enumerate(task_paths):
             _non_empty_path_like(task_path, name=f"tasks[{index}]")
     _optional_non_empty_string(getattr(args, "bind", None), name="bind")
+    _optional_non_empty_string(getattr(args, "device", None), name="device")
     _optional_non_empty_path_like(getattr(args, "batch_dir", None), name="batch_dir")
     _optional_non_empty_path_like(
         getattr(args, "checkpoint_dir", None),

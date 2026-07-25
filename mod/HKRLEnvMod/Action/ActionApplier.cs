@@ -1,3 +1,4 @@
+using System;
 using HKRLEnvMod.Transport;
 
 namespace HKRLEnvMod.Action
@@ -7,7 +8,7 @@ namespace HKRLEnvMod.Action
     /// §6, PRD §9.2). Translates the hybrid action (movement/aim/buttons/duration/
     /// macro) into in-game input via InputInjector, expanding macros first.
     /// </summary>
-    public sealed class ActionApplier
+    public sealed class ActionApplier : IDisposable
     {
         private static readonly int[] DurationTicks = { 1, 2, 4, 8 };
 
@@ -45,6 +46,12 @@ namespace HKRLEnvMod.Action
             _heldInput = PrimitiveInput.Noop;
             _heldTicksRemaining = 0;
             _input.Clear();
+        }
+
+        public void Dispose()
+        {
+            Clear();
+            _input.Dispose();
         }
 
         private static PrimitiveInput ToPrimitive(DecodedAction action)

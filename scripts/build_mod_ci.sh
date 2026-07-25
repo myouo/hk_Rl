@@ -30,3 +30,7 @@ dotnet build mod/HKRLEnvMod/HKRLEnvMod.csproj \
   -c Release \
   -p:HollowKnightManaged="${REFS_DIR}" \
   -p:TreatWarningsAsErrors=true
+
+dotnet run \
+  --project mod/ci-tests/InputInjectionSmoke/InputInjectionSmoke.csproj \
+  -c Release

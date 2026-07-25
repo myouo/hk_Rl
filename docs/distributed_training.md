@@ -96,10 +96,16 @@ counted as `network_failed_batches` and the listener continues serving; a single
 bad worker upload must not terminate a long-running remote learner.
 At startup, `scripts/run_learner.py` publishes a policy-version 0 checkpoint
 when the registry is empty, or loads the registry's latest checkpoint and syncs
-the learner policy/update counters from its payload. Start or resume the learner
+the model, learner policy/update counters, and optimizer state from its payload.
+Older checkpoints without optimizer state remain loadable but resume with a
+fresh optimizer. Start or resume the learner
 before pointing workers at the checkpoint registry; workers then hash-verify and
 load the same learner weights before collecting their first rollout instead of
 sampling with independent random initialization.
+In `--serve-forever` mode the learner writes bounded JSON events to stdout for
+readiness, accepted updates, stale rollout rejection, and failed uploads. Each
+update event includes the latest training metrics and checkpoint version for
+operator logs and the training notebook.
 `scripts/run_learner.py --tasks ...` can infer the learner model's
 `max_entities`, observation tier, macro enablement, and macro count from task
 YAML, and rejects task groups whose model/action layout would not fit a single
@@ -157,9 +163,19 @@ Unknown config keys are rejected instead of ignored, so typos in distributed
 settings fail during startup.
 Learner CLI overrides for config/task paths, optional batch/checkpoint
 directories, bind overrides, intake count/timeout, max staleness, checkpoint
-publish cadence, max entities, and macro-action count are validated before
+publish cadence, training device, max entities, and macro-action count are validated before
 model/server construction, so malformed gate parameters fail early instead of
 after partial learner startup.
+`learner.device` accepts `auto`, `cpu`, `cuda`, or `cuda:N`; the SSH GPU role
+uses `cuda` and refuses to start when CUDA is unavailable. The generic
+`remote_learner.yaml` uses `auto` so CPU-only CI and local smoke runs remain
+possible.
+
+For APPO, `learner.publish_every_updates` must be no greater than
+`learner.max_staleness + 1`. Otherwise the learner can advance beyond the
+worker's accepted staleness window before publishing weights, leaving every
+subsequent rollout rejected with no path to a newer checkpoint. Config loading
+rejects that deadlocking combination.
 
 When `security.require_token` is true, Python service clients read the token
 from `security.auth_token_env` (default `HKRL_AUTH_TOKEN`) and send it as the
@@ -199,6 +215,21 @@ root so the same `index.jsonl` can be mounted locally or served over HTTP(S).
 `CheckpointClient` supports local/file and HTTP(S) registry endpoints, sends the
 configured bearer token for HTTP(S), and verifies the downloaded checkpoint
 sha256 before loading weights.
+
+For the supported Windows Game PC + remote GPU deployment, use
+[`windows_ssh_deployment.md`](./windows_ssh_deployment.md). The remote learner
+and checkpoint HTTP server both bind to loopback. Windows opens SSH local
+forwards for batch intake (`5600`) and checkpoint download (`5601`); the local
+mod environment remains on Windows loopback (`5555`). The checked-in
+`ssh_remote_learner.yaml` and `windows_game_worker.yaml` configs make the two
+roles explicit. `scripts/run_checkpoint_server.py` is read-only, requires the
+configured Bearer token, exposes no directory listing, rejects path traversal,
+and serves only registry index/checkpoint filenames. SSH never carries
+single-step observations/actions.
+The executable training-device walkthrough is
+[`../notebooks/remote_gpu_training.ipynb`](../notebooks/remote_gpu_training.ipynb);
+`scripts/remote/bootstrap_learner_env.sh` creates its CUDA/Jupyter environment
+without reusing the CPU-only worker environment.
 
 ## 7. Worker recovery
 

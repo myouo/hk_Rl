@@ -7,6 +7,26 @@ the project version tracks the **schema_version** + roadmap phase.
 ## [Unreleased]
 
 ### Added
+- Real in-mod action injection now commits movement, aim, jump, dash, attack,
+  spell, focus, dream-nail, and nail-art hold/release into Hollow Knight's
+  InControl `PlayerAction` set from `ModHooks.HeroUpdateHook`; driver disposal
+  neutralizes input and removes the hook.
+- C# CI now runs a runtime `InputInjectionSmoke` in addition to compiling the
+  full mod, checking button/axis mappings, release edges, and teardown behavior.
+- Added an authenticated read-only checkpoint HTTP service, explicit Windows
+  GameWorker / SSH remote learner configs, Windows preparation/tunnel/worker
+  PowerShell scripts, a supervised remote learner-stack launcher, and the
+  `docs/windows_ssh_deployment.md` live acceptance guide.
+- Added a remote-GPU bootstrap script and operator Jupyter Notebook covering
+  CUDA/config preflight, secure service control, live checkpoint/log monitoring,
+  restart, and Windows fixed-seed evaluation handoff.
+- Remote learners now select `auto`/`cpu`/`cuda[:N]` from validated config or
+  CLI, report the actual device, and the SSH role hard-fails without CUDA.
+- Learner checkpoints now persist and restore optimizer state, and long-running
+  learners emit JSON readiness/update/rejection/failure events for monitoring.
+- APPO configs now reject checkpoint cadences longer than the accepted
+  staleness window, preventing workers from becoming permanently too stale
+  before a new checkpoint is available.
 - Initial architecture scaffold: full directory tree, interface-level
   placeholders, specification docs, ADRs, and `AGENTS.md`.
 - FlatBuffers schema `schema/hkrl.fbs` as the single source of truth for

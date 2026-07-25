@@ -7,6 +7,7 @@ Only large-batch training happens here — never real-time inference (ADR-0004).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
@@ -69,16 +70,36 @@ class LearnerServer:
 
         if self.update_count % self.publish_every_updates == 0:
             self.last_checkpoint = self.registry.publish(
-                {
-                    "model_state_dict": self.model.state_dict(),
-                    "policy_version": self.policy_version,
-                    "update": self.update_count,
-                    "metrics": self.last_metrics,
-                },
+                self.checkpoint_payload(),
                 policy_version=self.policy_version,
                 step=self.update_count,
             )
         return self.last_metrics
+
+    def checkpoint_payload(self) -> dict[str, object]:
+        """Build a resumable learner checkpoint also safe for worker loading."""
+        payload: dict[str, object] = {
+            "model_state_dict": self.model.state_dict(),
+            "policy_version": self.policy_version,
+            "update": self.update_count,
+            "metrics": self.last_metrics,
+        }
+        optimizer = getattr(self.algo, "optimizer", None)
+        if optimizer is not None:
+            payload["optimizer_state_dict"] = optimizer.state_dict()
+        return payload
+
+    def restore_optimizer_state(self, state: object) -> bool:
+        """Restore optimizer momentum/state when a checkpoint contains it."""
+        if state is None:
+            return False
+        if not isinstance(state, Mapping):
+            raise ValueError("checkpoint optimizer_state_dict must be a mapping")
+        optimizer = getattr(self.algo, "optimizer", None)
+        if optimizer is None:
+            raise ValueError(f"algorithm {self.cfg.algorithm!r} has no optimizer to restore")
+        optimizer.load_state_dict(dict(state))
+        return True
 
     def serve(self) -> None:
         """Run the receive->filter->update->publish loop.

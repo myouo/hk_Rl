@@ -221,12 +221,16 @@ python scripts/run_learner.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml \
   --bind 127.0.0.1:5600 \
+  --device cuda \
   --serve-forever \
   --checkpoint-dir checkpoints
 
 # worker 在本地推理/采样，rollout 满后上传到 learner；也可同时写 --batch-dir 作为本地 spool
-# checkpoint registry 可用只读 HTTP(S) 暴露；本地 smoke 可先运行：
-python -m http.server 8000 --directory checkpoints
+# checkpoint registry 使用只读、Bearer 鉴权的专用服务（另一个终端）
+python scripts/run_checkpoint_server.py \
+  --config configs/train/remote_learner.yaml \
+  --bind 127.0.0.1:5601 \
+  --checkpoint-dir checkpoints
 
 python scripts/run_worker.py \
   --config configs/train/remote_learner.yaml \
@@ -234,7 +238,7 @@ python scripts/run_worker.py \
   --env-host 127.0.0.1 \
   --env-port 5555 \
   --learner 127.0.0.1:5600 \
-  --registry http://127.0.0.1:8000/ \
+  --registry http://127.0.0.1:5601/ \
   --heartbeat-jsonl runs/worker-heartbeats.jsonl \
   --steps 2048
 ```
@@ -243,8 +247,18 @@ python scripts/run_worker.py \
 `checkpoint_v*.pt`，包含 `policy_version`、step、sha256 等元数据。registry
 中的 checkpoint 路径是相对路径。learner 在空 registry 启动时会发布初始
 policy version 0 checkpoint；重启时会加载 latest checkpoint 并继续使用其中的
-policy_version。可用本地路径、`file://` 或 HTTP(S) 目录提供给 worker 的
+model、policy/update 版本及 optimizer state。可用本地路径、`file://` 或 HTTP(S) 目录提供给 worker 的
 `--registry`，worker 会在首个 rollout 前加载 latest 并验证 sha256。
+
+Windows 游戏机 + SSH 远程 GPU 的正式拆分、环境准备与启动命令见
+[`docs/windows_ssh_deployment.md`](./docs/windows_ssh_deployment.md)。远程端只监听
+loopback，Windows 通过 SSH 转发 rollout/checkpoint 两个批量通道；实时动作环仍完全
+留在 Windows 本机。
+
+训练机的交互式操作入口见
+[`notebooks/remote_gpu_training.ipynb`](./notebooks/remote_gpu_training.ipynb)。
+它覆盖 GPU 环境安装、合并配置核对、服务启停、JSON 训练日志、断点恢复和固定种子
+评测交接；训练环境可用 `scripts/remote/bootstrap_learner_env.sh` 一次性创建。
 
 发布前检查见 [`docs/release.md`](./docs/release.md)，其中区分了 CI 可验证的
 Python/离线分布式门禁和必须在 Hollow Knight 机器上执行的 mod/live smoke 门禁；
@@ -292,10 +306,11 @@ transport、reward events、action mask、entity observation、PPO/RecurrentPPO/
 worker/learner/checkpoint/coordinator/evaluator 等核心路径均已落地并由
 `make check` 覆盖。
 
-本仓库当前仍有三个需要真实外部环境或后续实现验证的边界：HKRLEnvMod 的 C# 编译
-依赖本机 Hollow Knight Managed 程序集与 HK Modding API；端到端
-smoke/eval/training 依赖运行中的 Hollow Knight + HKRLEnvMod TCP 服务；
-shared-memory transport 目前是 Python 进程内原型，不是可接入当前 mod 的 live
+本仓库当前仍有三个需要真实外部环境或后续实现验证的边界：HKRLEnvMod 已实现
+`HeroUpdateHook -> InControl PlayerAction` 的真实动作注入并有运行时 stub smoke，
+但最终二进制兼容性仍必须在本机 Hollow Knight Managed 程序集与 HK Modding API
+上验收；端到端 smoke/eval/training 依赖运行中的游戏与可用 Godhome 存档；shared-
+memory transport 目前仍是 Python 进程内原型，不是可接入当前 mod 的 live
 transport。
 
 ## License

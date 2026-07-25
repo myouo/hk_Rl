@@ -9,9 +9,10 @@ algorithm: appo
 # Learner / distributed settings consumed by hkrl.learner / hkrl.coordinator.
 learner:
   bind: 127.0.0.1:5600
+  device: auto                    # auto | cpu | cuda | cuda:N
   max_staleness: 4              # drop rollouts older than this many versions
   checkpoint_dir: checkpoints/
-  publish_every_updates: 10
+  publish_every_updates: 4       # must be <= max_staleness + 1 for APPO
 
 coordinator:
   bind: 127.0.0.1:5610
