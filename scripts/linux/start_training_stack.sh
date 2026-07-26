@@ -16,6 +16,8 @@ Options:
   --auth-file PATH         0600 shell file containing HKRL_AUTH_TOKEN
   --game-root PATH         Hollow Knight installation root
   --task PATH              Primary task
+  --save-slot SLOT         Godhome-capable save slot (1..4)
+  --time-scale SCALE       Simulation multiplier (default: 1.0)
   --worker-id ID           Stable worker id
   --steps N                Finite sample count; 0 means continuous
   --env-port PORT          Local mod port (default: 5555)
@@ -33,6 +35,8 @@ IDENTITY_FILE=""
 AUTH_FILE="${HOME}/.config/hkrl/worker.env"
 GAME_ROOT=""
 TASK="configs/tasks/gruz_mother.yaml"
+SAVE_SLOT="${HKRL_SAVE_SLOT:-}"
+TIME_SCALE=1.0
 WORKER_ID="$(hostname -s 2>/dev/null || printf 'linux')-game-0"
 STEPS=0
 ENV_PORT=5555
@@ -65,6 +69,14 @@ while (($# > 0)); do
       ;;
     --task)
       TASK="$2"
+      shift 2
+      ;;
+    --save-slot)
+      SAVE_SLOT="$2"
+      shift 2
+      ;;
+    --time-scale)
+      TIME_SCALE="$2"
       shift 2
       ;;
     --worker-id)
@@ -121,7 +133,9 @@ WORKER_ARGS=(
   --env-port "${ENV_PORT}"
   --learner-port "${LEARNER_PORT}"
   --registry-port "${REGISTRY_PORT}"
+  --time-scale "${TIME_SCALE}"
 )
+[[ -z "${SAVE_SLOT}" ]] || WORKER_ARGS+=(--save-slot "${SAVE_SLOT}")
 ((LAUNCH_GAME == 0)) || WORKER_ARGS+=(--launch-game)
 
 if ((DRY_RUN)); then

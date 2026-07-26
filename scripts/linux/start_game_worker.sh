@@ -17,6 +17,8 @@ Options:
   --worker-id ID                Stable worker id
   --game-root PATH              Hollow Knight installation root
   --launch-game                 Launch native Hollow Knight or Steam app 367520
+  --save-slot SLOT              Godhome-capable save slot (1..4)
+  --time-scale SCALE            Simulation multiplier (default: 1.0)
   --env-port PORT               Mod environment port (default: 5555)
   --learner-port PORT           Local SSH learner forward (default: 5600)
   --registry-port PORT          Local SSH registry forward (default: 5601)
@@ -37,6 +39,8 @@ TASKS=()
 WORKER_ID="$(hostname -s 2>/dev/null || printf 'linux')-game-0"
 GAME_ROOT=""
 LAUNCH_GAME=0
+SAVE_SLOT="${HKRL_SAVE_SLOT:-}"
+TIME_SCALE=1.0
 ENV_PORT=5555
 LEARNER_PORT=5600
 REGISTRY_PORT=5601
@@ -80,6 +84,16 @@ while (($# > 0)); do
     --launch-game)
       LAUNCH_GAME=1
       shift
+      ;;
+    --save-slot)
+      [[ $# -ge 2 ]] || hkrl_die "--save-slot requires a value"
+      SAVE_SLOT="$2"
+      shift 2
+      ;;
+    --time-scale)
+      [[ $# -ge 2 ]] || hkrl_die "--time-scale requires a value"
+      TIME_SCALE="$2"
+      shift 2
       ;;
     --env-port)
       ENV_PORT="$2"
@@ -139,6 +153,10 @@ done
   || hkrl_die "--inference-threads must be positive"
 [[ "${GAME_STARTUP_TIMEOUT}" =~ ^[0-9]+$ ]] && ((GAME_STARTUP_TIMEOUT >= 1)) \
   || hkrl_die "--game-startup-timeout must be positive"
+python3 -c \
+  'import math,sys; value=float(sys.argv[1]); raise SystemExit(0 if math.isfinite(value) and value > 0 else 1)' \
+  "${TIME_SCALE}" \
+  || hkrl_die "--time-scale must be a positive finite number"
 
 CONFIG_PATH="$(hkrl_resolve_repo_file "${REPO_ROOT}" "${CONFIG}")"
 TASK_PATH="$(hkrl_resolve_repo_file "${REPO_ROOT}" "${TASK}")"
@@ -157,6 +175,18 @@ MOD_DIR="${MANAGED_DIR}/Mods/HKRLEnvMod"
 [[ -f "${MOD_DIR}/HKRLEnvMod.dll" ]] || hkrl_die \
   "HKRLEnvMod is not installed under ${MOD_DIR}; run prepare_game_pc.sh"
 RUNTIME_CONFIG="${MOD_DIR}/hkrl-runtime.conf"
+if [[ -z "${SAVE_SLOT}" && -f "${RUNTIME_CONFIG}" ]]; then
+  while IFS='=' read -r runtime_key runtime_value; do
+    if [[ "${runtime_key}" == "HKRL_SAVE_SLOT" ]]; then
+      SAVE_SLOT="${runtime_value%$'\r'}"
+      break
+    fi
+  done < "${RUNTIME_CONFIG}"
+fi
+[[ -n "${SAVE_SLOT}" ]] || hkrl_die \
+  "--save-slot is required when hkrl-runtime.conf has no HKRL_SAVE_SLOT"
+[[ "${SAVE_SLOT}" =~ ^[1-4]$ ]] \
+  || hkrl_die "--save-slot must be an integer in [1, 4]"
 
 if [[ -n "${HKRL_PYTHON_BIN:-}" ]]; then
   [[ -x "${HKRL_PYTHON_BIN}" ]] || hkrl_die \
@@ -183,6 +213,7 @@ WORKER_BASE=(
   --batch-dir "${REPO_ROOT}/runs/linux-worker/batches"
   --heartbeat-jsonl "${REPO_ROOT}/runs/linux-worker/heartbeats.jsonl"
   --inference-threads "${INFERENCE_THREADS}"
+  --time-scale "${TIME_SCALE}"
 )
 if ((${#TASK_PATHS[@]} > 0)); then
   WORKER_BASE+=(--tasks "${TASK_PATHS[@]}")
@@ -201,7 +232,9 @@ if ((DRY_RUN)); then
     "${ENV_PORT}" \
     "${LEARNER_PORT}" \
     "${REGISTRY_PORT}" \
-    "${INFERENCE_THREADS}" <<'PY'
+    "${INFERENCE_THREADS}" \
+    "${SAVE_SLOT}" \
+    "${TIME_SCALE}" <<'PY'
 import json
 import sys
 
@@ -218,6 +251,8 @@ import sys
     learner_port,
     registry_port,
     inference_threads,
+    save_slot,
+    time_scale,
 ) = sys.argv[1:]
 print(
     json.dumps(
@@ -232,7 +267,9 @@ print(
             "python": python,
             "registry_endpoint": f"http://127.0.0.1:{registry_port}/",
             "runtime_config": runtime_config,
+            "save_slot": int(save_slot),
             "task": task,
+            "time_scale": float(time_scale),
             "worker_id": worker_id,
         },
         sort_keys=True,
@@ -246,9 +283,6 @@ fi
   "HKRL_AUTH_TOKEN is not set; source the same token used by the remote learner"
 [[ "${HKRL_AUTH_TOKEN}" != *$'\n'* && "${HKRL_AUTH_TOKEN}" != *$'\r'* ]] \
   || hkrl_die "HKRL_AUTH_TOKEN must be a single line"
-HKRL_SAVE_SLOT="${HKRL_SAVE_SLOT:-1}"
-[[ "${HKRL_SAVE_SLOT}" =~ ^[1-4]$ ]] \
-  || hkrl_die "HKRL_SAVE_SLOT must be an integer in [1, 4]"
 
 mkdir -p "${MOD_DIR}" "${REPO_ROOT}/runs/linux-worker"
 umask 077
@@ -260,7 +294,7 @@ trap cleanup_runtime_temp EXIT
 {
   printf 'HKRL_HOST=127.0.0.1\n'
   printf 'HKRL_PORT=%s\n' "${ENV_PORT}"
-  printf 'HKRL_SAVE_SLOT=%s\n' "${HKRL_SAVE_SLOT}"
+  printf 'HKRL_SAVE_SLOT=%s\n' "${SAVE_SLOT}"
   printf 'HKRL_AUTH_TOKEN=%s\n' "${HKRL_AUTH_TOKEN}"
 } > "${runtime_temp}"
 chmod 0600 "${runtime_temp}"
@@ -270,6 +304,7 @@ trap - EXIT
 
 export HKRL_HOST=127.0.0.1
 export HKRL_PORT="${ENV_PORT}"
+export HKRL_SAVE_SLOT="${SAVE_SLOT}"
 export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS="${INFERENCE_THREADS}"
 export MKL_NUM_THREADS="${INFERENCE_THREADS}"

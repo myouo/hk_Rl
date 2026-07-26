@@ -11,7 +11,9 @@ This project has two deliberately separate configuration layers.
 3. `configs/tasks/*.yaml` owns Boss identity and any arena-specific overrides.
    The catalog-generated Hall of Gods tasks compose their common action,
    observation, episode, and reward settings from
-   `configs/task_defaults/godhome_training.yaml`.
+   `configs/task_defaults/godhome_training.yaml`. The active three-Boss
+   curriculum overlays `configs/task_defaults/godhome_engagement_v1.yaml`;
+   inactive catalog tasks retain the baseline profile.
 
 Unknown keys fail validation. Do not copy hyperparameters into the experiment
 manifest; point both roles at composed train configs with the same training
@@ -73,6 +75,12 @@ The last sequence minibatch is padding-masked to keep the compiled learner shape
 stable. The four batches may come from four game instances or sequentially from
 fewer workers; four parallel instances reduce update latency when the game host
 can sustain them.
+
+The current engagement-v1 comparison changes reward weights only: damage dealt
+remains `1.0`, while player damage/death are reduced to `-2`/`-20`.
+`gamma=0.995`, `gae_lambda=0.95`, and `entropy_coef=0.01` stay fixed for the
+first controlled comparison. Start it from a fresh optimizer/checkpoint series
+and preserve the death-heavy baseline.
 
 Keep `fixedDeltaTime` at 0.02 seconds: it is the 50 Hz physics integration step,
 not an FPS cap. Tune `local.time_scale` with

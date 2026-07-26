@@ -51,7 +51,7 @@ processes with a specific game instance:
 ```bash
 export HKRL_HOST=127.0.0.1
 export HKRL_PORT=5555
-export HKRL_SAVE_SLOT=1             # Godhome-capable save slot, 1..4
+export HKRL_SAVE_SLOT=3             # Explicit fully unlocked slot, 1..4
 export HKRL_AUTH_TOKEN=dev-secret   # optional; enables TCP env auth
 ```
 
@@ -61,7 +61,9 @@ from the worker-launch shell. The Mod therefore also accepts a strict
 priority. [`scripts/linux/start_game_worker.sh`](../scripts/linux/start_game_worker.sh)
 writes the file atomically with mode `0600`; token values are never logged. When
 RESET is first requested from the title menu, the Mod loads `HKRL_SAVE_SLOT`
-(default 1) before entering the configured Godhome arena.
+before entering the configured Godhome arena. The Linux launcher preserves an
+existing configured slot and otherwise requires an explicit one; it never
+silently replaces a known-good training slot with slot 1.
 
 Python env clients (`check_env.py`, local training, workers, evaluators) send
 the same non-empty token automatically when it is present. Sending the auth

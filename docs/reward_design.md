@@ -57,12 +57,37 @@ reward =
   + optional shaping (distance, positioning)
 ```
 
-Weights live in task configs (`configs/tasks/*.yaml`), not in code.
+Weights live in composed task configs (`configs/tasks/*.yaml` and
+`configs/task_defaults/*.yaml`), not in code.
+
+### Engagement curriculum profile
+
+The active Gruz Mother, Hornet Protector, and Mantis Lords tasks additionally
+compose
+[`godhome_engagement_v1.yaml`](../configs/task_defaults/godhome_engagement_v1.yaml):
+
+```text
++ 1.0    * damage_dealt
+- 2.0    * damage_taken
++ 0.1    * soul_gained
++ 0.5    * heal_amount
++ 50     * boss_kill
+- 20     * player_death
+- 0.0015 * time_step
+- 0.01   * invalid_action
+```
+
+This is an early curriculum profile for increasing combat contact without
+making survival failure dominate every exploratory trajectory. It does not
+change the shaping-free evaluator or implicitly enroll the other catalog
+Bosses. Treat a reward-profile change as a new run: preserve the old checkpoint
+and rollout metrics instead of continuing the optimizer under a different
+objective.
 
 ## 4. Anti-reward-hacking (PRD §9.4)
 
-1. **Terminal >> shaping.** `boss_kill` / `player_death` dominate intermediate
-   shaping so the agent can't farm mid-rewards instead of winning.
+1. **Terminal outcomes stay explicit.** `boss_kill` / `player_death` remain
+   separate, auditable events rather than being inferred from dense shaping.
 2. **Decoupled events.** Shaping changes never require touching the mod.
 3. **Shaping-free evaluation.** The evaluator always reports metrics that ignore
    shaping (win rate, damage ratio, time-to-kill). See [`metrics.md`](./metrics.md).

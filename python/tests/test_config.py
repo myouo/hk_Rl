@@ -104,6 +104,27 @@ def test_load_task_config_preserves_wire_id() -> None:
     assert mantis.wire_id == 2
 
 
+def test_active_tasks_compose_engagement_reward_profile() -> None:
+    expected = {
+        "boss_damage": 1.0,
+        "player_damage": -2.0,
+        "soul_gained": 0.1,
+        "heal_amount": 0.5,
+        "boss_kill": 50.0,
+        "player_death": -20.0,
+        "time_penalty": -0.0015,
+        "invalid_action": -0.01,
+    }
+
+    for name in ("gruz_mother", "hornet_protector", "mantis_lords"):
+        task = load_task_config(Path(f"../configs/tasks/{name}.yaml"))
+        assert task.reward.model_dump() == expected
+
+    inactive = load_task_config(Path("../configs/tasks/false_knight.yaml"))
+    assert inactive.reward.player_death == -100.0
+    assert inactive.reward.player_damage == -8.0
+
+
 def test_hitless_arena_configs_select_recurrent_primitive_training() -> None:
     task = load_task_config(Path("../configs/tasks/gruz_mother_hitless_speed.yaml"))
     train = load_train_config(Path("../configs/train/arena_hitless_gru.yaml"))

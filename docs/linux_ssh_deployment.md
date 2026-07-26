@@ -136,11 +136,17 @@ scripts/linux/start_training_stack.sh \
   --ssh-port 30262 \
   --identity-file "$HOME/.ssh/id_ed25519" \
   --auth-file "$HOME/.config/hkrl/worker.env" \
+  --save-slot 3 \
+  --time-scale 3 \
   --task configs/tasks/gruz_mother.yaml
 ```
 
 Use `--steps 2048` for a bounded acceptance run. Use `--no-launch-game` when the
 game is already open with the matching runtime configuration.
+Always select a save slot that has the Godhome progression and Hero abilities
+required by the task. If `--save-slot` and `HKRL_SAVE_SLOT` are both omitted,
+the launcher preserves the slot already recorded in `hkrl-runtime.conf`; it
+fails closed when no slot exists instead of silently falling back to slot 1.
 
 To inspect the resolved topology without writing config, launching the game, or
 opening SSH:
@@ -151,6 +157,8 @@ scripts/linux/start_training_stack.sh \
   --ssh-port 30262 \
   --identity-file "$HOME/.ssh/id_ed25519" \
   --game-root "$HOME/.local/share/Steam/steamapps/common/Hollow Knight" \
+  --save-slot 3 \
+  --time-scale 3 \
   --dry-run
 ```
 
@@ -178,6 +186,8 @@ set +a
 
 scripts/linux/start_game_worker.sh \
   --launch-game \
+  --save-slot 3 \
+  --time-scale 3 \
   --task configs/tasks/gruz_mother.yaml \
   --worker-id linux-game-0
 ```

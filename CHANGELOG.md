@@ -7,6 +7,9 @@ the project version tracks the **schema_version** + roadmap phase.
 ## [Unreleased]
 
 ### Added
+- Added an opt-in `godhome_engagement_v1` reward overlay for the three active
+  curriculum tasks. Boss damage remains `1.0`; player damage/death penalties
+  are reduced to `-2`/`-20` without enrolling the remaining Boss catalog.
 - Added hash-aware global/player/entity encoders and live-scale CPU/CUDA AMP
   regression coverage. Scene, arena, actor, prefab, and FSM hashes now use
   bounded learned embeddings and are removed from continuous MLP inputs, which
@@ -38,6 +41,10 @@ the project version tracks the **schema_version** + roadmap phase.
   workflow.
 
 ### Changed
+- Linux game launchers now expose `--save-slot` and `--time-scale`, preserve an
+  existing runtime save selection, and fail closed instead of silently
+  reverting to slot 1. This prevents an incomplete save from permanently
+  masking unlocked actions such as dash, Dream Nail, and Nail Arts.
 - FP16 APPO now lets GradScaler recover from scaled-gradient overflow instead
   of crashing before its skip/backoff step. Metrics expose the current loss
   scale and exact successful/skipped optimizer attempts; a policy version only

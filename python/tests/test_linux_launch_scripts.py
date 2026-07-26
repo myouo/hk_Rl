@@ -129,6 +129,10 @@ def test_linux_game_worker_dry_run_resolves_native_install(tmp_path: Path) -> No
         str(game_root),
         "--worker-id",
         "linux-test-0",
+        "--save-slot",
+        "3",
+        "--time-scale",
+        "3",
         "--dry-run",
         env={"HKRL_PYTHON_BIN": sys.executable},
     )
@@ -138,7 +142,53 @@ def test_linux_game_worker_dry_run_resolves_native_install(tmp_path: Path) -> No
     assert summary["worker_id"] == "linux-test-0"
     assert summary["env_endpoint"] == "127.0.0.1:5555"
     assert summary["inference_threads"] == 1
+    assert summary["save_slot"] == 3
+    assert summary["time_scale"] == 3.0
     assert summary["runtime_config"].endswith("HKRLEnvMod/hkrl-runtime.conf")
+
+
+def test_linux_game_worker_preserves_runtime_save_slot(tmp_path: Path) -> None:
+    game_root = _fake_game(tmp_path, runtime="native")
+    mod_dir = game_root / "hollow_knight_Data" / "Managed" / "Mods" / "HKRLEnvMod"
+    mod_dir.mkdir(parents=True)
+    (mod_dir / "HKRLEnvMod.dll").write_bytes(b"mod")
+    (mod_dir / "hkrl-runtime.conf").write_text(
+        "HKRL_HOST=127.0.0.1\n"
+        "HKRL_PORT=5555\n"
+        "HKRL_SAVE_SLOT=4\n"
+        "HKRL_AUTH_TOKEN=not-read-by-dry-run\n",
+        encoding="utf-8",
+    )
+
+    result = _run(
+        LINUX_SCRIPTS / "start_game_worker.sh",
+        "--game-root",
+        str(game_root),
+        "--dry-run",
+        env={"HKRL_PYTHON_BIN": sys.executable},
+    )
+
+    summary = json.loads(result.stdout)
+    assert summary["save_slot"] == 4
+
+
+def test_linux_game_worker_rejects_implicit_save_slot_one(tmp_path: Path) -> None:
+    game_root = _fake_game(tmp_path, runtime="native")
+    mod_dir = game_root / "hollow_knight_Data" / "Managed" / "Mods" / "HKRLEnvMod"
+    mod_dir.mkdir(parents=True)
+    (mod_dir / "HKRLEnvMod.dll").write_bytes(b"mod")
+
+    result = _run(
+        LINUX_SCRIPTS / "start_game_worker.sh",
+        "--game-root",
+        str(game_root),
+        "--dry-run",
+        env={"HKRL_PYTHON_BIN": sys.executable},
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "--save-slot is required" in result.stderr
 
 
 def test_select_steam_beta_updates_both_sections_atomically(tmp_path: Path) -> None:
