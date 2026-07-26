@@ -52,6 +52,9 @@ The remote profile groups four 2,048-transition worker rollouts into one
 8,192-transition update. It trains fixed 32-step sequences with
 `minibatch_size: 1024`, `epochs: 2`, task-wise advantage normalization, a
 `target_kl: 0.03` guard, AMP, fused Adam, and `torch.compile` on the CUDA role.
+AMP `auto` selects native BF16 on Ampere-or-newer GPUs and FP16 plus GradScaler
+on Volta GPUs such as V100; it does not treat a software BF16 fallback as native
+support.
 The last sequence minibatch is padding-masked to keep the compiled learner shape
 stable. The four batches may come from four game instances or sequentially from
 fewer workers; four parallel instances reduce update latency when the game host

@@ -161,6 +161,13 @@ def _model_device(model: ActorCritic) -> torch.device:
 
 
 def _cuda_bf16_supported(device: torch.device) -> bool:
+    # Native CUDA BF16 tensor-core execution starts with Ampere (SM 8.x).
+    # Some PyTorch/CUDA combinations report ``is_bf16_supported()`` for older
+    # devices because software fallbacks exist; selecting that path on Volta
+    # (for example V100, SM 7.0) is both misleading and substantially slower.
+    major, _minor = torch.cuda.get_device_capability(device)
+    if major < 8:
+        return False
     with torch.cuda.device(device):
         return bool(torch.cuda.is_bf16_supported())
 

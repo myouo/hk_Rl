@@ -27,6 +27,9 @@ the project version tracks the **schema_version** + roadmap phase.
   workflow.
 
 ### Changed
+- AMP `auto` now requires native Ampere-or-newer CUDA capability before
+  selecting BF16. Volta GPUs such as V100 use FP16 plus GradScaler even when a
+  PyTorch/CUDA build advertises a software BF16 fallback.
 - Kept the schema-v6/Gym action dimensions compatible after the v0.8.0 Mod
   audit. Macro selection is now a hierarchical probability branch: ignored
   primitive samples no longer contribute PPO log-probability or entropy when a
