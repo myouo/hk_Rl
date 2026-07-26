@@ -16,6 +16,8 @@ the project version tracks the **schema_version** + roadmap phase.
 - Added non-blocking background checkpoint polling on GameWorkers. A new tuning
   checkpoint discards only the unfinished rollout prefix and cleanly resets at
   the next local action boundary; remote I/O never stalls local inference.
+  Heartbeats expose `tuning_interrupt_count`, and SPS excludes discarded
+  pre-change time.
 - Added an opt-in `godhome_engagement_v1` reward overlay for the three active
   curriculum tasks. Boss damage remains `1.0`; player damage/death penalties
   are reduced to `-2`/`-20` without enrolling the remaining Boss catalog.

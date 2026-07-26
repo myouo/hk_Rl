@@ -465,6 +465,7 @@ def test_game_worker_discards_partial_rollout_for_pending_tuning() -> None:
     assert batch.policy_version == 5
     assert batch.tuning_version == 1
     assert env.reward_overrides == [{"boss_damage": 1.0}]
+    assert worker.tuning_interrupt_count == 1
 
 
 def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
@@ -512,6 +513,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "learner_upload_submitted_batches": 1,
             "policy_version": 0,
             "tuning_version": 0,
+            "tuning_interrupt_count": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
             "sps": 4.0,
@@ -528,6 +530,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "learner_upload_submitted_batches": 2,
             "policy_version": 0,
             "tuning_version": 0,
+            "tuning_interrupt_count": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
             "sps": 4.0,
@@ -579,6 +582,7 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
         "learner_upload_submitted_batches": 0,
         "policy_version": 0,
         "tuning_version": 0,
+        "tuning_interrupt_count": 0,
         "rollout_duration_s": 0.0,
         "rollout_steps": 0,
         "sps": 0.0,

@@ -148,6 +148,7 @@ class GameWorker:
         self.last_rollout_duration_s = 0.0
         self.last_sps = 0.0
         self.arena_auto_reset_count = 0
+        self.tuning_interrupt_count = 0
         self.learner_upload_submitted_batches = 0
         self.learner_upload_accepted_batches = 0
         self.learner_upload_rejected_batches = 0
@@ -195,6 +196,7 @@ class GameWorker:
             if collected > 0 and self._maybe_apply_pending_tuning():
                 # The prefix was collected under a different objective/version.
                 # Discard it instead of mixing definitions in one learner batch.
+                self.tuning_interrupt_count += 1
                 self.buffer.clear()
                 collected = 0
                 self._obs = None
@@ -205,6 +207,9 @@ class GameWorker:
                 )
                 self._clear_memory_context()
                 self._ensure_reset()
+                # Report SPS for the accepted-version rollout, not for discarded
+                # pre-change work. The interrupt counter preserves that overhead.
+                started_at = self._clock()
                 continue
 
             assert self._obs is not None
@@ -522,6 +527,7 @@ class GameWorker:
                 **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
                 "tuning_version": self.tuning_version,
+                "tuning_interrupt_count": self.tuning_interrupt_count,
                 "rollout_duration_s": self.last_rollout_duration_s,
                 "rollout_steps": int(batch.rewards.size),
                 "sps": self.last_sps,
@@ -542,6 +548,7 @@ class GameWorker:
                 **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
                 "tuning_version": self.tuning_version,
+                "tuning_interrupt_count": self.tuning_interrupt_count,
                 "rollout_duration_s": 0.0,
                 "rollout_steps": 0,
                 "sps": 0.0,

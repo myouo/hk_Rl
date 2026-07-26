@@ -72,6 +72,9 @@ aggregate manifest), so remote I/O never stalls the local action loop.
 `--wait-applied` confirms the learner boundary; the worker's next heartbeat
 confirms the same `tuning_version` on the game host. A worker may discard one
 unfinished rollout fragment, but it never uploads a mixed-version batch.
+`tuning_interrupt_count` records those discards, while rollout SPS is timed only
+over the accepted-version fragment so a one-off tuning switch does not
+artificially depress the steady-state SPS metric.
 
 Tensor/layout and sampling-geometry fields remain restart-only:
 `rollout_steps`, `minibatch_size`, `epochs`, `sequence_length`, `burn_in`,
