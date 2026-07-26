@@ -4,7 +4,20 @@ namespace UnityEngine
     {
         public static void DontDestroyOnLoad(Object target) { }
 
+        public int GetInstanceID()
+        {
+            return GetHashCode();
+        }
+
         public static T[] FindObjectsOfType<T>() where T : Object
+        {
+            return System.Array.Empty<T>();
+        }
+    }
+
+    public static class Resources
+    {
+        public static T[] FindObjectsOfTypeAll<T>() where T : Object
         {
             return System.Array.Empty<T>();
         }
@@ -19,10 +32,16 @@ namespace UnityEngine
         {
             return gameObject.GetComponent<T>();
         }
+
+        public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : class
+        {
+            return gameObject.GetComponentsInChildren<T>(includeInactive);
+        }
     }
 
     public class MonoBehaviour : Component
     {
+        public bool enabled { get; set; } = true;
     }
 
     public class GameObject : Object
@@ -37,6 +56,8 @@ namespace UnityEngine
 
         public string name { get; set; }
         public bool activeInHierarchy { get; set; } = true;
+        public UnityEngine.SceneManagement.Scene scene { get; set; } =
+            new UnityEngine.SceneManagement.Scene("CI");
         public Transform transform => _transform;
 
         public static GameObject? Find(string name)
@@ -69,10 +90,11 @@ namespace UnityEngine
             return System.Array.Empty<T>();
         }
 
-        public int GetInstanceID()
+        public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : class
         {
-            return GetHashCode();
+            return System.Array.Empty<T>();
         }
+
     }
 
     public class Transform : Component
@@ -85,6 +107,22 @@ namespace UnityEngine
     public class Rigidbody2D : Component
     {
         public Vector2 velocity { get; set; }
+        public float gravityScale { get; set; } = 1.0f;
+        public bool isKinematic { get; set; }
+        public bool simulated { get; set; } = true;
+        public RigidbodyConstraints2D constraints { get; set; } =
+            RigidbodyConstraints2D.FreezeRotation;
+    }
+
+    [System.Flags]
+    public enum RigidbodyConstraints2D
+    {
+        None = 0,
+        FreezePositionX = 1,
+        FreezePositionY = 2,
+        FreezeRotation = 4,
+        FreezePosition = FreezePositionX | FreezePositionY,
+        FreezeAll = FreezePosition | FreezeRotation,
     }
 
     public class Collider2D : Component
@@ -104,7 +142,13 @@ namespace UnityEngine
         public float x { get; }
         public float y { get; }
         public float magnitude => Mathf.Sqrt((x * x) + (y * y));
+        public float sqrMagnitude => (x * x) + (y * y);
         public static Vector2 zero => new Vector2(0.0f, 0.0f);
+
+        public static Vector2 operator -(Vector2 left, Vector2 right)
+        {
+            return new Vector2(left.x - right.x, left.y - right.y);
+        }
     }
 
     public readonly struct Vector3
@@ -120,6 +164,11 @@ namespace UnityEngine
         public float y { get; }
         public float z { get; }
         public static Vector3 zero => new Vector3(0.0f, 0.0f, 0.0f);
+
+        public static implicit operator Vector2(Vector3 value)
+        {
+            return new Vector2(value.x, value.y);
+        }
     }
 
     public readonly struct Bounds
@@ -152,6 +201,8 @@ namespace UnityEngine
 
     public static class Mathf
     {
+        public const float Epsilon = 1.401298E-45f;
+
         public static float Max(float a, float b)
         {
             return a > b ? a : b;
@@ -194,14 +245,16 @@ namespace UnityEngine.SceneManagement
 {
     public readonly struct Scene
     {
-        public Scene(string name, bool isLoaded = true)
+        public Scene(string name, bool isLoaded = true, int handle = 1)
         {
             this.name = name;
             this.isLoaded = isLoaded;
+            this.handle = handle;
         }
 
         public string name { get; }
         public bool isLoaded { get; }
+        public int handle { get; }
     }
 
     public static class SceneManager

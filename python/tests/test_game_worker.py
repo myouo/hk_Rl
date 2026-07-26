@@ -145,6 +145,7 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     np.testing.assert_array_equal(batch.prev_actions[1, 0], batch.actions[0, 0])
     np.testing.assert_allclose(batch.prev_rewards[:, 0], [0.0, 1.0, 1.0, 0.0])
     assert env.reset_count == 2
+    assert worker.arena_auto_reset_count == 1
     assert len(env.actions) == 4
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}
 
@@ -172,6 +173,7 @@ def test_game_worker_resets_when_rollout_ends_on_terminal_step() -> None:
 
     assert env.reset_count == 2
     assert env.step_after_terminal_without_reset is False
+    assert worker.arena_auto_reset_count == 2
 
 
 def test_game_worker_collect_rollout_uses_recurrent_buffer() -> None:
@@ -344,6 +346,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
     assert heartbeats == [
         {
             "checkpoint_version": -1,
+            "arena_auto_reset_count": 0,
             "learner_endpoint": "learner:5600",
             "learner_upload_accepted_batches": 1,
             "learner_upload_failed_batches": 0,
@@ -358,6 +361,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
         },
         {
             "checkpoint_version": -1,
+            "arena_auto_reset_count": 1,
             "learner_endpoint": "learner:5600",
             "learner_upload_accepted_batches": 2,
             "learner_upload_failed_batches": 0,
@@ -406,6 +410,7 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
     assert worker.last_error is None
     assert heartbeats[0] == {
         "checkpoint_version": -1,
+        "arena_auto_reset_count": 0,
         "error": "TimeoutError: simulated transport timeout",
         "learner_endpoint": None,
         "learner_upload_accepted_batches": 0,

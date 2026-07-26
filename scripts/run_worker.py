@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import torch
+
 # Import model modules for registry side effects.
 from hkrl.models import mlp as _mlp  # noqa: F401
 from hkrl.models import recurrent_policy as _recurrent_policy  # noqa: F401
@@ -61,6 +63,12 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-consecutive-failures", type=int, default=3)
     p.add_argument(
+        "--inference-threads",
+        type=int,
+        default=None,
+        help="optional PyTorch CPU intra-op thread count for local inference",
+    )
+    p.add_argument(
         "--dry-run", action="store_true", help="validate wiring without env connection"
     )
     return p
@@ -75,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     _validate_worker_args(args)
+    inference_threads = _configure_inference_threads(args)
     cfg = load_train_config(args.config)
     tasks = _load_tasks(args)
     task = tasks[0]
@@ -119,6 +128,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "env_host": _env_host(cfg, args),
             "env_port": _env_port(cfg, args),
             "heartbeat_jsonl": args.heartbeat_jsonl,
+            "inference_threads": inference_threads,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
             "latest_checkpoint": latest_checkpoint,
@@ -177,6 +187,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "env_port": _env_port(cfg, args),
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "heartbeats_written": len(heartbeats),
+            "inference_threads": inference_threads,
             "last_error": worker.last_error,
             **upload_summary,
             "learner": args.learner,
@@ -298,6 +309,9 @@ def _validate_worker_args(args: argparse.Namespace) -> None:
         getattr(args, "max_consecutive_failures", 3),
         name="max_consecutive_failures",
     )
+    inference_threads = getattr(args, "inference_threads", None)
+    if inference_threads is not None:
+        _positive_int(inference_threads, name="inference_threads")
 
     learner = getattr(args, "learner", None)
     if learner is not None:
@@ -310,6 +324,15 @@ def _validate_worker_args(args: argparse.Namespace) -> None:
         getattr(args, "heartbeat_jsonl", None),
         name="heartbeat_jsonl",
     )
+
+
+def _configure_inference_threads(args: argparse.Namespace) -> int | None:
+    value = getattr(args, "inference_threads", None)
+    if value is None:
+        return None
+    threads = _positive_int(value, name="inference_threads")
+    torch.set_num_threads(threads)
+    return threads
 
 
 def _validate_learner_endpoint(endpoint: Any) -> None:

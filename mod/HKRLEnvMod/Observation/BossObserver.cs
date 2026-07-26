@@ -29,7 +29,7 @@ namespace HKRLEnvMod.Observation
                 throw new System.ArgumentNullException(nameof(aliveInstanceIds));
             }
 
-            foreach (var health in Object.FindObjectsOfType<HealthManager>())
+            foreach (var health in BossLocator.FindActiveBosses())
             {
                 if (health == null || !health.isActiveAndEnabled)
                 {
@@ -37,11 +37,6 @@ namespace HKRLEnvMod.Observation
                 }
 
                 var gameObject = health.gameObject;
-                if (!IsLikelyBoss(gameObject))
-                {
-                    continue;
-                }
-
                 var instanceId = gameObject.GetInstanceID();
                 if (aliveInstanceIds.Contains(instanceId))
                 {
@@ -58,32 +53,6 @@ namespace HKRLEnvMod.Observation
                     baseThreat: 100.0f,
                     flags: 1u << 4));
             }
-        }
-
-        private static bool IsLikelyBoss(GameObject gameObject)
-        {
-            if (gameObject == null)
-            {
-                return false;
-            }
-
-            if (EntityReadHelpers.NameContains(gameObject, "boss", "hornet", "gruz", "mantis"))
-            {
-                return true;
-            }
-
-            var parent = gameObject.transform.parent;
-            while (parent != null)
-            {
-                if (EntityReadHelpers.NameContains(parent.gameObject, "boss"))
-                {
-                    return true;
-                }
-
-                parent = parent.parent;
-            }
-
-            return false;
         }
     }
 }

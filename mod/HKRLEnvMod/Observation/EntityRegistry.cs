@@ -11,6 +11,8 @@ namespace HKRLEnvMod.Observation
     public sealed class EntityRegistry
     {
         private readonly Dictionary<int, int> _objToStableId = new();
+        private readonly Dictionary<int, int> _maxHpByInstanceId = new();
+        private readonly List<int> _deadInstanceIds = new();
         private int _nextId = 1;
 
         /// <summary>Return the stable id for a Unity object (allocating if new).</summary>
@@ -26,6 +28,28 @@ namespace HKRLEnvMod.Observation
             return stableId;
         }
 
+        /// <summary>
+        /// Return the best max-hp value seen for an object. Many Hollow Knight
+        /// HealthManager variants expose only their current `hp`; caching the
+        /// episode's observed maximum keeps hp normalization and damage deltas
+        /// usable without hard-coded per-boss health tables.
+        /// </summary>
+        public int ObserveMaxHp(int unityInstanceId, int currentHp, int declaredMaxHp)
+        {
+            var candidate = System.Math.Max(currentHp, declaredMaxHp);
+            if (_maxHpByInstanceId.TryGetValue(unityInstanceId, out var observed))
+            {
+                candidate = System.Math.Max(candidate, observed);
+            }
+
+            if (candidate > 0)
+            {
+                _maxHpByInstanceId[unityInstanceId] = candidate;
+            }
+
+            return candidate;
+        }
+
         /// <summary>Drop ids for objects no longer present this frame.</summary>
         public void PruneDead(HashSet<int> aliveInstanceIds)
         {
@@ -34,18 +58,19 @@ namespace HKRLEnvMod.Observation
                 throw new System.ArgumentNullException(nameof(aliveInstanceIds));
             }
 
-            var dead = new List<int>();
+            _deadInstanceIds.Clear();
             foreach (var instanceId in _objToStableId.Keys)
             {
                 if (!aliveInstanceIds.Contains(instanceId))
                 {
-                    dead.Add(instanceId);
+                    _deadInstanceIds.Add(instanceId);
                 }
             }
 
-            foreach (var instanceId in dead)
+            foreach (var instanceId in _deadInstanceIds)
             {
                 _objToStableId.Remove(instanceId);
+                _maxHpByInstanceId.Remove(instanceId);
             }
         }
     }

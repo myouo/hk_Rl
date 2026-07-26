@@ -451,6 +451,7 @@ _NON_NEGATIVE_AMOUNT_EVENT_KINDS: frozenset[protocol.RewardEventKind] = frozense
 
 def _aggregate(episodes: Sequence[_EpisodeResult]) -> dict[str, float]:
     wins = [episode for episode in episodes if episode.won]
+    hitless_wins = [episode for episode in episodes if episode.won and episode.damage_taken == 0.0]
     deaths = [episode for episode in episodes if episode.death_reason]
     win_rate = _mean(float(episode.won) for episode in episodes)
     damage_taken = _mean(episode.damage_taken for episode in episodes)
@@ -467,6 +468,10 @@ def _aggregate(episodes: Sequence[_EpisodeResult]) -> dict[str, float]:
         "death_rate": _mean(float(episode.death_reason != 0) for episode in episodes),
         "death_reason": _mean(float(episode.death_reason) for episode in deaths),
         "time_to_kill": _mean(episode.time_to_kill for episode in wins),
+        "hitless_win_rate": _mean(
+            float(episode.won and episode.damage_taken == 0.0) for episode in episodes
+        ),
+        "hitless_time_to_kill": _mean(episode.time_to_kill for episode in hitless_wins),
         "per_boss_win_rate": win_rate,
         "per_boss_damage_ratio": _safe_ratio(damage_taken, damage_dealt),
         "termination_rate": _mean(float(episode.terminated) for episode in episodes),

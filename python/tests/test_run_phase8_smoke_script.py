@@ -80,6 +80,76 @@ def test_run_phase8_smoke_builds_offline_distributed_summary(tmp_path: Path) -> 
     assert "HKRL Phase 8 Profile" in profile_md.read_text(encoding="utf-8")
 
 
+def test_run_phase8_smoke_runs_synthetic_train_update(tmp_path: Path) -> None:
+    module = _load_script("run_phase8_smoke.py")
+    config = tmp_path / "appo_mlp.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "algorithm: appo",
+                "epochs: 1",
+                "minibatch_size: 2",
+                "learning_rate: 0.001",
+                "model:",
+                "  name: mlp",
+                "  rnn_hidden: 16",
+                "learner:",
+                "  device: cpu",
+                "  publish_every_updates: 4",
+                "security:",
+                "  bind_scope: localhost",
+                "  require_token: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    task = tmp_path / "synthetic_task.yaml"
+    task.write_text(
+        "\n".join(
+            [
+                "task_id: synthetic_smoke",
+                "wire_id: 7",
+                "scene: Synthetic",
+                "observation:",
+                "  max_entities: 4",
+                "  tier: privileged",
+                "action:",
+                "  enable_macro_actions: true",
+                "  n_macro_actions: 11",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config),
+        tasks=[str(task)],
+        work_dir=str(tmp_path / "smoke"),
+        num_workers=1,
+        seed=123,
+        synthetic_train_update=True,
+        output=None,
+    )
+
+    summary = module.run_from_args(args)
+
+    assert summary["ok"] is True
+    assert summary["synthetic_train_update"] is True
+    assert summary["learner"]["accepted_batches"] == 1
+    assert summary["learner"]["submitted_batches"] == 1
+    assert summary["learner"]["policy_version"] == 1
+    assert summary["learner"]["latest_checkpoint"] == 2
+    assert Path(summary["artifacts"]["synthetic_batch"]).is_file()
+    registry = CheckpointRegistry(summary["artifacts"]["checkpoint_dir"])
+    checkpoint_state = torch.load(
+        registry.resolve_path(registry.get(2)),
+        map_location="cpu",
+        weights_only=True,
+    )
+    assert checkpoint_state["policy_version"] == 1
+    assert checkpoint_state["update"] == 1
+    assert checkpoint_state["metrics"]["samples"] == 4.0
+
+
 def test_run_phase8_smoke_resets_generated_work_dir(tmp_path: Path) -> None:
     module = _load_script("run_phase8_smoke.py")
     root = Path(__file__).parents[2]

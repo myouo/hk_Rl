@@ -70,6 +70,20 @@ For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
 loads all `*.npz` batches through `LearnerServer.submit()` before serving one
 update cycle.
+[`notebooks/kaggle_training.ipynb`](../notebooks/kaggle_training.ipynb) wraps
+that finite batch path for Kaggle. It keeps the local action loop on the Linux
+or Windows game host and uses a manual batch-ferry cycle: upload externally collected NPZ
+rollouts, run one APPO update, download the next checkpoint, then collect fresh
+rollouts. The notebook validates layout, task wire ids, bounded policy
+staleness, registry hashes, optimizer restoration, parameter changes, and
+worker checkpoint loading. `train` mode requires the exact checkpoint registry
+that the game-host worker used to collect the supplied rollouts; a matching policy
+version number alone is insufficient because independently initialized weights
+would invalidate PPO log probabilities. It also refuses to silently substitute
+synthetic data or reuse a batch recorded in an existing output summary. NPZ
+format v2 does not encode provenance, so a separate game-host collection manifest
+is still required to prove that an externally supplied batch came from the live
+game.
 `run_worker.py` validates config/task paths, optional task lists, registry,
 batch-spool and heartbeat output paths, optional `--env-host`/`--env-port`
 overrides, its stable worker id, finite-step limit, recovery threshold, and

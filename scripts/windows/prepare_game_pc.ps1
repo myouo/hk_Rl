@@ -72,7 +72,10 @@ $RequiredAssemblies = @(
     "Assembly-CSharp.dll",
     "UnityEngine.dll",
     "UnityEngine.CoreModule.dll",
+    "UnityEngine.IMGUIModule.dll",
+    "UnityEngine.Physics2DModule.dll",
     "MMHOOK_Assembly-CSharp.dll",
+    "unityscenerepacker.dll",
     "PlayMaker.dll"
 )
 foreach ($assembly in $RequiredAssemblies) {

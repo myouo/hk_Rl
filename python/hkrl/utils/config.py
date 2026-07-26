@@ -49,6 +49,15 @@ class ActionConfig(StrictConfigModel):
     action_repeat: int = Field(default=2, ge=1, le=255)
     enable_macro_actions: bool = True
     n_macro_actions: int = Field(default=DEFAULT_N_MACROS, ge=0, le=DEFAULT_N_MACROS)
+    expose_action_combinations: bool = True
+
+
+class ArenaConfig(StrictConfigModel):
+    """Episode supervision and shaping-free target for a boss arena."""
+
+    auto_reset_on_terminal: Literal[True] = True
+    objective: Literal["win", "hitless_speedrun"] = "win"
+    target_kill_time_seconds: float | None = Field(default=None, gt=0.0)
 
 
 class TaskConfig(StrictConfigModel):
@@ -63,6 +72,7 @@ class TaskConfig(StrictConfigModel):
     reward: RewardWeights = Field(default_factory=RewardWeights)
     observation: ObservationConfig = Field(default_factory=ObservationConfig)
     action: ActionConfig = Field(default_factory=ActionConfig)
+    arena: ArenaConfig = Field(default_factory=ArenaConfig)
 
 
 class ModelConfig(StrictConfigModel):

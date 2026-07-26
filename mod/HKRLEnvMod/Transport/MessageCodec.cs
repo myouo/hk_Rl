@@ -91,6 +91,8 @@ namespace HKRLEnvMod.Transport
     public static class MessageCodec
     {
         private static readonly byte[] FileIdentifierBytes = Encoding.ASCII.GetBytes(Protocol.FileIdentifier);
+        [ThreadStatic]
+        private static FlatBufferBuilder? _responseBuilder;
 
         /// <summary>Decode a StepRequest frame (without the length prefix).</summary>
         public static DecodedStepRequest DecodeStepRequest(byte[] payload)
@@ -175,7 +177,7 @@ namespace HKRLEnvMod.Transport
             ulong episodeId = 0,
             ObservationSnapshot? observation = null)
         {
-            var builder = new FlatBufferBuilder(256);
+            FlatBufferBuilder builder = AcquireResponseBuilder();
             var rewardEventVector = BuildRewardEvents(builder, rewardEvents);
             var actionMaskVector = HKRL.StepResponse.CreateActionMaskVector(
                 builder,
@@ -199,8 +201,16 @@ namespace HKRLEnvMod.Transport
                 lifecycleState,
                 errorCode,
                 infoOffset);
-            HKRL.StepResponse.FinishStepResponseBuffer(builder, response);
-            return AddLengthPrefix(builder.SizedByteArray());
+            HKRL.StepResponse.FinishSizePrefixedStepResponseBuffer(builder, response);
+            return builder.SizedByteArray();
+        }
+
+        private static FlatBufferBuilder AcquireResponseBuilder()
+        {
+            FlatBufferBuilder builder =
+                _responseBuilder ??= new FlatBufferBuilder(16 * 1024);
+            builder.Clear();
+            return builder;
         }
 
         private static Offset<HKRL.Observation> BuildObservation(
@@ -311,7 +321,14 @@ namespace HKRLEnvMod.Transport
                 double_jump_available: player.DoubleJumpAvailable,
                 can_attack: player.CanAttack,
                 can_cast: player.CanCast,
-                can_focus: player.CanFocus);
+                can_focus: player.CanFocus,
+                actor_state_hash: player.ActorStateHash,
+                action_flags: player.ActionFlags,
+                spell_fsm_state_hash: player.SpellFsmStateHash,
+                dream_nail_fsm_state_hash: player.DreamNailFsmStateHash,
+                nail_arts_fsm_state_hash: player.NailArtsFsmStateHash,
+                nail_charge_timer: player.NailChargeTimer,
+                applied_input_buttons: player.AppliedInputButtons);
         }
 
         private static Offset<HKRL.EntityState> BuildEntityState(
@@ -409,20 +426,6 @@ namespace HKRLEnvMod.Transport
             }
 
             return HKRL.StepResponse.CreateRewardEventsVector(builder, offsets);
-        }
-
-        private static byte[] AddLengthPrefix(byte[] payload)
-        {
-            var frame = new byte[sizeof(int) + payload.Length];
-            var lengthBytes = BitConverter.GetBytes(payload.Length);
-            if (!BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(lengthBytes);
-            }
-
-            Buffer.BlockCopy(lengthBytes, 0, frame, 0, sizeof(int));
-            Buffer.BlockCopy(payload, 0, frame, sizeof(int), payload.Length);
-            return frame;
         }
 
         private static bool HasFileIdentifier(byte[] payload)

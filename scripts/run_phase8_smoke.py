@@ -24,11 +24,22 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 import torch
 
 from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
 from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
-from hkrl.utils.config import TaskConfig, load_task_config, validate_task_collection
+from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
+from hkrl.spaces import action_mask_layout, make_observation_space
+from hkrl.training.batch_io import save_rollout_batch
+from hkrl.training.rollout_buffer import RolloutBatch
+from hkrl.utils.config import (
+    TaskConfig,
+    TrainConfig,
+    load_task_config,
+    load_train_config,
+    validate_task_collection,
+)
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -50,6 +61,11 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--work-dir", help="directory for generated smoke artifacts")
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--synthetic-train-update",
+        action="store_true",
+        help="run one optimizer update from a generated, non-game rollout batch",
+    )
     p.add_argument("--output", help="optional path to write the summary JSON")
     p.add_argument("--dashboard-html", help="optional path to write dashboard HTML")
     p.add_argument("--dashboard-json", help="optional path to write dashboard JSON")
@@ -85,6 +101,14 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
     task_paths = [str(path) for path in args.tasks]
     tasks = _load_tasks(task_paths)
     worker_ids = [f"worker-{idx}" for idx in range(args.num_workers)]
+    synthetic_train_update = bool(getattr(args, "synthetic_train_update", False))
+    synthetic_batch_path: Path | None = None
+    if synthetic_train_update:
+        synthetic_batch_path = _write_synthetic_train_batch(
+            work_dir / "synthetic-batches" / "kaggle_smoke_v000000.npz",
+            config=load_train_config(args.config),
+            task=tasks[0],
+        )
 
     run_learner = _load_script_module("run_learner.py")
     run_worker = _load_script_module("run_worker.py")
@@ -94,7 +118,11 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
         argparse.Namespace(
             config=args.config,
             bind="127.0.0.1:0",
-            batch_dir=None,
+            batch_dir=(
+                None
+                if synthetic_batch_path is None
+                else str(synthetic_batch_path.parent)
+            ),
             checkpoint_dir=str(checkpoint_dir),
             disable_macro_actions=False,
             intake_count=0,
@@ -102,13 +130,21 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
             max_entities=None,
             max_staleness=None,
             n_macro_actions=None,
-            publish_every_updates=None,
+            publish_every_updates=1 if synthetic_train_update else None,
             serve_forever=False,
             task=None,
             tasks=task_paths,
             tier=None,
         )
     )
+    if synthetic_train_update and (
+        learner_summary["accepted_batches"] != 1
+        or learner_summary["policy_version"] != 1
+    ):
+        raise RuntimeError(
+            "synthetic learner update did not produce one accepted batch "
+            "and policy_version 1"
+        )
     checkpoint_metas = _publish_smoke_checkpoints(checkpoint_dir)
     checkpoint_versions = [meta.version for meta in checkpoint_metas]
     _write_heartbeat_jsonl(
@@ -153,6 +189,9 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
             "checkpoint_dir": str(checkpoint_dir),
             "eval_metrics": str(eval_metrics_json),
             "heartbeat_jsonl": str(heartbeat_jsonl),
+            "synthetic_batch": (
+                None if synthetic_batch_path is None else str(synthetic_batch_path)
+            ),
             "work_dir": str(work_dir),
         },
         "checkpoint_policy_versions": [
@@ -164,6 +203,7 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
         "coordinator": coordinator_summary,
         "learner": learner_summary,
         "ok": True,
+        "synthetic_train_update": synthetic_train_update,
         "task_ids": [task.task_id for task in tasks],
         "worker": worker_summary,
         "worker_ids": worker_ids,
@@ -189,7 +229,7 @@ def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[CheckpointMeta]:
             weights_only=True,
         )
     )
-    metas = [latest]
+    metas = [registry.get(version) for version in range(1, latest.version + 1)]
     while len(metas) < 2:
         policy_version = metas[-1].policy_version + 1
         meta = registry.publish(
@@ -203,7 +243,90 @@ def _publish_smoke_checkpoints(checkpoint_dir: Path) -> list[CheckpointMeta]:
             step=policy_version,
         )
         metas.append(meta)
-    return metas
+    return metas[-2:]
+
+
+def _write_synthetic_train_batch(
+    path: Path,
+    *,
+    config: TrainConfig,
+    task: TaskConfig,
+) -> Path:
+    """Write a tiny valid rollout used only to exercise one learner update."""
+    observation_space = make_observation_space(
+        max_entities=task.observation.max_entities,
+        tier=task.observation.tier,
+    )
+    time_steps = 4
+    num_envs = 1
+    enable_macro = task.action.enable_macro_actions
+    action_dim = ACTION_TENSOR_DIM_NO_MACRO + int(enable_macro)
+    mask_dim = len(
+        action_mask_layout(
+            enable_macro=enable_macro,
+            n_macros=task.action.n_macro_actions,
+        )
+    )
+    actions = np.zeros((time_steps, num_envs, action_dim), dtype=np.int64)
+    actions[:, :, 0] = 1
+    actions[:, :, 1] = 1
+    entity_mask = np.zeros(
+        (time_steps, num_envs, *observation_space["entity_mask"].shape),
+        dtype=bool,
+    )
+    entity_mask[:, :, 0] = True
+    training_signal = np.arange(
+        1,
+        time_steps + 1,
+        dtype=np.float32,
+    ).reshape(time_steps, num_envs)
+    batch = RolloutBatch(
+        obs_global=np.zeros(
+            (time_steps, num_envs, *observation_space["global"].shape),
+            dtype=np.float32,
+        ),
+        obs_player=np.zeros(
+            (time_steps, num_envs, *observation_space["player"].shape),
+            dtype=np.float32,
+        ),
+        obs_entities=np.zeros(
+            (time_steps, num_envs, *observation_space["entities"].shape),
+            dtype=np.float32,
+        ),
+        entity_mask=entity_mask,
+        actions=actions,
+        log_probs=np.full(
+            (time_steps, num_envs),
+            -1.0,
+            dtype=np.float32,
+        ),
+        values=np.zeros((time_steps, num_envs), dtype=np.float32),
+        advantages=training_signal.copy(),
+        returns=training_signal.copy(),
+        rewards=np.ones((time_steps, num_envs), dtype=np.float32),
+        dones=np.array([[False], [False], [False], [True]], dtype=bool),
+        truncateds=np.zeros((time_steps, num_envs), dtype=bool),
+        action_masks=np.ones(
+            (time_steps, num_envs, mask_dim),
+            dtype=bool,
+        ),
+        prev_actions=np.zeros(
+            (time_steps, num_envs, action_dim),
+            dtype=np.int64,
+        ),
+        prev_rewards=np.zeros((time_steps, num_envs), dtype=np.float32),
+        rnn_states=None,
+        episode_ids=np.ones((time_steps, num_envs), dtype=np.uint64),
+        task_ids=np.full(
+            (time_steps, num_envs),
+            task.wire_id,
+            dtype=np.int64,
+        ),
+        policy_version=0,
+    )
+    if config.algorithm != "appo":
+        raise ValueError("--synthetic-train-update requires algorithm=appo")
+    return save_rollout_batch(path, batch)
 
 
 def _write_heartbeat_jsonl(
@@ -352,7 +475,7 @@ def _work_dir(path: str | None) -> Path:
 
 
 def _reset_generated_artifacts(work_dir: Path) -> None:
-    for dirname in ("batches", "checkpoints"):
+    for dirname in ("batches", "checkpoints", "synthetic-batches"):
         path = work_dir / dirname
         if path.exists():
             shutil.rmtree(path, ignore_errors=True)

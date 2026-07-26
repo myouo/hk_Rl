@@ -20,6 +20,8 @@ worker_policy_lag_max worker_checkpoint_lag_max
 stale_policy_worker_count stale_checkpoint_worker_count
 recovering_worker_count
 per_boss_win_rate     per_boss_damage_ratio
+hitless_win_rate      hitless_time_to_kill
+arena_auto_reset_count target_success_rate
 ```
 
 ## 2. Reward is not capability (PRD §13)
@@ -46,6 +48,16 @@ Because evaluator output is keyed by task/boss, each task record includes
 `damage_taken / damage_dealt` with a zero value when no damage was dealt.
 Regression reports accept either `win_rate` or `per_boss_win_rate` for baseline
 and current metrics.
+For `arena.objective=hitless_speedrun`, the evaluator additionally reports
+`hitless_win_rate` and `hitless_time_to_kill`. A hitless win requires
+`BossKilled` and zero accumulated `DamageTaken`; healing later in the episode
+does not erase damage. `BossArenaSupervisor.target_met` further requires the
+observed in-game elapsed time to be at or below
+`arena.target_kill_time_seconds`. These remain shaping-free even when the
+training task uses stronger damage/death penalties.
+`arena_auto_reset_count` is emitted by each GameWorker heartbeat so a stalled
+arena can be distinguished from a worker that is actively completing and
+resetting attempts.
 `scripts/run_eval.py --replay-jsonl FILE` can additionally emit per-step replay
 records with task/seed/episode/step, action, reward, terminal flags, and
 event-derived metrics. Replay JSONL is debugging evidence; capability decisions
@@ -89,8 +101,26 @@ regression summaries instead of being coerced to zero.
 High game FPS ≠ efficient training. Track **samples per second**. Levers:
 `Time.timeScale` / `fixedDeltaTime`, `action_repeat`, parallel instances, reduced
 render quality, fast reset. `HKRLEnv.set_timescale(scale)` sends the protocol
-command that mod `SimControl` applies on the Unity main thread. `reset_duration`
-is a first-class SPS factor.
+command that mod `SimControl` composes through Hollow Knight's game-time
+controller on the Unity main thread. The environment deliberately keeps the
+baseline `fixedDeltaTime` unchanged so higher SPS does not coarsen
+collision/gravity integration ([ADR-0005](./adr/0005-pause-safe-game-time-control.md)).
+The default `0.02` interval means nominal 50 Hz physics, not a 50 FPS render
+limit: Unity can run zero or multiple fixed updates around a rendered frame.
+`reset_duration` is a first-class SPS factor.
+
+For real-game hot-path changes, run
+`python scripts/live_performance_benchmark.py --steps 400 --action-repeat 2`
+before and after restarting the Mod. Record STEP p50/p95/p99, request SPS,
+effective server fixed updates/second, render FPS/frame pacing, and process CPU.
+Keep the task, arena, `time_scale`, `action_repeat`, window/overlay state, and
+measurement duration identical for an A/B comparison.
+The live benchmark reports both the complete latency distribution and a
+`non_damage_latency_ms` distribution. Hollow Knight deliberately applies native
+hit-stop on `DAMAGE_TAKEN`; those labeled samples describe real combat dynamics,
+not Mod overhead. Never remove hit-stop, freeze the Boss, grant invulnerability,
+or write HP merely to improve a latency percentile. Compare steady Mod overhead
+with the non-damage distribution and report damage-frame frequency separately.
 
 ## 4. Backends
 

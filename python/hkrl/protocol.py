@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 # Mirrors the schema_version carried in every StepRequest/StepResponse and the
 # C# Protocol.SCHEMA_VERSION. See schema/README.md evolution rules.
-SCHEMA_VERSION: int = 4
+SCHEMA_VERSION: int = 6
 
 # FlatBuffers file_identifier (must equal the one in hkrl.fbs).
 FILE_IDENTIFIER: bytes = b"HKRL"
@@ -416,6 +416,13 @@ def _player_features(player_state: Any) -> list[float]:
         float(player_state.CanAttack()),
         float(player_state.CanCast()),
         float(player_state.CanFocus()),
+        float(player_state.ActorStateHash()),
+        float(player_state.ActionFlags()),
+        float(player_state.SpellFsmStateHash()),
+        float(player_state.DreamNailFsmStateHash()),
+        float(player_state.NailArtsFsmStateHash()),
+        float(player_state.NailChargeTimer()),
+        float(player_state.AppliedInputButtons()),
     ]
 
 

@@ -22,6 +22,17 @@ if ([string]::IsNullOrWhiteSpace($env:HKRL_AUTH_TOKEN)) {
         "remote learner before launching Hollow Knight and this worker."
     )
 }
+if ([string]::IsNullOrWhiteSpace($env:HKRL_SAVE_SLOT)) {
+    $env:HKRL_SAVE_SLOT = "1"
+}
+$SaveSlot = 0
+if (
+    -not [int]::TryParse($env:HKRL_SAVE_SLOT, [ref]$SaveSlot) -or
+    $SaveSlot -lt 1 -or
+    $SaveSlot -gt 4
+) {
+    throw "HKRL_SAVE_SLOT must be an integer in [1, 4]."
+}
 foreach ($port in @($EnvPort, $LearnerPort, $RegistryPort)) {
     if ($port -lt 1 -or $port -gt 65535) {
         throw "Env, learner, and registry ports must be in [1, 65535]."

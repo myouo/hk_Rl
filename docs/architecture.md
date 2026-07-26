@@ -58,9 +58,9 @@ These hold across the whole codebase. Violating one is a design regression.
 
 | Component | Process | Responsibility |
 |---|---|---|
-| **HKRLEnvMod** | inside Hollow Knight (C#) | observation collect, action apply on `FixedUpdate`, reward-event hooks, reset lifecycle, time-scale control, action mask, never block the Unity main thread |
+| **HKRLEnvMod** | inside Hollow Knight (C#) | observation collect, action apply on `FixedUpdate`, reward-event hooks, reset lifecycle, pause-safe game-time control ([ADR-0005](./adr/0005-pause-safe-game-time-control.md)), action mask, never block the Unity main thread |
 | **Transport** | both ends | framed FlatBuffers messages; heartbeat, reset ack, timeout/reconnect, version + policy_version negotiation |
-| **GameWorker** | Game PC | local inference, Gym wrapper, rollout buffer, upload batches, pull checkpoints, crash/reconnect handling, local metrics |
+| **GameWorker** | Game PC | local inference, Gym wrapper, terminal auto-reset, rollout buffer, upload batches, pull checkpoints, crash/reconnect handling, local metrics |
 | **Learner** | Remote GPU | collect rollout batches, filter by policy_version, PPO/APPO update, publish checkpoints, training metrics |
 | **Coordinator** | Remote GPU | manage workers, assign tasks, curriculum sampling, checkpoint registry, train/eval isolation, metric aggregation |
 | **Evaluator** | Remote GPU | fixed-seed per-boss evaluation, replay capture, catastrophic-forgetting detection |
@@ -70,6 +70,8 @@ These hold across the whole codebase. Violating one is a design regression.
 ```text
 GameWorker                         HKRLEnvMod (main thread)
   build StepRequest(action)  ──TCP──────▶  enqueue (network thread)
+                                           Update at zero scale: peek only and
+                                             wake a queued recovery command
                                            FixedUpdate: dequeue latest action,
                                              apply, collect obs+reward events,
                                              write StepResponse to out-queue
@@ -105,6 +107,7 @@ final reward.
 | a new transport | `hkrl/transport/*` implementing `Transport` + `@register_transport` |
 | a new reward term | `hkrl/reward.py` (event → scalar), config weights |
 | a new RL algo | `hkrl/training/*` implementing the learner interface |
+| a semantic action combination | append `hkrl/action_combinations.py`; no schema/model-head change ([ADR-0007](./adr/0007-factorized-action-combinations.md)) |
 
 ## 7. Roadmap → architecture mapping
 

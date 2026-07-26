@@ -14,23 +14,27 @@ namespace HKRLEnvMod.Observation
         private readonly BossObserver _boss = new();
         private readonly ProjectileObserver _projectile = new();
         private readonly HazardObserver _hazard = new();
+        private readonly List<EntityObservation> _entities = new();
+        private readonly HashSet<int> _aliveInstanceIds = new();
 
         public IReadOnlyList<EntityObservation> Collect(PlayerObservation player, int maxEntities = 64)
         {
-            var entities = new List<EntityObservation>();
-            var aliveInstanceIds = new HashSet<int>();
-            _boss.ReadInto(entities, _registry, aliveInstanceIds, player);
-            _projectile.ReadInto(entities, _registry, aliveInstanceIds, player);
-            _hazard.ReadInto(entities, _registry, aliveInstanceIds, player);
-            _registry.PruneDead(aliveInstanceIds);
+            _entities.Clear();
+            _aliveInstanceIds.Clear();
+            _boss.ReadInto(_entities, _registry, _aliveInstanceIds, player);
+            _projectile.ReadInto(_entities, _registry, _aliveInstanceIds, player);
+            _hazard.ReadInto(_entities, _registry, _aliveInstanceIds, player);
+            _registry.PruneDead(_aliveInstanceIds);
 
-            if (entities.Count <= maxEntities)
+            if (_entities.Count <= maxEntities)
             {
-                return entities;
+                return _entities;
             }
 
-            entities.Sort((left, right) => right.ThreatScore.CompareTo(left.ThreatScore));
-            return entities.GetRange(0, maxEntities);
+            _entities.Sort(
+                (left, right) => right.ThreatScore.CompareTo(left.ThreatScore));
+            _entities.RemoveRange(maxEntities, _entities.Count - maxEntities);
+            return _entities;
         }
     }
 }

@@ -50,10 +50,21 @@ in the schema. Highlights:
 `PAUSE`, `RESUME`, and `SET_TIMESCALE` are applied by mod `SimControl` on the
 Unity main thread. Invalid command parameters return `StatusCode.InternalError`
 in the response instead of throwing through `FixedUpdate`.
+Since Unity suppresses `FixedUpdate` at zero time scale, a main-thread
+`Update` recovery pump may peek at `RESUME`, `RESET`, `SET_TASK`, or
+`SET_TIMESCALE` and wake the clock. It leaves the frame queued; `FixedUpdate`
+still owns dispatch, observation collection, and the response
+([ADR-0005](./adr/0005-pause-safe-game-time-control.md)).
 Python exposes these through `HKRLEnv.pause()`, `HKRLEnv.resume()`,
 `HKRLEnv.ping()`, and `HKRLEnv.set_timescale(scale)`.
+PING reports errors in the PING request itself, not a stale lifecycle error
+retained from an earlier RESET; the current lifecycle state remains visible for
+diagnosis.
 For `STEP`, the mod delays the `StepResponse` until all repeated FixedUpdate
-ticks have been applied, or until a terminal reward event ends the episode early.
+ticks have been applied and `InputInjector` has observed a successful
+`InputManager.OnUpdate` commit for each selected primitive, or until a terminal reward
+event ends the episode early. This prevents `action_repeat=1` from returning a
+pre-action observation.
 The Python env computes reward time deltas from consecutive `server_tick`
 values, so early terminal responses do not overcharge the configured repeat
 count. Before `RUNNING`, the mod accepts only the canonical no-op `STEP` used as
@@ -113,16 +124,27 @@ lifecycle but does not apply input.
   socket being written to the next client connection.
   The main-thread controller also clears repeated-step and held-input state when
   client/session state changes, or when a control command preempts an in-flight
-  repeat, so the next live client does not inherit a stale pressed input.
+  repeat, so the next live client does not inherit a stale pressed input. After
+  a completed response it immediately strips edge-triggered buttons while
+  retaining movement/aim axes and true hold buttons for at most ten 50-Hz ticks.
+  This bounded bridge prevents a neutral movement pulse during local inference
+  without turning attack/dash/cast into repeated presses. Duration/macro progress
+  remains owned by the next synchronous STEP.
 
 ## 6. Threading contract (mod side)
 
 The network thread MUST NOT touch Unity objects. It only enqueues requests and
-dequeues responses. All game access happens on the main thread in `FixedUpdate`.
-See PRD §5.3 and [`mod_dev.md`](./mod_dev.md).
+dequeues responses. Actions, lifecycle transitions, observation reads, and
+responses happen on the main thread in `FixedUpdate`. The only exception is the
+main-thread `Update` clock wake-up described above; it neither consumes a request
+nor reads/writes gameplay state. See PRD §5.3,
+[`mod_dev.md`](./mod_dev.md), and
+[ADR-0005](./adr/0005-pause-safe-game-time-control.md).
 
 ```text
 NetworkThread:  recv StepRequest -> enqueue
+MainThread (Update, only at timeScale=0):
+                peek recovery command -> restore clock (leave request queued)
 MainThread (FixedUpdate): dequeue latest -> apply action -> collect obs/events
                           -> write StepResponse to out-queue
 NetworkThread:  dequeue StepResponse -> send

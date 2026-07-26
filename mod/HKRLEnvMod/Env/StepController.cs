@@ -33,6 +33,7 @@ namespace HKRLEnvMod.Env
         private DecodedStepRequest? _repeatRequest;
         private long _repeatSessionId;
         private int _repeatTicksRemaining;
+        private ulong _awaitedInputCommitCount;
 
         public StepController(TcpServer server)
             : this(
@@ -87,10 +88,70 @@ namespace HKRLEnvMod.Env
             }
         }
 
+        /// <summary>
+        /// Called from MonoBehaviour.Update only while Unity's scaled physics loop
+        /// is stopped. It peeks at (but never consumes) the next request and
+        /// restores the clock for commands that must be able to recover PAUSE.
+        /// The request is still dispatched, observed, and answered in FixedTick.
+        /// </summary>
+        public void UnscaledTick()
+        {
+            if (!_simControl.IsSimulationStopped)
+            {
+                return;
+            }
+
+            try
+            {
+                UnscaledTickCore();
+            }
+            catch (System.Exception exception)
+            {
+                global::HKRLEnvMod.Debug.Logger.Error(
+                    "StepController unscaled control tick failed",
+                    exception);
+            }
+        }
+
         public void Dispose()
         {
             ClearControlState();
-            _actions.Dispose();
+            try
+            {
+                _actions.Dispose();
+            }
+            finally
+            {
+                _simControl.Dispose();
+            }
+        }
+
+        private void UnscaledTickCore()
+        {
+            if (!_server.InboundRequests.TryPeek(out var frame)
+                || !_server.IsCurrentSession(frame.SessionId))
+            {
+                return;
+            }
+
+            var request = MessageCodec.DecodeStepRequest(frame.Payload);
+            if (!CanWakeSimulation(request.Command))
+            {
+                return;
+            }
+
+            // Resume is deliberately idempotent and re-asserts the active game
+            // scale. Leave the frame queued so no observation/action/lifecycle
+            // work escapes the authoritative FixedUpdate path.
+            _simControl.Resume();
+        }
+
+        private static bool CanWakeSimulation(HKRL.Command command)
+        {
+            return command == HKRL.Command.Resume
+                || command == HKRL.Command.Reset
+                || command == HKRL.Command.SetTask
+                || command == HKRL.Command.SetTimescale;
         }
 
         private void FixedTickCore()
@@ -110,26 +171,41 @@ namespace HKRLEnvMod.Env
                     return;
                 }
 
-                ClearControlState();
+                if (_repeatRequest != null || request.Command != HKRL.Command.Step)
+                {
+                    ClearControlState();
+                }
+                else
+                {
+                    _actions.SuspendInput();
+                }
                 commandError = Dispatch(request);
                 state = ShouldAdvanceLifecycle(request)
                     ? AdvanceLifecycle()
                     : _lifecycle.State;
                 if (ShouldDelayStepResponse(request, commandError, state))
                 {
+                    _actions.EnableInput();
                     _repeatRequest = request;
                     _repeatSessionId = sessionId;
                     _repeatTicksRemaining = request.ActionRepeat - 1;
+                    _awaitedInputCommitCount = _actions.SuccessfulCommitCount + 1;
                     return;
                 }
 
                 EnqueueStepResponse(sessionId, request, commandError, state);
+                if (request.Command == HKRL.Command.Step
+                    && state == HKRL.LifecycleState.Running)
+                {
+                    _actions.SuspendInput();
+                }
             }
             else
             {
                 var request = _repeatRequest;
                 if (request == null)
                 {
+                    _actions.IdleTick();
                     return;
                 }
                 var sessionId = _repeatSessionId;
@@ -139,15 +215,38 @@ namespace HKRLEnvMod.Env
                     return;
                 }
 
-                commandError = ApplyRepeatedStep(request);
+                // InputInjector commits from InControl.OnUpdate after FixedUpdate.
+                // Do not sample s' until the action selected on the previous
+                // FixedUpdate was actually written into the game's action set.
+                if (_actions.SuccessfulCommitCount < _awaitedInputCommitCount)
+                {
+                    return;
+                }
+
                 state = AdvanceLifecycle();
                 if (ShouldContinueRepeat(commandError, state))
                 {
+                    commandError = ApplyRepeatedStep(request);
+                    if (commandError == HKRL.StatusCode.Ok)
+                    {
+                        _awaitedInputCommitCount = _actions.SuccessfulCommitCount + 1;
+                        return;
+                    }
+                }
+                else
+                {
+                    commandError = HKRL.StatusCode.Ok;
+                }
+
+                if (!_server.IsCurrentSession(sessionId))
+                {
+                    ClearControlState();
                     return;
                 }
 
                 CancelRepeatedStep();
                 EnqueueStepResponse(sessionId, request, commandError, state);
+                _actions.SuspendInput();
             }
         }
 
@@ -185,18 +284,20 @@ namespace HKRLEnvMod.Env
             var observation = _observations.Collect(
                 request.TaskId,
                 _lifecycle.EpisodeId,
-                CurrentEpisodeTime(state));
+                CurrentEpisodeTime(state),
+                appliedInputButtons: _actions.CurrentInput.Buttons);
+            var mayReportEpisodeEvents = _lifecycle.IsRunning || IsTerminal(state);
             if (_lifecycle.IsRunning)
             {
                 _rewardTracker.Update(observation, _rewards);
             }
 
             var rewardEvents = _rewards.Drain();
-            if (!_lifecycle.IsRunning)
+            if (!mayReportEpisodeEvents)
             {
                 rewardEvents = System.Array.Empty<RewardEventRecord>();
             }
-            else if (HasTerminalEvent(rewardEvents))
+            else if (_lifecycle.IsRunning && HasTerminalEvent(rewardEvents, observation))
             {
                 _lifecycle.RequestTerminate();
                 state = _lifecycle.State;
@@ -204,7 +305,9 @@ namespace HKRLEnvMod.Env
 
             var terminated = IsTerminal(state);
             var errorCode = commandError == HKRL.StatusCode.Ok
-                ? _lifecycle.ErrorCode
+                ? ShouldReportLifecycleError(request)
+                    ? _lifecycle.ErrorCode
+                    : HKRL.StatusCode.Ok
                 : commandError;
             var actionMask = _masker.Compute(
                 ToPlayerActionState(observation.Player),
@@ -219,9 +322,16 @@ namespace HKRLEnvMod.Env
                 actionMask,
                 terminated,
                 truncated: false,
+                info: errorCode == HKRL.StatusCode.Ok
+                    ? null
+                    : _resetManager.LastErrorInfo,
                 episodeId: _lifecycle.EpisodeId,
                 observation: observation);
             _server.EnqueueResponse(sessionId, response);
+            if (state == HKRL.LifecycleState.Running)
+            {
+                _actions.EnableInput();
+            }
         }
 
         private bool ShouldDelayStepResponse(
@@ -232,11 +342,17 @@ namespace HKRLEnvMod.Env
             return request.Command == HKRL.Command.Step
                 && commandError == HKRL.StatusCode.Ok
                 && state == HKRL.LifecycleState.Running
-                && request.ActionRepeat > 1
                 && !BufferedTerminalEvent();
         }
 
         private static bool ShouldAdvanceLifecycle(DecodedStepRequest request)
+        {
+            return request.Command == HKRL.Command.Reset
+                || request.Command == HKRL.Command.SetTask
+                || request.Command == HKRL.Command.Step;
+        }
+
+        private static bool ShouldReportLifecycleError(DecodedStepRequest request)
         {
             return request.Command == HKRL.Command.Reset
                 || request.Command == HKRL.Command.SetTask
@@ -306,6 +422,7 @@ namespace HKRLEnvMod.Env
                     case HKRL.Command.Reset:
                     case HKRL.Command.SetTask:
                         ClearControlState();
+                        _simControl.Resume();
                         _rewards.Clear();
                         _rewardTracker.Reset();
                         _runningEpisodeId = 0;
@@ -320,8 +437,13 @@ namespace HKRLEnvMod.Env
                                 : HKRL.StatusCode.NotRunning;
                         }
 
-                        ReportInvalidAction(request);
-                        _actions.Apply(request.Action);
+                        if (ReportInvalidAction(request))
+                        {
+                            _actions.Apply(DecodedAction.Noop);
+                            break;
+                        }
+
+                        _actions.Apply(request.Action, isNewDecision: true);
                         break;
                     case HKRL.Command.Pause:
                         _simControl.Pause();
@@ -352,12 +474,13 @@ namespace HKRLEnvMod.Env
             _repeatRequest = null;
             _repeatSessionId = 0;
             _repeatTicksRemaining = 0;
+            _awaitedInputCommitCount = 0;
         }
 
         private void ClearControlState()
         {
             CancelRepeatedStep();
-            _actions.Clear();
+            _actions.DisableInput();
         }
 
         private readonly struct PendingRequest
@@ -389,7 +512,7 @@ namespace HKRLEnvMod.Env
             {
                 if (_lifecycle.IsRunning)
                 {
-                    _actions.Apply(request.Action);
+                    _actions.Apply(request.Action, isNewDecision: false);
                 }
 
                 if (_repeatTicksRemaining > 0)
@@ -408,24 +531,29 @@ namespace HKRLEnvMod.Env
             }
         }
 
-        private void ReportInvalidAction(DecodedStepRequest request)
+        private bool ReportInvalidAction(DecodedStepRequest request)
         {
             var action = request.Action;
+            var invalid = false;
             if (action.MovementX > 2)
             {
                 AddInvalidActionEvent(actionId: 0, reason: 1);
+                invalid = true;
             }
             if (action.AimY > 2)
             {
                 AddInvalidActionEvent(actionId: 1, reason: 1);
+                invalid = true;
             }
             if ((action.Buttons & ~PrimitiveInput.ButtonMask) != 0)
             {
                 AddInvalidActionEvent(actionId: 2, reason: 2);
+                invalid = true;
             }
             if (action.DurationIdx > 3)
             {
                 AddInvalidActionEvent(actionId: 3, reason: 1);
+                invalid = true;
             }
             var macroLimit = MacroCountFor(request);
             if (request.EnableMacroActions)
@@ -433,12 +561,20 @@ namespace HKRLEnvMod.Env
                 if (request.NMacroActions < 0 || action.MacroId < -1 || action.MacroId >= macroLimit)
                 {
                     AddInvalidActionEvent(actionId: 4, reason: 1);
+                    invalid = true;
                 }
             }
             else if (action.MacroId >= 0)
             {
                 AddInvalidActionEvent(actionId: 4, reason: 1);
+                invalid = true;
             }
+
+            return invalid
+                || !TrainingCapabilityPolicy.IsAllowed(
+                    action,
+                    request.EnableMacroActions,
+                    macroLimit);
         }
 
         private static int MacroCountFor(DecodedStepRequest request)
@@ -473,7 +609,11 @@ namespace HKRLEnvMod.Env
                 focusing: player.FocusState > 0,
                 canAttack: player.CanAttack,
                 canCast: player.CanCast,
-                canFocus: player.CanFocus);
+                canFocus: player.CanFocus,
+                canDash: player.CanDash,
+                canDreamNail: player.CanDreamNail,
+                canNailCharge: player.CanNailCharge,
+                hasSpell: player.HasSpell);
         }
 
         private float CurrentEpisodeTime(HKRL.LifecycleState state)
@@ -502,6 +642,7 @@ namespace HKRLEnvMod.Env
             if (_resetManager.IsActive)
             {
                 var resetStatus = _resetManager.Poll();
+                _actions.DisableInput();
                 if (resetStatus != HKRL.StatusCode.Ok)
                 {
                     _resetManager.Clear();
@@ -526,11 +667,34 @@ namespace HKRLEnvMod.Env
             return _rewards.Contains(IsTerminalEvent);
         }
 
-        private static bool HasTerminalEvent(IReadOnlyList<RewardEventRecord> rewardEvents)
+        private static bool HasTerminalEvent(
+            IReadOnlyList<RewardEventRecord> rewardEvents,
+            ObservationSnapshot observation)
         {
+            var bossKilled = false;
             for (var i = 0; i < rewardEvents.Count; i++)
             {
-                if (IsTerminalEvent(rewardEvents[i]))
+                var kind = rewardEvents[i].Kind;
+                if (kind == HKRL.RewardEventKind.PlayerDeath
+                    || kind == HKRL.RewardEventKind.SceneChanged)
+                {
+                    return true;
+                }
+                if (kind == HKRL.RewardEventKind.BossKilled)
+                {
+                    bossKilled = true;
+                }
+            }
+
+            return bossKilled && !HasLivingBoss(observation);
+        }
+
+        private static bool HasLivingBoss(ObservationSnapshot observation)
+        {
+            for (var i = 0; i < observation.Entities.Count; i++)
+            {
+                var entity = observation.Entities[i];
+                if (entity.EntityType == HKRL.EntityType.Boss && entity.Hp > 0)
                 {
                     return true;
                 }

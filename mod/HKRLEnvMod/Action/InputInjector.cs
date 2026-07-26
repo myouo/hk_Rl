@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Modding;
+using InControl;
 using UnityEngine;
 
 namespace HKRLEnvMod.Action
@@ -15,7 +15,7 @@ namespace HKRLEnvMod.Action
             Buttons = buttons & ButtonMask;
         }
 
-        public const uint ButtonMask = (1u << 9) - 1u;
+        public const uint ButtonMask = TrainingCapabilityPolicy.AllowedButtonMask;
 
         public int MovementX { get; }
         public int AimY { get; }
@@ -40,9 +40,10 @@ namespace HKRLEnvMod.Action
 
     /// <summary>
     /// Injects input directly into Hollow Knight's InControl PlayerAction set.
-    /// StepController updates <see cref="Current"/> in FixedUpdate; the
-    /// HeroUpdateHook commits it immediately before HeroController consumes
-    /// input in Update. The button layout MUST match python/hkrl/spaces.py.
+    /// StepController updates <see cref="Current"/> in FixedUpdate; InControl's
+    /// OnUpdate callback commits it immediately after physical action sets are
+    /// refreshed and before gameplay consumers read them. The button layout
+    /// MUST match python/hkrl/spaces.py.
     /// </summary>
     public sealed class InputInjector : IDisposable
     {
@@ -63,13 +64,40 @@ namespace HKRLEnvMod.Action
         private bool _disposed;
         private bool _loggedBridgeError;
         private bool _loggedReady;
+        private bool _enabled;
+        private ulong _successfulCommitCount;
 
         public InputInjector()
         {
-            ModHooks.HeroUpdateHook += OnHeroUpdate;
+            InputManager.OnUpdate += OnInputManagerUpdate;
         }
 
         public PrimitiveInput Current { get; private set; } = PrimitiveInput.Noop;
+
+        /// <summary>
+        /// Number of InControl OnUpdate callbacks that successfully committed the
+        /// selected input into Hollow Knight's PlayerAction set. StepController
+        /// uses this acknowledgement to avoid returning a pre-action observation.
+        /// </summary>
+        public ulong SuccessfulCommitCount => _successfulCommitCount;
+        public bool Enabled => _enabled;
+
+        public void Enable()
+        {
+            _enabled = true;
+        }
+
+        public void Disable()
+        {
+            if (!_enabled)
+            {
+                return;
+            }
+
+            Current = PrimitiveInput.Noop;
+            TryCommit(Current);
+            _enabled = false;
+        }
 
         /// <summary>Set the movement axis (-1/0/+1) for this tick.</summary>
         public void SetMovementX(int dir)
@@ -91,6 +119,7 @@ namespace HKRLEnvMod.Action
 
         public void Apply(PrimitiveInput input)
         {
+            _enabled = true;
             Current = input;
         }
 
@@ -107,38 +136,55 @@ namespace HKRLEnvMod.Action
             }
 
             _disposed = true;
-            Current = PrimitiveInput.Noop;
             try
             {
-                TryCommit(Current);
+                Disable();
             }
             finally
             {
-                ModHooks.HeroUpdateHook -= OnHeroUpdate;
+                InputManager.OnUpdate -= OnInputManagerUpdate;
             }
         }
 
-        private void OnHeroUpdate()
+        private void OnInputManagerUpdate(ulong updateTick, float deltaTime)
         {
+            if (!_enabled)
+            {
+                return;
+            }
+
             // Hook bodies must never let an input-version mismatch break the
             // game's Update loop (AGENTS.md §7 / PRD §9.9).
-            TryCommit(Current);
+            TryCommit(Current, updateTick, deltaTime);
         }
 
         private void TryCommit(PrimitiveInput input)
         {
+            float deltaTime = Time.unscaledDeltaTime > 0.0f
+                ? Time.unscaledDeltaTime
+                : Time.fixedDeltaTime;
+            TryCommit(input, InputManager.CurrentTick, deltaTime);
+        }
+
+        private void TryCommit(
+            PrimitiveInput input,
+            ulong updateTick,
+            float deltaTime)
+        {
             try
             {
-                if (!_bridge.TryCommit(input))
+                if (!_bridge.TryCommit(input, updateTick, deltaTime))
                 {
                     return;
                 }
 
+                _successfulCommitCount++;
                 if (!_loggedReady)
                 {
                     _loggedReady = true;
                     global::HKRLEnvMod.Debug.Logger.Info(
-                        "In-mod PlayerAction input injection is active.");
+                        "In-mod PlayerAction input injection is active at "
+                        + "InControl.OnUpdate.");
                 }
             }
             catch (Exception exception)
@@ -160,8 +206,6 @@ namespace HKRLEnvMod.Action
         {
             private const BindingFlags InstanceFlags =
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-            private const BindingFlags StaticFlags =
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
             private static readonly (string Name, Func<PrimitiveInput, bool> State)[] Bindings =
             {
@@ -183,25 +227,22 @@ namespace HKRLEnvMod.Action
                 ("dreamNail", input => HasAny(input, DreamNail))
             };
 
-            private Type? _inputHandlerType;
-            private MemberInfo? _inputHandlerInstance;
-            private MemberInfo? _inputActionsMember;
-            private MemberInfo? _currentTickMember;
-            private object? _boundActionSet;
+            private HeroActions? _boundActionSet;
             private List<ActionCommitter>? _actions;
-            private MethodInfo? _updateMoveVector;
-            private object? _moveVector;
+            private Action<ulong, float>? _updateMoveVector;
 
-            public bool TryCommit(PrimitiveInput input)
+            public bool TryCommit(
+                PrimitiveInput input,
+                ulong updateTick,
+                float deltaTime)
             {
-                ResolveRootMembers();
-                object? handler = ReadMember(_inputHandlerInstance!, null);
+                InputHandler? handler = InputHandler.Instance;
                 if (handler == null)
                 {
                     return false;
                 }
 
-                object? actionSet = ReadMember(_inputActionsMember!, handler);
+                HeroActions? actionSet = handler.inputActions;
                 if (actionSet == null)
                 {
                     return false;
@@ -212,10 +253,6 @@ namespace HKRLEnvMod.Action
                     BindActionSet(actionSet);
                 }
 
-                ulong updateTick = Convert.ToUInt64(ReadMember(_currentTickMember!, null));
-                float deltaTime = Time.unscaledDeltaTime > 0.0f
-                    ? Time.unscaledDeltaTime
-                    : Time.fixedDeltaTime;
                 List<ActionCommitter> actions = _actions!;
                 for (var index = 0; index < actions.Count; index++)
                 {
@@ -223,41 +260,11 @@ namespace HKRLEnvMod.Action
                     actions[index].Commit(binding.State(input), updateTick, deltaTime);
                 }
 
-                _updateMoveVector!.Invoke(_moveVector, new object[] { updateTick, deltaTime });
+                _updateMoveVector!(updateTick, deltaTime);
                 return true;
             }
 
-            private void ResolveRootMembers()
-            {
-                if (_inputHandlerType != null)
-                {
-                    return;
-                }
-
-                Assembly gameAssembly = typeof(global::HeroController).Assembly;
-                _inputHandlerType = gameAssembly.GetType("InputHandler")
-                    ?? throw new MissingMemberException(
-                        gameAssembly.FullName,
-                        "InputHandler");
-                _inputHandlerInstance = FindMember(
-                    _inputHandlerType,
-                    "Instance",
-                    StaticFlags);
-                _inputActionsMember = FindMember(
-                    _inputHandlerType,
-                    "inputActions",
-                    InstanceFlags);
-                Type inputManagerType = gameAssembly.GetType("InControl.InputManager")
-                    ?? throw new MissingMemberException(
-                        gameAssembly.FullName,
-                        "InControl.InputManager");
-                _currentTickMember = FindMember(
-                    inputManagerType,
-                    "CurrentTick",
-                    StaticFlags);
-            }
-
-            private void BindActionSet(object actionSet)
+            private void BindActionSet(HeroActions actionSet)
             {
                 Type actionSetType = actionSet.GetType();
                 var actions = new List<ActionCommitter>(Bindings.Length);
@@ -271,15 +278,17 @@ namespace HKRLEnvMod.Action
                     actions.Add(new ActionCommitter(action));
                 }
 
-                _moveVector = ReadMember(
-                        FindMember(actionSetType, "moveVector", InstanceFlags),
-                        actionSet)
-                    ?? throw new MissingMemberException(actionSetType.FullName, "moveVector");
-                _updateMoveVector = FindMethod(
-                    _moveVector.GetType(),
+                PlayerTwoAxisAction moveVector = actionSet.moveVector;
+                MethodInfo updateMoveVector = FindMethod(
+                    moveVector.GetType(),
                     "Update",
                     typeof(ulong),
                     typeof(float));
+                _updateMoveVector = (Action<ulong, float>)Delegate.CreateDelegate(
+                    typeof(Action<ulong, float>),
+                    moveVector,
+                    updateMoveVector,
+                    throwOnBindFailure: true)!;
                 _actions = actions;
                 _boundActionSet = actionSet;
             }
@@ -346,27 +355,27 @@ namespace HKRLEnvMod.Action
 
         private sealed class ActionCommitter
         {
-            private readonly object _action;
-            private readonly MethodInfo _commit;
-            private readonly MethodInfo? _setValue;
-            private readonly MethodInfo? _commitWithState;
+            private readonly PlayerAction _action;
+            private readonly Action<float, ulong>? _setValue;
 
             public ActionCommitter(object action)
             {
-                _action = action;
+                _action = action as PlayerAction
+                    ?? throw new InvalidCastException(
+                        $"Expected InControl.PlayerAction, got {action.GetType().FullName}.");
                 Type type = action.GetType();
-                _commit = FindOptionalMethod(type, "Commit")
-                    ?? throw new MissingMethodException(type.FullName, "Commit");
-                _setValue = FindOptionalMethod(type, "SetValue", typeof(float), typeof(ulong));
-                if (_setValue == null)
+                MethodInfo? setValue = FindOptionalMethod(
+                    type,
+                    "SetValue",
+                    typeof(float),
+                    typeof(ulong));
+                if (setValue != null)
                 {
-                    _commitWithState = FindOptionalMethod(
-                            type,
-                            "CommitWithState",
-                            typeof(bool),
-                            typeof(ulong),
-                            typeof(float))
-                        ?? throw new MissingMethodException(type.FullName, "CommitWithState");
+                    _setValue = (Action<float, ulong>)Delegate.CreateDelegate(
+                        typeof(Action<float, ulong>),
+                        _action,
+                        setValue,
+                        throwOnBindFailure: true)!;
                 }
             }
 
@@ -376,14 +385,12 @@ namespace HKRLEnvMod.Action
                 {
                     // SetValue replaces the physical binding's pending value
                     // in the same InControl tick; CommitWithState only ORs it.
-                    _setValue.Invoke(_action, new object[] { state ? 1.0f : 0.0f, updateTick });
-                    _commit.Invoke(_action, Array.Empty<object>());
+                    _setValue(state ? 1.0f : 0.0f, updateTick);
+                    _action.Commit();
                     return;
                 }
 
-                _commitWithState!.Invoke(
-                    _action,
-                    new object[] { state, updateTick, deltaTime });
+                _action.CommitWithState(state, updateTick, deltaTime);
             }
 
             private static MethodInfo? FindOptionalMethod(

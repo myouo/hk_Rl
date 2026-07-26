@@ -1,0 +1,17 @@
+<Project>
+  <!--
+    Single source of truth for the distributable HKRLEnvMod version.
+    Protocol/schema compatibility is versioned independently by
+    Transport/Protocol.cs and python/hkrl/protocol.py.
+  -->
+  <PropertyGroup>
+    <HKRLModVersion>0.8.0</HKRLModVersion>
+    <Version>$(HKRLModVersion)</Version>
+    <VersionPrefix>$(HKRLModVersion)</VersionPrefix>
+    <AssemblyVersion>$(HKRLModVersion).0</AssemblyVersion>
+    <FileVersion>$(HKRLModVersion).0</FileVersion>
+    <InformationalVersion>$(HKRLModVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

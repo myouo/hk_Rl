@@ -152,7 +152,7 @@ def _normalize_player(player: np.ndarray) -> None:
     _normalize_current_and_max(player, current_idx=4, max_idx=5)
     _normalize_current_and_max(player, current_idx=6, max_idx=7)
 
-    for idx in (16, 17, 18, 20):
+    for idx in (16, 17, 18, 20, 30):
         if idx < player.shape[0]:
             player[idx] = _clamped_timer(float(player[idx]))
 

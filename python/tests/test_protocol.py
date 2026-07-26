@@ -35,7 +35,7 @@ from hkrl.spaces import BUTTON_BITS
 
 def test_schema_version_is_positive() -> None:
     assert isinstance(protocol.SCHEMA_VERSION, int)
-    assert protocol.SCHEMA_VERSION == 4
+    assert protocol.SCHEMA_VERSION == 6
 
 
 def test_schema_version_matches_csharp_constant_and_schema_file() -> None:
@@ -213,6 +213,10 @@ def test_decode_step_response_decodes_observation_events_and_mask() -> None:
     )
     assert decoded.observation.player_state[9] == 1.0  # on_ground
     assert decoded.observation.player_state[22] == 1.0  # can_attack
+    np.testing.assert_allclose(
+        decoded.observation.player_state[25:],
+        [101.0, 7.0, 202.0, 303.0, 404.0, 0.6, 511.0],
+    )
     assert decoded.observation.entities.shape == (1, 24)
     np.testing.assert_allclose(
         decoded.observation.entities[0, :14],
@@ -240,6 +244,31 @@ def test_mod_step_request_schema_mismatch_maps_to_status_code() -> None:
     assert "throw new SchemaMismatchException" in codec
     assert "catch (SchemaMismatchException" in controller
     assert "HKRL.StatusCode.SchemaMismatch" in controller
+
+
+def test_ping_does_not_inherit_a_stale_reset_error() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    method = controller[controller.index("private static bool ShouldReportLifecycleError") :]
+    assert "ShouldReportLifecycleError(request)" in controller
+    assert "request.Command == HKRL.Command.Ping" not in method
+
+
+def test_mod_enforces_policy_capability_boundary() -> None:
+    root = Path(__file__).parents[2]
+    policy = (root / "mod/HKRLEnvMod/Action/TrainingCapabilityPolicy.cs").read_text(
+        encoding="utf-8"
+    )
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    capability_doc = (root / "docs/training_capability_policy.md").read_text(encoding="utf-8")
+
+    assert "AllowedButtonMask" in policy
+    assert "action.MovementX > 2" in policy
+    assert "action.DurationIdx >= ActionMasker.DurationCount" in policy
+    assert "_actions.Apply(DecodedAction.Noop)" in controller
+    assert "write `Transform`, `Rigidbody2D`" in capability_doc
+    assert "Environment-control abilities" in capability_doc
 
 
 def test_tcp_frame_limit_matches_mod_server() -> None:
@@ -332,7 +361,7 @@ def test_mod_step_controller_clears_input_on_connection_state_change() -> None:
     assert "_observedHasClient = hasClient" in controller
     assert "ClearControlState();" in controller
     assert "private void ClearControlState()" in controller
-    assert "_actions.Clear();" in controller
+    assert "_actions.DisableInput();" in controller
 
 
 def test_mod_step_controller_honors_action_repeat_contract() -> None:
@@ -343,6 +372,44 @@ def test_mod_step_controller_honors_action_repeat_contract() -> None:
     assert "_repeatTicksRemaining = request.ActionRepeat - 1" in controller
     assert "ApplyRepeatedStep" in controller
     assert "BufferedTerminalEvent" in controller
+
+
+def test_mod_step_controller_waits_for_committed_input_before_response() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    injector = (root / "mod/HKRLEnvMod/Action/InputInjector.cs").read_text(encoding="utf-8")
+
+    assert "SuccessfulCommitCount" in injector
+    assert "_successfulCommitCount++;" in injector
+    assert "_awaitedInputCommitCount = _actions.SuccessfulCommitCount + 1" in controller
+    assert "_actions.SuccessfulCommitCount < _awaitedInputCommitCount" in controller
+    wait_idx = controller.index("_actions.SuccessfulCommitCount < _awaitedInputCommitCount")
+    repeat_response_idx = controller.index(
+        "EnqueueStepResponse(sessionId, request, commandError, state)",
+        wait_idx,
+    )
+    assert wait_idx < repeat_response_idx
+
+
+def test_mod_step_controller_bridges_continuous_input_between_responses() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    applier = (root / "mod/HKRLEnvMod/Action/ActionApplier.cs").read_text(encoding="utf-8")
+
+    assert "public void SuspendInput()" in applier
+    assert "current.MovementX" in applier
+    assert "current.AimY" in applier
+    assert "current.Buttons & ContinuableHoldMask" in applier
+    assert "MaxSuspendedInputTicks = 10" in applier
+    assert controller.count("_actions.SuspendInput();") >= 2
+
+
+def test_mod_multi_boss_terminal_requires_no_living_boss() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+
+    assert "bossKilled && !HasLivingBoss(observation)" in controller
+    assert "entity.EntityType == HKRL.EntityType.Boss && entity.Hp > 0" in controller
 
 
 def test_mod_step_controller_new_requests_preempt_repeated_steps() -> None:
@@ -411,6 +478,38 @@ def test_mod_step_controller_guards_fixed_tick() -> None:
     assert "_repeatTicksRemaining = 0;" in controller
 
 
+def test_mod_pause_recovery_keeps_physics_on_fixed_tick_path() -> None:
+    root = Path(__file__).parents[2]
+    controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
+    driver = (root / "mod/HKRLEnvMod/HKRLEnvMod.cs").read_text(encoding="utf-8")
+    sim_control = (root / "mod/HKRLEnvMod/Env/SimControl.cs").read_text(encoding="utf-8")
+
+    assert "public void UnscaledTick()" in controller
+    assert "_server.InboundRequests.TryPeek" in controller
+    assert "CanWakeSimulation(request.Command)" in controller
+    assert "_simControl.Resume();" in controller
+    assert "private void Update()" in driver
+    assert "_stepController?.UnscaledTick();" in driver
+
+    # The unscaled pump only peeks and wakes the clock; authoritative request
+    # consumption, observation, and action application remain in FixedTick.
+    unscaled = controller[
+        controller.index("private void UnscaledTickCore()") : controller.index(
+            "private static bool CanWakeSimulation"
+        )
+    ]
+    assert "TryPeek" in unscaled
+    assert "TryDequeue" not in unscaled
+    assert "EnqueueStepResponse" not in unscaled
+    assert "_actions." not in unscaled
+
+    assert "On.GameManager.SetTimeScale_float +=" in sim_control
+    assert "TimeController.GenericTimeScale = effectiveScale;" in sim_control
+    assert "Time.fixedDeltaTime = _baseFixedDelta;" in sim_control
+    assert "_baseFixedDelta *" not in sim_control
+    assert "_simControl.Dispose();" in controller
+
+
 def test_mod_step_response_mask_uses_player_state() -> None:
     root = Path(__file__).parents[2]
     controller = (root / "mod/HKRLEnvMod/Env/StepController.cs").read_text(encoding="utf-8")
@@ -426,20 +525,22 @@ def test_mod_step_response_mask_uses_player_state() -> None:
     assert "canAttack: player.CanAttack" in controller
 
 
-def test_mod_player_observer_reads_playerdata_with_fallbacks() -> None:
+def test_mod_player_observer_uses_direct_hot_state_and_reflection_fallbacks() -> None:
     root = Path(__file__).parents[2]
     observer = (root / "mod/HKRLEnvMod/Observation/PlayerObserver.cs").read_text(encoding="utf-8")
 
-    assert 'FindSingleton("PlayerData", "instance")' in observer
-    assert '"health"' in observer
-    assert '"maxHealth"' in observer
-    assert '"MPCharge"' in observer
-    assert '"maxMP"' in observer
-    assert "_playerDataTypeSearched" in observer
+    assert "global::PlayerData.instance" in observer
+    assert "playerData?.health" in observer
+    assert "playerData?.maxHealth" in observer
+    assert "playerData?.MPCharge" in observer
+    assert "playerData?.maxMP" in observer
+    assert "states.onGround" in observer
+    assert "states.attacking" in observer
+    assert 'ReadBool(hero, false, "cState.attacking")' not in observer
     assert "TryReadGetInt" in observer
+    assert "TryInvokeZeroArg" in observer
     assert "TryReadMemberPath" in observer
     assert "ReadFloat" in observer
-    assert '"cState.onGround"' in observer
     assert '"attackLockTimer"' in observer
     assert '"dashCooldown"' in observer
 
@@ -651,6 +752,13 @@ def _build_player_state(builder: flatbuffers.Builder) -> int:
     FbPlayerState.PlayerStateAddCanAttack(builder, True)
     FbPlayerState.PlayerStateAddCanCast(builder, True)
     FbPlayerState.PlayerStateAddCanFocus(builder, False)
+    FbPlayerState.PlayerStateAddActorStateHash(builder, 101)
+    FbPlayerState.PlayerStateAddActionFlags(builder, 7)
+    FbPlayerState.PlayerStateAddSpellFsmStateHash(builder, 202)
+    FbPlayerState.PlayerStateAddDreamNailFsmStateHash(builder, 303)
+    FbPlayerState.PlayerStateAddNailArtsFsmStateHash(builder, 404)
+    FbPlayerState.PlayerStateAddNailChargeTimer(builder, 0.6)
+    FbPlayerState.PlayerStateAddAppliedInputButtons(builder, 511)
     return FbPlayerState.PlayerStateEnd(builder)
 
 

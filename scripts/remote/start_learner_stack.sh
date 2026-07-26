@@ -7,7 +7,7 @@ TRAIN_CONFIG="${HKRL_TRAIN_CONFIG:-configs/train/ssh_remote_learner.yaml}"
 HKRL_PYTHON_BIN="${HKRL_PYTHON_BIN:-python}"
 
 if [[ -z "${HKRL_AUTH_TOKEN:-}" ]]; then
-  echo "error: HKRL_AUTH_TOKEN must be set and match the Windows GameWorker" >&2
+  echo "error: HKRL_AUTH_TOKEN must be set and match the game-host worker" >&2
   exit 2
 fi
 
@@ -63,7 +63,7 @@ PYTHONUNBUFFERED=1 "${HKRL_PYTHON_BIN}" scripts/run_learner.py \
 learner_pid="$!"
 
 echo "HKRL remote stack started: learner=127.0.0.1:5600 registry=127.0.0.1:5601"
-echo "Both ports are loopback-only; connect from Windows with the SSH tunnel script."
+echo "Both ports are loopback-only; connect from the game host with an SSH tunnel."
 
 set +e
 wait -n "${learner_pid}" "${registry_pid}"

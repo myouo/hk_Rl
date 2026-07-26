@@ -66,19 +66,20 @@ done
   exit 2
 }
 
-command -v conda >/dev/null 2>&1 || {
-  echo "conda was not found. Install Miniconda/Miniforge first." >&2
+CONDA_BIN="${HKRL_CONDA_BIN:-conda}"
+command -v "$CONDA_BIN" >/dev/null 2>&1 || {
+  echo "conda was not found. Install Miniconda/Miniforge first or set HKRL_CONDA_BIN." >&2
   exit 1
 }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-if ! conda run --name "$ENV_NAME" python --version >/dev/null 2>&1; then
-  conda create --yes --name "$ENV_NAME" python=3.10 pip
+if ! "$CONDA_BIN" run --name "$ENV_NAME" python --version >/dev/null 2>&1; then
+  "$CONDA_BIN" create --yes --name "$ENV_NAME" python=3.10 pip
 fi
 
-conda run --name "$ENV_NAME" python -m pip install --upgrade pip setuptools wheel
+"$CONDA_BIN" run --name "$ENV_NAME" python -m pip install --upgrade pip setuptools wheel
 
 TORCH_INSTALL_ARGS=(install --upgrade torch)
 if ((REINSTALL_TORCH)); then
@@ -87,29 +88,29 @@ fi
 if [[ -n "$TORCH_INDEX_URL" ]]; then
   TORCH_INSTALL_ARGS+=(--index-url "$TORCH_INDEX_URL")
 fi
-conda run --name "$ENV_NAME" python -m pip "${TORCH_INSTALL_ARGS[@]}"
+"$CONDA_BIN" run --name "$ENV_NAME" python -m pip "${TORCH_INSTALL_ARGS[@]}"
 
-conda run --name "$ENV_NAME" python -m pip install \
+"$CONDA_BIN" run --name "$ENV_NAME" python -m pip install \
   -e "${REPO_ROOT}/python[dev,logging,distributed]" \
   "jupyterlab>=4" \
   "nbformat>=5.9" \
   "nbclient>=0.10" \
   "ipykernel>=6.29"
 
-conda run --name "$ENV_NAME" python -m ipykernel install \
+"$CONDA_BIN" run --name "$ENV_NAME" python -m ipykernel install \
   --user \
   --name "$ENV_NAME" \
   --display-name "Python ($ENV_NAME)"
 
-conda run --name "$ENV_NAME" python -c \
+"$CONDA_BIN" run --name "$ENV_NAME" python -c \
   "import torch; print({'torch': torch.__version__, 'cuda_build': torch.version.cuda, 'cuda_available': torch.cuda.is_available(), 'device_count': torch.cuda.device_count()})"
 
 if ((ALLOW_CPU == 0)); then
-  conda run --name "$ENV_NAME" python -c \
+  "$CONDA_BIN" run --name "$ENV_NAME" python -c \
     "import torch; assert torch.cuda.is_available(), 'CUDA is unavailable. Re-run with the wheel index selected at https://pytorch.org/get-started/locally/ and --reinstall-torch.'"
 fi
 
 echo
 echo "Environment ready: $ENV_NAME"
 echo "Start JupyterLab with:"
-echo "  conda run --name $ENV_NAME jupyter lab --no-browser"
+echo "  $CONDA_BIN run --name $ENV_NAME jupyter lab --no-browser"

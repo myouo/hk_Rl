@@ -226,6 +226,11 @@ def test_env_reset_polls_until_running_and_returns_space_observation() -> None:
     assert info["episode_id"] == 123
     assert info["task_id"] == 11
     assert info["task_name"] == "gruz_mother"
+    assert info["action_combination_catalog_version"] == 1
+    assert info["action_combination_bits"] > 0
+    assert info["action_combination_count"] > 0
+    assert len(env.action_combination_catalog) == 18
+    assert env.action_combination_catalog[4].name == "jump_up_slash"
 
 
 def test_env_step_sends_action_repeat_and_composes_reward() -> None:
@@ -355,6 +360,38 @@ def test_env_step_uses_server_tick_delta_for_reward_dt() -> None:
     assert reward == pytest.approx(3.0 + task.reward.time_penalty)
 
 
+def test_env_truncates_at_task_time_limit_and_marks_reason() -> None:
+    from hkrl.env import EnvProtocolError, HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml").model_copy(
+        update={"time_limit_seconds": 1}
+    )
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                time_in_episode=0.0,
+            ),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                time_in_episode=1.01,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    _, _, terminated, truncated, info = env.step(env.action_space.sample())
+
+    assert terminated is False
+    assert truncated is True
+    assert info["time_limit_reached"] is True
+    with pytest.raises(EnvProtocolError, match="reset must complete"):
+        env.step(env.action_space.sample())
+
+
 def test_env_set_task_sends_wire_id_and_rebuilds_spaces() -> None:
     from hkrl.env import HKRLEnv
 
@@ -469,12 +506,16 @@ def test_env_reset_surfaces_status_code() -> None:
                 lifecycle=protocol.LifecycleState.WAIT_BOSS_READY,
                 error_code=protocol.StatusCode.BOSS_NOT_FOUND,
                 include_observation=False,
+                info="boss health manager was unavailable",
             )
         ]
     )
     env = HKRLEnv(transport=transport, task=task)
 
-    with pytest.raises(EnvProtocolError, match="BOSS_NOT_FOUND"):
+    with pytest.raises(
+        EnvProtocolError,
+        match="BOSS_NOT_FOUND: boss health manager was unavailable",
+    ):
         env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
 
 
@@ -695,11 +736,13 @@ def _build_response(
     entity_hp: int = 20,
     entity_max_hp: int = 30,
     entity_pos_x: float = 0.0,
+    time_in_episode: float = 0.0,
     server_tick: int | None = None,
     action_mask_len: int = 31,
     action_mask_values: list[bool] | None = None,
     response_env_id: int | None = None,
     response_tick_id: int | None = None,
+    info: str | None = None,
 ) -> bytes:
     builder = flatbuffers.Builder(512)
     action_mask = _build_bool_vector(
@@ -714,8 +757,10 @@ def _build_response(
         entity_hp=entity_hp,
         entity_max_hp=entity_max_hp,
         entity_pos_x=entity_pos_x,
+        time_in_episode=time_in_episode,
     )
     reward_events = 0
+    info_offset = builder.CreateString(info) if info is not None else 0
     if reward_kind is not None:
         reward_event = _build_reward_event(builder, reward_kind, reward_amount)
         reward_events = _build_offset_vector(
@@ -740,6 +785,8 @@ def _build_response(
     FbStepResponse.StepResponseAddActionMask(builder, action_mask)
     FbStepResponse.StepResponseAddLifecycleState(builder, lifecycle)
     FbStepResponse.StepResponseAddErrorCode(builder, error_code)
+    if info_offset:
+        FbStepResponse.StepResponseAddInfo(builder, info_offset)
     root = FbStepResponse.StepResponseEnd(builder)
     builder.Finish(root, file_identifier=protocol.FILE_IDENTIFIER)
     return bytes(builder.Output())
@@ -753,8 +800,9 @@ def _build_observation(
     entity_hp: int,
     entity_max_hp: int,
     entity_pos_x: float,
+    time_in_episode: float,
 ) -> int:
-    global_state = _build_global_state(builder)
+    global_state = _build_global_state(builder, time_in_episode=time_in_episode)
     player_state = _build_player_state(builder)
     entity_state = _build_entity_state(
         builder,
@@ -779,9 +827,15 @@ def _build_observation(
     return FbObservation.ObservationEnd(builder)
 
 
-def _build_global_state(builder: flatbuffers.Builder) -> int:
+def _build_global_state(
+    builder: flatbuffers.Builder,
+    *,
+    time_in_episode: float,
+) -> int:
     FbGlobalState.GlobalStateStart(builder)
     FbGlobalState.GlobalStateAddEpisodeId(builder, 123)
+    FbGlobalState.GlobalStateAddTimeInEpisode(builder, time_in_episode)
+    FbGlobalState.GlobalStateAddFixedDeltaTime(builder, 0.02)
     return FbGlobalState.GlobalStateEnd(builder)
 
 
@@ -791,6 +845,7 @@ def _build_player_state(builder: flatbuffers.Builder) -> int:
     FbPlayerState.PlayerStateAddMaxHp(builder, 9)
     FbPlayerState.PlayerStateAddSoul(builder, 33)
     FbPlayerState.PlayerStateAddMaxSoul(builder, 99)
+    FbPlayerState.PlayerStateAddOnGround(builder, True)
     FbPlayerState.PlayerStateAddCanAttack(builder, True)
     return FbPlayerState.PlayerStateEnd(builder)
 

@@ -30,6 +30,12 @@ namespace HKRLEnvMod.Action
 
         public bool IsActive => _plan.Count > 0;
 
+        /// <summary>Discard every queued primitive (reset/reconnect safety).</summary>
+        public void Clear()
+        {
+            _plan.Clear();
+        }
+
         private static IEnumerable<PrimitiveInput> BuildPlan(int macroId)
         {
             return macroId switch
@@ -39,12 +45,28 @@ namespace HKRLEnvMod.Action
                 2 => Sequence(
                     new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpTap)),
                     new PrimitiveInput(1, 0, Button(ActionMasker.ButtonAttack))), // jump_attack
-                3 => Sequence(new PrimitiveInput(0, -1, Button(ActionMasker.ButtonAttack))), // pogo
+                3 => Concat(
+                    Repeat(
+                        new PrimitiveInput(
+                            0,
+                            0,
+                            Button(ActionMasker.ButtonJumpHold)),
+                        4),
+                    Sequence(
+                        new PrimitiveInput(
+                            0,
+                            -1,
+                            Button(ActionMasker.ButtonAttack)))), // pogo
                 4 => Sequence(new PrimitiveInput(-1, 0, Button(ActionMasker.ButtonDash))), // dash_away
                 5 => Sequence(new PrimitiveInput(1, 0, Button(ActionMasker.ButtonDash))), // dash_through
                 6 => Sequence(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonCast))), // cast_forward
                 7 => Sequence(new PrimitiveInput(0, 1, Button(ActionMasker.ButtonCast))), // cast_up
-                8 => Repeat(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonFocusHold)), 4),
+                8 => Repeat(
+                    new PrimitiveInput(
+                        0,
+                        0,
+                        Button(ActionMasker.ButtonFocusHold)),
+                    120), // focus_when_safe: one complete heal attempt
                 9 => Sequence(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpTap))), // short_hop
                 10 => Repeat(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpHold)), 4),
                 _ => Sequence(PrimitiveInput.Noop)
@@ -67,6 +89,18 @@ namespace HKRLEnvMod.Action
         private static IEnumerable<PrimitiveInput> Sequence(params PrimitiveInput[] inputs)
         {
             return inputs;
+        }
+
+        private static IEnumerable<PrimitiveInput> Concat(
+            params IEnumerable<PrimitiveInput>[] sequences)
+        {
+            foreach (var sequence in sequences)
+            {
+                foreach (var input in sequence)
+                {
+                    yield return input;
+                }
+            }
         }
     }
 }

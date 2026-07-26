@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="Version.props" />
+
   <!--
     HKRLEnvMod — Hollow Knight environment-server mod (HK Modding API).
     See docs/mod_dev.md and docs/adr/0003-mod-framework-hk-modding-api.md.
@@ -34,6 +36,16 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(HollowKnightManaged)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule"
+               Condition="Exists('$(HollowKnightManaged)/UnityEngine.IMGUIModule.dll')">
+      <HintPath>$(HollowKnightManaged)/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.Physics2DModule"
+               Condition="Exists('$(HollowKnightManaged)/UnityEngine.Physics2DModule.dll')">
+      <HintPath>$(HollowKnightManaged)/UnityEngine.Physics2DModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="MMHOOK_Assembly-CSharp">

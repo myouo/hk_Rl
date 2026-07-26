@@ -15,6 +15,12 @@ import gymnasium as gym
 import numpy as np
 
 from hkrl import protocol
+from hkrl.action_combinations import (
+    ACTION_COMBINATIONS,
+    COMBINATION_CATALOG_VERSION,
+    ActionCombination,
+    startable_combination_bits,
+)
 from hkrl.reward import DefaultReward
 from hkrl.spaces import (
     ENTITY_FEATURE_DIMS,
@@ -110,7 +116,7 @@ class HKRLEnv(gym.Env):
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
         self._last_server_tick = response.server_tick
-        return obs, self._info_from_response(response)
+        return obs, self._info_from_response(response, observation=obs)
 
     def step(self, action: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
         """Send a STEP (with action_repeat), decode the response, compute reward.
@@ -142,13 +148,29 @@ class HKRLEnv(gym.Env):
         reward = self.reward_fn(response.reward_events, dt=float(elapsed_ticks))
         self._last_server_tick = response.server_tick
         terminated = bool(response.terminated or self._is_terminal(response.lifecycle_state))
-        truncated = bool(response.truncated)
+        time_limit_reached = not terminated and float(obs["global"][4]) >= float(
+            self.task.time_limit_seconds
+        )
+        truncated = bool(response.truncated or time_limit_reached)
         self._running = not (terminated or truncated)
-        return obs, reward, terminated, truncated, self._info_from_response(response)
+        info = self._info_from_response(response, observation=obs)
+        info["time_limit_reached"] = time_limit_reached
+        return obs, reward, terminated, truncated, info
 
     def close(self) -> None:
         """Close the transport. Idempotent."""
         self.transport.close()
+
+    @property
+    def action_combination_catalog(self) -> tuple[ActionCombination, ...]:
+        """Return the immutable semantic catalog paired with info's availability bits.
+
+        The catalog is process-local metadata, not another action component or a
+        per-step wire payload.  Entry ``combo_id`` maps directly to
+        ``info["action_combination_bits"] & (1 << combo_id)``.
+        """
+
+        return ACTION_COMBINATIONS
 
     def set_task(
         self,
@@ -194,7 +216,7 @@ class HKRLEnv(gym.Env):
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
         self._last_server_tick = response.server_tick
-        return obs, self._info_from_response(response)
+        return obs, self._info_from_response(response, observation=obs)
 
     def pause(self, *, timeout_s: float | None = None) -> dict[str, Any]:
         """Pause the game simulation via the mod's SimControl."""
@@ -209,7 +231,7 @@ class HKRLEnv(gym.Env):
         return self._control(protocol.Command.PING, timeout_s=timeout_s)
 
     def set_timescale(self, scale: float, *, timeout_s: float | None = None) -> dict[str, Any]:
-        """Set Unity Time.timeScale / fixedDeltaTime through the mod."""
+        """Set the game-time multiplier while preserving the fixed physics step."""
         if scale <= 0.0:
             raise ValueError("scale must be positive")
         return self._control(
@@ -419,7 +441,8 @@ class HKRLEnv(gym.Env):
     @staticmethod
     def _raise_for_error(response: protocol.DecodedStepResponse, *, context: str) -> None:
         if response.error_code != protocol.StatusCode.OK:
-            raise EnvProtocolError(f"{context} failed with {response.error_code.name}")
+            detail = f": {response.info}" if response.info else ""
+            raise EnvProtocolError(f"{context} failed with {response.error_code.name}{detail}")
 
     @staticmethod
     def _is_unbound_error_response(response: protocol.DecodedStepResponse) -> bool:
@@ -473,7 +496,12 @@ class HKRLEnv(gym.Env):
             "entity_mask": entity_mask,
         }
 
-    def _info_from_response(self, response: protocol.DecodedStepResponse) -> dict[str, Any]:
+    def _info_from_response(
+        self,
+        response: protocol.DecodedStepResponse,
+        *,
+        observation: dict[str, np.ndarray] | None = None,
+    ) -> dict[str, Any]:
         info: dict[str, Any] = {
             "schema_version": response.schema_version,
             "env_id": response.env_id,
@@ -487,6 +515,16 @@ class HKRLEnv(gym.Env):
             "task_id": self.task.wire_id,
             "task_name": self.task.task_id,
         }
+        if self.task.action.expose_action_combinations and observation is not None:
+            combination_bits = startable_combination_bits(
+                response.action_mask,
+                enable_macro=self.task.action.enable_macro_actions,
+                n_macros=self.task.action.n_macro_actions,
+                player_state=observation["player"],
+            )
+            info["action_combination_catalog_version"] = COMBINATION_CATALOG_VERSION
+            info["action_combination_bits"] = combination_bits
+            info["action_combination_count"] = combination_bits.bit_count()
         if response.info is not None:
             info["raw_info"] = response.info
         return info

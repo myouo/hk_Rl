@@ -108,6 +108,7 @@ class GameWorker:
         self.last_error: str | None = None
         self.last_rollout_duration_s = 0.0
         self.last_sps = 0.0
+        self.arena_auto_reset_count = 0
         self.learner_upload_submitted_batches = 0
         self.learner_upload_accepted_batches = 0
         self.learner_upload_rejected_batches = 0
@@ -168,7 +169,7 @@ class GameWorker:
                 device=self.device,
             )
             rnn_state = self._rnn_state
-            with torch.no_grad():
+            with torch.inference_mode():
                 action, log_prob, value, next_rnn_state = self.model.act(
                     obs_tensor,
                     rnn_state=rnn_state,
@@ -207,6 +208,7 @@ class GameWorker:
             self._prev_action = action_array.astype(np.int64, copy=True)
             self._prev_reward = np.array([reward], dtype=np.float32)
             if terminated or truncated:
+                self.arena_auto_reset_count += 1
                 self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
                 self._clear_memory_context()
                 if self.buffer.is_full():
@@ -296,6 +298,7 @@ class GameWorker:
         self.heartbeat_sink(
             {
                 "checkpoint_version": self.checkpoint_version,
+                "arena_auto_reset_count": self.arena_auto_reset_count,
                 "learner_endpoint": self.learner_endpoint,
                 **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
@@ -313,6 +316,7 @@ class GameWorker:
         self.heartbeat_sink(
             {
                 "checkpoint_version": self.checkpoint_version,
+                "arena_auto_reset_count": self.arena_auto_reset_count,
                 "error": f"{type(exc).__name__}: {exc}",
                 "learner_endpoint": self.learner_endpoint,
                 **self._learner_upload_metrics(),

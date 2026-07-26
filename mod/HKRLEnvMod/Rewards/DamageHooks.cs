@@ -12,7 +12,21 @@ namespace HKRLEnvMod.Rewards
         /// <summary>Install the Harmony/MonoMod hooks.</summary>
         public static void Install(RewardEventBuffer buffer)
         {
+            Uninstall();
             _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+            Modding.ModHooks.TakeHealthHook += OnTakeHealth;
+        }
+
+        public static void Uninstall()
+        {
+            Modding.ModHooks.TakeHealthHook -= OnTakeHealth;
+            _buffer = null;
+        }
+
+        private static int OnTakeHealth(int damage)
+        {
+            RecordDamageTaken(entityId: 0, amount: damage);
+            return damage;
         }
 
         public static void RecordDamageDealt(int entityId, float amount, int damageType = 0)

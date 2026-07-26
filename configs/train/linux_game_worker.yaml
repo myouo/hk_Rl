@@ -1,0 +1,18 @@
+# Linux game-host role. Hollow Knight (native or Proton), the mod TCP server,
+# and latency-sensitive policy inference stay on this machine. Only completed
+# rollouts and versioned checkpoints cross the SSH tunnel.
+defaults:
+  - ./remote_learner.yaml
+
+transport:
+  name: tcp
+  host: 127.0.0.1
+  port: 5555
+
+learner:
+  bind: 127.0.0.1:5600
+
+security:
+  bind_scope: localhost
+  require_token: true
+  auth_token_env: HKRL_AUTH_TOKEN

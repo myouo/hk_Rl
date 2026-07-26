@@ -13,7 +13,11 @@ namespace HKRLEnvMod.Action
             bool focusing = false,
             bool canAttack = true,
             bool canCast = true,
-            bool canFocus = true)
+            bool canFocus = true,
+            bool canDash = true,
+            bool canDreamNail = true,
+            bool canNailCharge = true,
+            bool hasSpell = true)
         {
             DashCooldown = dashCooldown;
             Soul = soul;
@@ -25,6 +29,10 @@ namespace HKRLEnvMod.Action
             CanAttack = canAttack;
             CanCast = canCast;
             CanFocus = canFocus;
+            CanDash = canDash;
+            CanDreamNail = canDreamNail;
+            CanNailCharge = canNailCharge;
+            HasSpell = hasSpell;
         }
 
         public float DashCooldown { get; }
@@ -37,6 +45,10 @@ namespace HKRLEnvMod.Action
         public bool CanAttack { get; }
         public bool CanCast { get; }
         public bool CanFocus { get; }
+        public bool CanDash { get; }
+        public bool CanDreamNail { get; }
+        public bool CanNailCharge { get; }
+        public bool HasSpell { get; }
     }
 
     /// <summary>
@@ -126,10 +138,20 @@ namespace HKRLEnvMod.Action
             var castLocked = player.CastLockTimer > 0.0f;
             var insufficientSoul = player.Soul < SpellSoulCost;
             var cannotJump = !player.OnGround && !player.DoubleJumpAvailable;
-            var dashUnavailable = player.DashCooldown > 0.0f || attackLocked || player.Focusing;
+            var dashUnavailable = player.DashCooldown > 0.0f
+                || attackLocked
+                || player.Focusing
+                || !player.CanDash;
             var attackUnavailable = attackLocked || player.Focusing || !player.CanAttack;
-            var castUnavailable = insufficientSoul || attackLocked || castLocked || player.Focusing || !player.CanCast;
+            var nailArtUnavailable = attackUnavailable || !player.CanNailCharge;
+            var castUnavailable = insufficientSoul
+                || attackLocked
+                || castLocked
+                || player.Focusing
+                || !player.CanCast
+                || !player.HasSpell;
             var focusUnavailable = insufficientSoul || attackLocked || !player.CanFocus;
+            var dreamNailUnavailable = player.Focusing || !player.CanDreamNail;
 
             if (cannotJump)
             {
@@ -143,6 +165,9 @@ namespace HKRLEnvMod.Action
             if (attackUnavailable)
             {
                 MaskButton(mask, ButtonAttack);
+            }
+            if (nailArtUnavailable)
+            {
                 MaskButton(mask, ButtonNailArtHold);
                 MaskButton(mask, ButtonNailArtRelease);
             }
@@ -153,6 +178,10 @@ namespace HKRLEnvMod.Action
             if (focusUnavailable)
             {
                 MaskButton(mask, ButtonFocusHold);
+            }
+            if (dreamNailUnavailable)
+            {
+                MaskButton(mask, ButtonDreamNail);
             }
 
             ApplyMacroRules(

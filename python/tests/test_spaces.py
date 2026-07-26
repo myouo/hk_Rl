@@ -139,12 +139,16 @@ def test_csharp_action_masker_masks_unavailable_macros_after_noop_slot() -> None
 
 
 def test_csharp_input_injector_button_mask_matches_python_layout() -> None:
-    text = (Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/InputInjector.cs").read_text(
+    root = Path(__file__).parents[2]
+    injector = (root / "mod/HKRLEnvMod/Action/InputInjector.cs").read_text(encoding="utf-8")
+    policy = (root / "mod/HKRLEnvMod/Action/TrainingCapabilityPolicy.cs").read_text(
         encoding="utf-8"
     )
-    match = re.search(r"ButtonMask\s*=\s*\(1u\s*<<\s*(\d+)\)\s*-\s*1u", text)
-    assert match is not None
-    assert int(match.group(1)) == spaces.N_BUTTONS
+    masker = root / "mod/HKRLEnvMod/Action/ActionMasker.cs"
+
+    assert "ButtonMask = TrainingCapabilityPolicy.AllowedButtonMask" in injector
+    assert "AllowedButtonMask = (1u << ActionMasker.ButtonCount) - 1u" in policy
+    assert _csharp_int_constants(masker)["ButtonCount"] == spaces.N_BUTTONS
 
 
 def _csharp_int_constants(path: Path) -> dict[str, int]:

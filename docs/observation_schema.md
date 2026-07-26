@@ -79,7 +79,38 @@ is handled by the recurrent memory ([`model_architecture.md`](./model_architectu
 The mod reads player hp/soul plus readiness/timer fields from `PlayerData` and
 `HeroController` via reflection with safe fallbacks, so minor Hollow
 Knight/Modding API field-name drift degrades to conservative defaults instead
-of crashing the main loop.
+of crashing the main loop. Boolean readiness also supports zero-argument game
+methods such as `CanAttack()` / `CanCast()`. The privileged tail of
+`PlayerState` adds read-only action telemetry:
+
+| index | field | semantics |
+|---:|---|---|
+| 25 | `actor_state_hash` | stable hash of the Hero actor state |
+| 26 | `action_flags` | attack/up/down/nail-charge/cyclone/quake/double-jump bits |
+| 27 | `spell_fsm_state_hash` | `Spell Control` active state |
+| 28 | `dream_nail_fsm_state_hash` | `Dream Nail` active state |
+| 29 | `nail_arts_fsm_state_hash` | `Nail Arts` active state |
+| 30 | `nail_charge_timer` | ordinary attack-button hold time in seconds |
+| 31 | `applied_input_buttons` | canonical button bits committed by the input bridge |
+
+`action_flags` uses bit 0 `attacking`, bit 1 `up_attacking`, bit 2
+`down_attacking`, bit 3 `nail_charging`, bit 4 `nail_art_cyclone`, bit 5
+`spell_quake`, and bit 6 `double_jumping`. These fields are observations only:
+the policy cannot write FSMs, flags, or this diagnostic echo.
+`applied_input_buttons` makes duration/hold continuity observable without
+inspecting or mutating gameplay state. Player FSM references are resolved once
+per persistent Hero instance, not scanned every tick.
+
+Boss collection reads
+`BossSceneController`'s configured boss list first and uses name heuristics only
+as a fallback. For HealthManager variants without a max-hp member, the stable
+entity registry caches the highest observed hp for that object so normalization
+and observation-delta rewards remain usable.
+Reset readiness separately requires HeroController's `acceptingInput` gate,
+non-relinquished gameplay control, and a dynamic/simulated Rigidbody2D with
+unfrozen position constraints, positive gravity, an enabled collider, and
+active terrain-ingress checks. The first training action is therefore not
+sampled during a scene/Boss intro lock or after a corrupt same-scene transition.
 
 ## 6. Health checks (PRD §9.9)
 
@@ -96,3 +127,26 @@ Wrappers expose three observation tiers for honest evaluation:
 - **human-visible** — only what a human could perceive on screen.
 
 Report per-tier separately; this project is explicitly a *game-state agent*.
+
+## 8. Current coverage and known limits
+
+The wire shape is broad, but not every field is equally complete yet:
+
+| Area | Current status |
+|---|---|
+| player position/velocity/hp/soul/facing/movement flags | live game values |
+| player attack/cast/focus/dash/dream/nail-art readiness | live, side-effect-free `Can*` methods; conservative fallback |
+| player action variant / spell / dream-nail / nail-art state | live read-only flags and cached FSM-state hashes |
+| Boss identity/position/velocity/current hp/FSM hash | live values; verified for Gruz Mother |
+| Boss max hp | live member when present, otherwise highest hp observed in the episode |
+| Boss phase | currently `0`; not yet mapped per Boss |
+| Boss hitbox/hurtbox | collider/DamageHero approximation, not every named attack box |
+| regular enemies | no dedicated general enemy observer yet |
+| projectiles | heuristic discovery; ttl is a placeholder and damage is approximate |
+| hazards | heuristic discovery; damage is approximate |
+| platforms/pickups/effects | schema tags exist, collectors are not implemented |
+
+The current data is sufficient for a single-Boss baseline and basic entity
+avoidance, but it is not a complete mechanical state for every Boss. Fields
+marked approximate or placeholder must be excluded from a claimed privileged
+benchmark until Boss-specific adapters and data-quality tests land.

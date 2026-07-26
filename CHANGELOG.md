@@ -6,10 +6,124 @@ the project version tracks the **schema_version** + roadmap phase.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-26
+
 ### Added
+- Standardized the production Mod as `HKRLEnvMod v0.8.0` with one
+  `Version.props` source for assembly/file/runtime version reporting. Added a
+  deterministic, self-verifying release ZIP whose manifest binds schema v6,
+  Git commit/tag, the two runtime DLL hashes, and a clean 44/44 Hall of Gods
+  acceptance record to the exact installed `HKRLEnvMod.dll`. Release packaging
+  rejects dirty or untagged sources, incomplete/contaminated live evidence,
+  binary drift, unsafe archive paths, and machine-secret `hkrl-runtime.conf`
+  inclusion.
+- Fixed visible Hero walking stutter between synchronous policy decisions.
+  Response suspension now keeps movement/aim axes and true hold controls for a
+  bounded 200 ms bridge while stripping edge-triggered attack/dash/cast
+  buttons immediately. A live long-STEP versus ordinary-decision benchmark
+  records speed retention without changing the 50 Hz physics baseline.
+- Added a versioned 44-fight Hall of Gods catalog and a restart-safe live
+  compatibility sweep. Each fight validates the installed build scene, clean
+  RESET/RUNNING lifecycle, natural Boss entity/HP/FSM/activity telemetry,
+  ordinary Hero left/right/jump/gravity/landing/attack controls, and
+  same-scene reactivation/episode/HP restoration. The final real-game sweep
+  verifies 44/44 fights on the installed build. Evidence checkpoints after
+  every Boss and exposes no Boss or simulation-state mutation path.
+- Added a versioned 18-entry semantic action-combination catalog over the
+  existing factorized primitives, with a zero-wire-cost per-step availability
+  bitset, a UCB1 coverage helper restricted to labelled diagnostics, and six
+  live jump/attack/Cyclone aggregation cases. Added a live 1/2/4/8-tick jump
+  profiler with clean-trial retry and real-game amplitude/airtime evidence.
+  Primitive PPO/RecurrentPPO heads remain unchanged and macro-free arena tasks
+  retain the full composition ceiling.
+- Added a continuous hitless-speed boss arena profile and supervisor. Terminal
+  observations/events are preserved before an ordinary clean RESET; the next
+  `episode_id` must advance. GameWorker heartbeats now count automatic arena
+  resets, task time limits return an explicit truncation reason, and evaluator
+  output includes hitless win rate/time-to-kill. A live natural-death test
+  verified episode 20 resetting to episode 21 without Boss mutation.
+- Expanded the complete combat-action validation path. Player masks now use the
+  game's side-effect-free dash, double-jump, dream-nail, nail-charge, and spell
+  availability gates instead of permissive fallbacks. Schema version 6 appends
+  read-only Hero action flags, spell/dream-nail/nail-art FSM-state hashes, and
+  nail-charge time plus the committed input-button echo so live exploration can
+  distinguish directional variants and prove 1/2/4/8-tick holds without
+  modifying Boss state. Continuous controls now bridge synchronous STEP response
+  gaps without fake release edges; macro plans advance once per repeated tick,
+  `pogo` performs a real takeoff before down-slashing, and
+  `focus_when_safe` holds through one heal attempt. The real-game matrix
+  verifies all 54 semantic cases, including six multi-phase combinations.
+- Direct Godhome transitions now clear only GameManager's stale scene-entry
+  completion handshake before loading. RESET uses a current-scene Boss object
+  gate and never injects exploration actions; bounded ordinary Hero input
+  verifies natural activity after `RUNNING`, including a second activation
+  after same-scene reload. Timed-out task setup callbacks are released before
+  another task can load. The Linux installer uses a POSIX-compatible
+  live-process guard so it cannot silently replace a DLL under a Proton game
+  process.
+- Reduced live-game main-thread jitter without changing the 50 Hz physics
+  baseline: projectile discovery now scans only damage components on a bounded
+  10 Hz refresh, hazard discovery is cached per Unity scene instance, input
+  reflection is resolved into closed delegates once per `HeroActions` set, and
+  periodic Phase 0 disk logging is suspended while a client is connected.
+  Player/entity/Boss observation buffers and the FlatBuffers response builder
+  are now reused, and responses are emitted as one size-prefixed frame instead
+  of a second payload copy. The benchmark now separates native
+  `DAMAGE_TAKEN` hit-stop from non-damage STEP latency and records the event/HP
+  evidence for every slow sample. Added a reproducible live
+  STEP-latency/fixed-update benchmark. Save-slot
+  bootstrap now detects a legitimately loaded seated Hero and sends the
+  canonical `GET UP` event to that scene's `Bench Control` FSM before starting
+  the arena transition; the FSM itself restores the dynamic body, gravity,
+  control, and animation. Menu polling also uses
+  `HeroController.SilentInstance` to avoid fixed-tick error-log spam.
+- Fixed real-game same-scene Godhome RESET leaving the persistent Hero under
+  the old arena's transition FSM: same-scene reloads now follow the fast-reload
+  path and do not re-broadcast workshop-only dream/transition-out events.
+  Readiness also rejects relinquished control, `no_input`, kinematic or
+  non-simulated bodies, frozen position constraints, and inactive terrain
+  ingress checks. A deterministic live-action driver and validation guide now
+  preserve the movement/jump/attack regression procedure.
+- Fixed incomplete Hall of Gods entry initialization that could start an episode
+  while the Boss transition still owned the Hero. Cross-scene RESET now uses
+  non-cinematic Hall bookkeeping and the `GodsAndGlory` load path without
+  `enterWithoutInput`, Workshop statue-FSM control, or global cinematic events;
+  same-scene fast reload retains its proven Hero preparation. Both paths require
+  stable restored transition, gravity, and collision state before `RUNNING`.
+- Fixed the live Mod's time-control deadlock and accelerated-physics corruption:
+  zero-scale recovery commands now wake `FixedUpdate` through a narrow unscaled
+  main-thread pump; the multiplier composes through Hollow Knight's
+  `TimeController`; `fixedDeltaTime` remains at its baseline; and teardown
+  restores the pre-mod clock. Runtime smoke coverage guards pause/resume,
+  hit-stop composition, collision-step fidelity, and hook removal.
+- Mod STEP responses now wait for a successful InControl `OnUpdate` input commit
+  before sampling the next observation; completed responses neutralize live
+  PlayerAction values during Python inference/transport time.
+- Same-scene resets now reload the Godhome scene instead of reusing defeated
+  boss/projectile state. Boss observation/readiness now prefers
+  `BossSceneController`, caches fallback max hp, and reads callable player
+  readiness methods.
+- Title-menu RESET now bootstraps configurable `HKRL_SAVE_SLOT` and enters
+  Godhome through `GameManager.BeginSceneTransition`, preserving the persistent
+  Hero. RESET failures include readiness diagnostics and no longer poison later
+  PING status; RUNNING also waits for HeroController to accept input after
+  scene/Boss intro locks.
+- Fixed asynchronous same-scene RESET completing against the old scene instance.
+  Godhome reset now waits for a new scene handle, bootstraps
+  `BossSceneController.SetupEvent`, waits for `GG TRANSITION IN`, and disables
+  PlayerAction injection during the transition.
+- Added a hard training capability policy: only ordinary player inputs and
+  primitive-only macros are policy-callable; invalid wire actions execute a
+  no-op, while physics/health/FSM/progression writes are explicitly forbidden.
+- Player damage/heal/death and scene-change reward hooks are now installed
+  against the Modding API with teardown and observation-delta deduplication.
+  Disappearing boss objects emit kill fallback events, while multi-boss episodes
+  terminate only after no living boss remains.
+- C# runtime smoke coverage now verifies input commit acknowledgements, macro
+  progression/clearing, duration suspension, and reward-hook lifecycle.
 - Real in-mod action injection now commits movement, aim, jump, dash, attack,
   spell, focus, dream-nail, and nail-art hold/release into Hollow Knight's
-  InControl `PlayerAction` set from `ModHooks.HeroUpdateHook`; driver disposal
+  InControl `PlayerAction` set from `InputManager.OnUpdate`; driver disposal
   neutralizes input and removes the hook.
 - C# CI now runs a runtime `InputInjectionSmoke` in addition to compiling the
   full mod, checking button/axis mappings, release edges, and teardown behavior.
@@ -20,6 +134,35 @@ the project version tracks the **schema_version** + roadmap phase.
 - Added a remote-GPU bootstrap script and operator Jupyter Notebook covering
   CUDA/config preflight, secure service control, live checkpoint/log monitoring,
   restart, and Windows fixed-seed evaluation handoff.
+- Added a portable one-click setup Notebook for Kaggle and blank training hosts.
+  It safely clones or fast-forwards the configured repository, checks network,
+  disk, GPU, CUDA, and write access, and records a secret-free setup manifest.
+  Kaggle reuses its current Python/PyTorch environment and runs a packaged Phase
+  8 offline smoke with one synthetic-rollout optimizer update, without Conda or
+  an SSH token; regular hosts retain the CUDA/Jupyter Conda bootstrap, kernel
+  registration, and restricted token flow.
+- Added a separate Kaggle offline-training Notebook with inspect, synthetic
+  smoke, and external-NPZ modes. It audits batch layout/task ids/staleness and
+  checkpoint hashes, restores optimizer state, performs exactly one APPO update,
+  rejects previously summarized batch hashes, validates the exported checkpoint
+  through a Worker dry-run, and packages the next manual batch-ferry round.
+- Promoted Linux to the primary live game-host deployment. Added Steam library
+  discovery, supported-beta validation, native/Proton launch, real-assembly Mod
+  build/install with backups, SSH tunnel and combined training-stack launchers,
+  permission-checked token files, Linux worker spooling, and script tests.
+- Linux readiness now distinguishes the host OS from the game binary and rejects
+  a native Modding API package mismatch (`libunityscenerepacker.so` versus
+  Proton's `unityscenerepacker.dll`). Real-game builds also reference Unity's
+  IMGUI and Physics2D modules explicitly and avoid the game's global
+  `SceneManager` type shadowing Unity's scene API.
+- `--build-and-install-mod` no longer updates Conda environments implicitly;
+  dependency downloads happen only behind explicit install flags.
+- Added a permission-restricted `hkrl-runtime.conf` fallback next to the Mod DLL
+  so an already-running Steam/Proton process does not need to inherit shell
+  secrets. Environment variables remain higher priority and token values are
+  never logged.
+- Local worker inference can pin PyTorch intra-op threads and now uses
+  `torch.inference_mode()` to reduce batch-size-one CPU latency and game jitter.
 - Remote learners now select `auto`/`cpu`/`cuda[:N]` from validated config or
   CLI, report the actual device, and the SSH role hard-fails without CUDA.
 - Learner checkpoints now persist and restore optimizer state, and long-running

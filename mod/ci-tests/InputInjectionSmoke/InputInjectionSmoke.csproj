@@ -9,5 +9,33 @@
   <ItemGroup>
     <Compile Include="..\..\HKRLEnvMod\Action\InputInjector.cs"
              Link="InputInjector.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Action\ActionApplier.cs"
+             Link="ActionApplier.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Action\ActionMasker.cs"
+             Link="ActionMasker.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Action\MacroActionScheduler.cs"
+             Link="MacroActionScheduler.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Action\TrainingCapabilityPolicy.cs"
+             Link="TrainingCapabilityPolicy.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Rewards\RewardEventBuffer.cs"
+             Link="RewardEventBuffer.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Rewards\DamageHooks.cs"
+             Link="DamageHooks.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Rewards\DeathHooks.cs"
+             Link="DeathHooks.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Rewards\HealHooks.cs"
+             Link="HealHooks.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Rewards\SceneHooks.cs"
+             Link="SceneHooks.cs" />
+    <Compile Include="..\..\HKRLEnvMod\RuntimeConfiguration.cs"
+             Link="RuntimeConfiguration.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Env\SimControl.cs"
+             Link="SimControl.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Env\EpisodeReadiness.cs"
+             Link="EpisodeReadiness.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Env\GodhomeTransitionPolicy.cs"
+             Link="GodhomeTransitionPolicy.cs" />
+    <Compile Include="..\..\HKRLEnvMod\Env\SceneEntryLifecycle.cs"
+             Link="SceneEntryLifecycle.cs" />
   </ItemGroup>
 </Project>

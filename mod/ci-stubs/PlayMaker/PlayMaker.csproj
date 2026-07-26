@@ -3,4 +3,8 @@
     <AssemblyName>PlayMaker</AssemblyName>
     <RootNamespace>PlayMaker</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnityEngine\UnityEngine.csproj" />
+  </ItemGroup>
 </Project>

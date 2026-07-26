@@ -17,7 +17,8 @@ namespace HKRLEnvMod
     ///
     /// THREADING CONTRACT (docs/mod_dev.md §5, PRD §5.3): the network thread NEVER
     /// touches Unity objects. It only enqueues StepRequests and dequeues
-    /// StepResponses. All game access happens on the main thread in FixedUpdate.
+    /// StepResponses. Gameplay access happens on the main thread in FixedUpdate;
+    /// Update has only the ADR-0005 zero-scale clock-recovery exception.
     /// </summary>
     public class HKRLEnvMod : Mod
     {
@@ -25,7 +26,8 @@ namespace HKRLEnvMod
 
         public static HKRLEnvMod? Instance { get; private set; }
 
-        public override string GetVersion() => "0.1.0";
+        public override string GetVersion() =>
+            typeof(HKRLEnvMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
         public HKRLEnvMod() : base("HKRL Environment Server") { }
 
@@ -65,15 +67,13 @@ namespace HKRLEnvMod
     }
 
     /// <summary>
-    /// MonoBehaviour driver that forwards Unity's FixedUpdate to the StepController.
-    /// Created on a persistent GameObject by the mod during Initialize.
+    /// MonoBehaviour driver that forwards Unity's FixedUpdate to the StepController
+    /// and provides a narrow unscaled control pump for PAUSE recovery. Created on
+    /// a persistent GameObject by the mod during Initialize.
     /// </summary>
     public class HKRLDriver : MonoBehaviour
     {
-        private const string AuthTokenEnv = "HKRL_AUTH_TOKEN";
-        private const float Phase0LogIntervalSeconds = 2.0f;
-        private const string HostEnv = "HKRL_HOST";
-        private const string PortEnv = "HKRL_PORT";
+        private const float Phase0LogIntervalSeconds = 10.0f;
 
         private float _nextPhase0LogTime;
         private TcpServer? _server;
@@ -89,15 +89,14 @@ namespace HKRLEnvMod
 
             try
             {
-                string configuredHost = ResolveHost(host);
-                int configuredPort = ResolvePort(port);
-                string? authToken = Environment.GetEnvironmentVariable(AuthTokenEnv);
-                if (string.IsNullOrEmpty(authToken))
-                {
-                    authToken = null;
-                }
+                RuntimeConfiguration runtime = RuntimeConfiguration.Load(
+                    typeof(HKRLEnvMod).Assembly.Location,
+                    host,
+                    port,
+                    Environment.GetEnvironmentVariable,
+                    global::HKRLEnvMod.Debug.Logger.Warn);
 
-                _server = new TcpServer(configuredHost, configuredPort, authToken);
+                _server = new TcpServer(runtime.Host, runtime.Port, runtime.AuthToken);
                 RewardEventBuffer rewards = new RewardEventBuffer();
                 DamageHooks.Install(rewards);
                 DeathHooks.Install(rewards);
@@ -109,7 +108,7 @@ namespace HKRLEnvMod
                     rewards,
                     new ObservationRewardTracker(),
                     new EpisodeLifecycle(),
-                    new ResetManager(),
+                    new ResetManager(new SceneController(runtime.SaveSlot)),
                     new SimControl(),
                     new ActionMasker(),
                     new Heartbeat(),
@@ -117,8 +116,10 @@ namespace HKRLEnvMod
                 _server.Start();
                 _configured = true;
                 global::HKRLEnvMod.Debug.Logger.Info(
-                    $"HKRL TCP environment server listening on {configuredHost}:{configuredPort}; "
-                    + $"auth={(authToken == null ? "disabled" : "enabled")}.");
+                    $"HKRL TCP environment server listening on {runtime.Host}:{runtime.Port}; "
+                    + $"auth={(runtime.AuthToken == null ? "disabled" : "enabled")}; "
+                    + $"save_slot={runtime.SaveSlot}; "
+                    + $"file_config={(runtime.FileLoaded ? "loaded" : "absent")}.");
             }
             catch (Exception exception)
             {
@@ -126,35 +127,15 @@ namespace HKRLEnvMod
                 _stepController = null;
                 _server?.Dispose();
                 _server = null;
+                DamageHooks.Uninstall();
+                DeathHooks.Uninstall();
+                HealHooks.Uninstall();
+                SceneHooks.Uninstall();
                 _configured = false;
                 global::HKRLEnvMod.Debug.Logger.Error(
                     "Failed to start HKRL TCP environment server",
                     exception);
             }
-        }
-
-        private static string ResolveHost(string defaultHost)
-        {
-            string? value = Environment.GetEnvironmentVariable(HostEnv);
-            return string.IsNullOrWhiteSpace(value) ? defaultHost : value.Trim();
-        }
-
-        private static int ResolvePort(int defaultPort)
-        {
-            string? value = Environment.GetEnvironmentVariable(PortEnv);
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return defaultPort;
-            }
-
-            if (int.TryParse(value, out int port) && port >= 1 && port <= 65535)
-            {
-                return port;
-            }
-
-            global::HKRLEnvMod.Debug.Logger.Warn(
-                $"Ignoring invalid {PortEnv}={value}; using {defaultPort}.");
-            return defaultPort;
         }
 
         private void Awake()
@@ -168,7 +149,18 @@ namespace HKRLEnvMod
             // MAIN THREAD ONLY. Dequeue latest action, apply, collect obs+events,
             // enqueue StepResponse. Never block on the network here.
             _stepController?.FixedTick();
-            LogPhase0Snapshot();
+            if (_server?.HasClient != true)
+            {
+                LogPhase0Snapshot();
+            }
+        }
+
+        private void Update()
+        {
+            // Time.timeScale == 0 suppresses FixedUpdate. This path may only
+            // restore the clock for a queued recovery command; FixedTick still
+            // owns request consumption and all game-state reads/writes.
+            _stepController?.UnscaledTick();
         }
 
         private void OnDestroy()
@@ -177,6 +169,10 @@ namespace HKRLEnvMod
             _stepController = null;
             _server?.Dispose();
             _server = null;
+            DamageHooks.Uninstall();
+            DeathHooks.Uninstall();
+            HealHooks.Uninstall();
+            SceneHooks.Uninstall();
             _configured = false;
         }
 
@@ -192,8 +188,9 @@ namespace HKRLEnvMod
 
             try
             {
-                string sceneName = SceneManager.GetActiveScene().name;
-                global::HeroController? hero = global::HeroController.instance;
+                string sceneName =
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                global::HeroController? hero = global::HeroController.SilentInstance;
 
                 if (hero == null)
                 {

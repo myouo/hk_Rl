@@ -118,9 +118,10 @@ namespace HKRLEnvMod.Observation
         public ObservationSnapshot Collect(
             int taskId = 0,
             ulong episodeId = 0,
-            float timeInEpisode = 0.0f)
+            float timeInEpisode = 0.0f,
+            uint appliedInputButtons = 0)
         {
-            var player = ReadPlayerSafe();
+            var player = ReadPlayerSafe(appliedInputButtons);
             var entities = ReadEntitiesSafe(player);
             return new ObservationSnapshot(
                 ReadGlobalSafe(taskId, episodeId, timeInEpisode),
@@ -129,11 +130,11 @@ namespace HKRLEnvMod.Observation
                 BuildEntityMask(entities.Count));
         }
 
-        private PlayerObservation ReadPlayerSafe()
+        private PlayerObservation ReadPlayerSafe(uint appliedInputButtons)
         {
             try
             {
-                return _player.Read();
+                return _player.Read(appliedInputButtons);
             }
             catch (Exception exception)
             {

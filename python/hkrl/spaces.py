@@ -43,9 +43,52 @@ T_MAX = 2.0  # seconds, for clamping cooldown/lock/ttl/invuln timers
 # embedding/splitting. Keep these aligned with docs/observation_schema.md.
 GLOBAL_FEATURE_DIM = 9
 PLAYER_FEATURE_DIMS: dict[str, int] = {
-    "privileged": 25,
+    "privileged": 32,
     "reduced": 21,
     "human_visible": 15,
+}
+PLAYER_ACTION_FLAG_BITS: dict[str, int] = {
+    "attacking": 0,
+    "up_attacking": 1,
+    "down_attacking": 2,
+    "nail_charging": 3,
+    "nail_art_cyclone": 4,
+    "spell_quake": 5,
+    "double_jumping": 6,
+}
+PLAYER_FEATURE_INDEX: dict[str, int] = {
+    "pos_x": 0,
+    "pos_y": 1,
+    "vel_x": 2,
+    "vel_y": 3,
+    "hp": 4,
+    "max_hp": 5,
+    "soul": 6,
+    "max_soul": 7,
+    "facing": 8,
+    "on_ground": 9,
+    "wall_sliding": 10,
+    "jumping": 11,
+    "falling": 12,
+    "dashing": 13,
+    "shadow_dashing": 14,
+    "invulnerable": 15,
+    "invuln_timer": 16,
+    "attack_lock_timer": 17,
+    "cast_lock_timer": 18,
+    "focus_state": 19,
+    "dash_cooldown": 20,
+    "double_jump_available": 21,
+    "can_attack": 22,
+    "can_cast": 23,
+    "can_focus": 24,
+    "actor_state_hash": 25,
+    "action_flags": 26,
+    "spell_fsm_state_hash": 27,
+    "dream_nail_fsm_state_hash": 28,
+    "nail_arts_fsm_state_hash": 29,
+    "nail_charge_timer": 30,
+    "applied_input_buttons": 31,
 }
 ENTITY_FEATURE_DIMS: dict[str, int] = {
     "privileged": 24,

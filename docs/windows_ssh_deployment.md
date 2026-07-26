@@ -1,6 +1,8 @@
 # Windows Game PC + SSH Remote Learner
 
-This is the production split for the current project. The Windows desktop owns
+This is the retained Windows compatibility deployment. The primary production
+path is now [`linux_ssh_deployment.md`](./linux_ssh_deployment.md). On Windows,
+the desktop owns
 the game and every latency-sensitive operation; SSH carries only completed
 rollouts and versioned checkpoints.
 
@@ -97,6 +99,15 @@ For an operator-friendly walkthrough, open
 with the `Python (hkrl-learner)` kernel. The notebook defaults to a non-mutating
 inspection mode and contains the service start/stop, monitoring, resume, and
 Windows evaluation handoff cells.
+For a blank training host, upload
+[`notebooks/one_click_clone_setup.ipynb`](../notebooks/one_click_clone_setup.ipynb)
+first. Its execute mode clones the repository without deleting or overwriting
+existing paths. On a regular training host it calls the same GPU bootstrap,
+registers the kernel, creates a permission-restricted token file, and validates
+the composed SSH learner config. On Kaggle it instead reuses the current
+Python/PyTorch environment, skips the SSH token, and runs only the offline Phase
+8 smoke; it is not a replacement for the stable SSH-reachable learner host used
+by the live Windows deployment.
 
 The launcher starts:
 

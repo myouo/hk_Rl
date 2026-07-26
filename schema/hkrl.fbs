@@ -143,6 +143,14 @@ table PlayerState {
   can_attack:bool;
   can_cast:bool;
   can_focus:bool;
+  actor_state_hash:int;       // stable hash of HeroController actor state
+  action_flags:uint;          // bit 0 attack, 1 up, 2 down, 3 nail charge,
+                              // bit 4 cyclone, 5 quake, 6 double jump
+  spell_fsm_state_hash:int;   // read-only Spell Control active-state hash
+  dream_nail_fsm_state_hash:int; // read-only Dream Nail active-state hash
+  nail_arts_fsm_state_hash:int;  // read-only Nail Arts active-state hash
+  nail_charge_timer:float;    // seconds held; observation only
+  applied_input_buttons:uint; // input-only diagnostic; canonical button bits
 }
 
 /// One variable-count entity (boss / enemy / projectile / hazard / ...).

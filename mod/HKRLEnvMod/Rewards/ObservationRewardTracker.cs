@@ -41,11 +41,11 @@ namespace HKRLEnvMod.Rewards
             var hpDelta = player.Hp - _playerHp;
             if (hpDelta < 0)
             {
-                rewards.Add(HKRL.RewardEventKind.DamageTaken, amount: -hpDelta);
+                rewards.AddIfAbsent(HKRL.RewardEventKind.DamageTaken, amount: -hpDelta);
             }
             else if (hpDelta > 0)
             {
-                rewards.Add(HKRL.RewardEventKind.Heal, amount: hpDelta);
+                rewards.AddIfAbsent(HKRL.RewardEventKind.Heal, amount: hpDelta);
             }
 
             var soulDelta = player.Soul - _playerSoul;
@@ -56,7 +56,7 @@ namespace HKRLEnvMod.Rewards
 
             if (_playerHp > 0 && player.Hp <= 0)
             {
-                rewards.Add(HKRL.RewardEventKind.PlayerDeath);
+                rewards.AddIfAbsent(HKRL.RewardEventKind.PlayerDeath);
             }
         }
 
@@ -64,9 +64,17 @@ namespace HKRLEnvMod.Rewards
             IReadOnlyList<EntityObservation> entities,
             RewardEventBuffer rewards)
         {
+            var observed = new HashSet<int>();
+            var hasNewBossIdentity = false;
             for (var i = 0; i < entities.Count; i++)
             {
                 var entity = entities[i];
+                observed.Add(entity.EntityId);
+                if (entity.EntityType == HKRL.EntityType.Boss
+                    && !_entities.ContainsKey(entity.EntityId))
+                {
+                    hasNewBossIdentity = true;
+                }
                 if (entity.MaxHp <= 0 || !_entities.TryGetValue(entity.EntityId, out var previous))
                 {
                     continue;
@@ -74,7 +82,7 @@ namespace HKRLEnvMod.Rewards
 
                 if (entity.Hp < previous.Hp)
                 {
-                    rewards.Add(
+                    rewards.AddIfAbsent(
                         HKRL.RewardEventKind.DamageDealt,
                         entity.EntityId,
                         previous.Hp - entity.Hp);
@@ -84,7 +92,23 @@ namespace HKRLEnvMod.Rewards
                     && previous.Hp > 0
                     && entity.Hp <= 0)
                 {
-                    rewards.Add(HKRL.RewardEventKind.BossKilled, entity.EntityId);
+                    rewards.AddIfAbsent(HKRL.RewardEventKind.BossKilled, entity.EntityId);
+                }
+            }
+
+            // Several bosses destroy/disable their HealthManager immediately on
+            // death, so no hp=0 frame exists. Treat disappearance of a previously
+            // tracked boss as the fallback kill signal. StepController only ends
+            // the episode after no living boss entities remain, which preserves
+            // multi-boss fights.
+            foreach (var pair in _entities)
+            {
+                if (pair.Value.EntityType == HKRL.EntityType.Boss
+                    && pair.Value.Hp > 0
+                    && !hasNewBossIdentity
+                    && !observed.Contains(pair.Key))
+                {
+                    rewards.AddIfAbsent(HKRL.RewardEventKind.BossKilled, pair.Key);
                 }
             }
         }

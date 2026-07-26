@@ -45,6 +45,9 @@ Hollow Knight + HKRLEnvMod (C#)        Game PC                  Remote GPU
 | 序列化 | FlatBuffers 单一真相源 | [`docs/adr/0002`](./docs/adr/0002-serialization-flatbuffers.md) |
 | Mod 框架 | HK Modding API | [`docs/adr/0003`](./docs/adr/0003-mod-framework-hk-modding-api.md) |
 | 推理/训练 | 本地推理 + 远程训练解耦 | [`docs/adr/0004`](./docs/adr/0004-local-inference-remote-training.md) |
+| 游戏时钟 | 保持固定物理步长的暂停/加速 | [`docs/adr/0005`](./docs/adr/0005-pause-safe-game-time-control.md) |
+| Godhome 重置 | 完整入场握手 + 物理就绪门 | [`docs/adr/0006`](./docs/adr/0006-godhome-entry-readiness.md) |
+| 组合动作 | 因子化原语 + 语义组合目录 | [`docs/adr/0007`](./docs/adr/0007-factorized-action-combinations.md) |
 
 ## 目录导航
 
@@ -141,6 +144,53 @@ python scripts/train.py \
   --updates 1 \
   --metrics runs/train_gru.jsonl \
   --checkpoint-dir checkpoints_gru
+
+# 组合动作保持为原语组合；实机采集跳跃曲线并验证聚合动作
+python scripts/live_jump_profile.py \
+  --clean-trials 3 \
+  --max-attempts 6 \
+  --fail-on-invalid \
+  --output runs/live/jump-amplitude-duration.json
+
+python scripts/live_action_explorer.py \
+  --family combination \
+  --reset-between-cases \
+  --fail-on-failed \
+  --output runs/live/action-exploration-combinations.json
+
+# 无伤速通 arena；训练 worker 在终局后自动执行 clean RESET
+python scripts/train.py \
+  --config configs/train/arena_hitless_gru.yaml \
+  --task configs/tasks/gruz_mother_hitless_speed.yaml \
+  --host 127.0.0.1 \
+  --port 5555 \
+  --updates 1 \
+  --metrics runs/arena-train.jsonl \
+  --checkpoint-dir checkpoints_arena
+
+# 自然死亡→自动重开验收（contact policy 不攻击，只验证生命周期）
+python scripts/live_boss_arena.py \
+  --policy contact \
+  --episodes 1 \
+  --output runs/live/boss-arena-death-autoreset.json
+
+# 全量 Godhome 兼容巡检：44 个独立 Boss/变体、二次 RESET、Hero 基础控制
+python scripts/live_godhome_sweep.py \
+  --mod-dll /path/to/Mods/HKRLEnvMod/HKRLEnvMod.dll \
+  --globalgamemanagers /path/to/hollow_knight_Data/globalgamemanagers \
+  --output runs/live/godhome-all-boss-sweep-v0.8.0.json \
+  --report runs/live/godhome-all-boss-sweep-v0.8.0.md \
+  --fail-on-failed
+
+# v0.8.0 实机验收完成后，在干净且带 v0.8.0 标签的提交上生成/校验 Mod 发布包
+make mod-package
+make mod-package-verify
+
+# Hero 连续行走回归：长 STEP 与普通 action_repeat=2 决策的速度保留率
+python scripts/live_walk_smoothness.py \
+  --mod-dll /path/to/Mods/HKRLEnvMod/HKRLEnvMod.dll \
+  --output runs/live/walk-smoothness.json \
+  --fail-on-stutter
 
 # 指标也可写 CSV
 python scripts/train.py \
@@ -250,15 +300,31 @@ policy version 0 checkpoint；重启时会加载 latest checkpoint 并继续使�
 model、policy/update 版本及 optimizer state。可用本地路径、`file://` 或 HTTP(S) 目录提供给 worker 的
 `--registry`，worker 会在首个 rollout 前加载 latest 并验证 sha256。
 
-Windows 游戏机 + SSH 远程 GPU 的正式拆分、环境准备与启动命令见
-[`docs/windows_ssh_deployment.md`](./docs/windows_ssh_deployment.md)。远程端只监听
-loopback，Windows 通过 SSH 转发 rollout/checkpoint 两个批量通道；实时动作环仍完全
-留在 Windows 本机。
+Linux 游戏机 + SSH 远程 GPU 是当前主生产路径，见
+[`docs/linux_ssh_deployment.md`](./docs/linux_ssh_deployment.md)。它支持原生 Linux
+与 Steam/Proton 游戏，自动检查受 Modding API 支持的 Steam 分支、构建安装 Mod、
+安全传递运行时 token、建立 SSH 隧道并启动本地 worker。远程端只监听 loopback；
+rollout/checkpoint 走 SSH 批量通道，实时动作环始终留在 Linux 游戏机。Windows
+脚本仍保留为兼容路径，见
+[`docs/windows_ssh_deployment.md`](./docs/windows_ssh_deployment.md)。
 
 训练机的交互式操作入口见
 [`notebooks/remote_gpu_training.ipynb`](./notebooks/remote_gpu_training.ipynb)。
 它覆盖 GPU 环境安装、合并配置核对、服务启停、JSON 训练日志、断点恢复和固定种子
 评测交接；训练环境可用 `scripts/remote/bootstrap_learner_env.sh` 一次性创建。
+全新训练机可先单独上传并运行
+[`notebooks/one_click_clone_setup.ipynb`](./notebooks/one_click_clone_setup.ipynb)，
+将 `RUN_SETUP=True` 后 Run All，即可安全克隆仓库并验证 GPU/训练配置。Kaggle
+会自动复用当前 Python 与预装 PyTorch（无需 Conda），随后执行 Phase 8 离线 smoke
+（包含一次由合成 rollout 驱动的 GPU 优化器更新）并打包结果；普通训练机仍会
+创建 CUDA/Jupyter Conda 环境、注册 kernel 并生成本地认证令牌。
+Kaggle 环境验证通过后，使用
+[`notebooks/kaggle_training.ipynb`](./notebooks/kaggle_training.ipynb)
+执行独立的离线训练轮次。它提供只读检查、合成 smoke 和外部 NPZ 训练三种模式，
+会校验 batch 布局、policy staleness、checkpoint SHA-256，恢复优化器后只更新一次，
+再验证 Windows Worker 可加载性并导出下一轮 checkpoint。Kaggle 不承担实时动作环，
+同一批近似 on-policy rollout 也不会被自动重复训练；正式 batch 必须同时提供其
+采集时使用的精确 checkpoint registry，不能用独立初始化但版本号相同的模型替代。
 
 发布前检查见 [`docs/release.md`](./docs/release.md)，其中区分了 CI 可验证的
 Python/离线分布式门禁和必须在 Hollow Knight 机器上执行的 mod/live smoke 门禁；

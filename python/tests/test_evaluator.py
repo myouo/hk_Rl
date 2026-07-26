@@ -51,6 +51,8 @@ def test_evaluator_runs_fixed_seed_episodes_and_aggregates_metrics() -> None:
     assert metrics["death_rate"] == 0.5
     assert metrics["death_reason"] == 1.0
     assert metrics["time_to_kill"] == 2.0
+    assert metrics["hitless_win_rate"] == 0.5
+    assert metrics["hitless_time_to_kill"] == 2.0
     assert made_envs[0].closed
 
 

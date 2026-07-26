@@ -31,20 +31,28 @@ namespace HKRLEnvMod.Observation
             var velocity = ReadVelocity(component.gameObject);
             var bounds = ReadBounds(component.gameObject);
             var hp = ReadIntMember(component, "hp", "HP", "health");
-            var maxHp = ReadIntMember(component, "maxHp", "MaxHp", "MaxHP", "maxHealth");
-            var fsmHash = ReadFsmStateHash(component.gameObject);
+            var maxHp = ReadIntMember(
+                component,
+                "maxHp",
+                "maxHP",
+                "MaxHp",
+                "MaxHP",
+                "maxHealth");
+            var instanceId = component.gameObject.GetInstanceID();
+            maxHp = registry.ObserveMaxHp(instanceId, hp, maxHp);
+            var fsm = ReadFsm(component.gameObject);
             var relX = position.x - player.PosX;
             var relY = position.y - player.PosY;
             var distance = Mathf.Max(0.01f, Mathf.Sqrt((relX * relX) + (relY * relY)));
             var threatScore = baseThreat + (1.0f / distance) + velocity.magnitude * 0.05f;
 
             return new EntityObservation(
-                registry.GetStableId(component.gameObject.GetInstanceID()),
+                registry.GetStableId(instanceId),
                 entityType,
                 team,
                 prefabHash: StableHash(component.gameObject.name),
-                fsmNameHash: 0,
-                fsmStateHash: fsmHash,
+                fsmNameHash: fsm.NameHash,
+                fsmStateHash: fsm.StateHash,
                 posX: position.x,
                 posY: position.y,
                 relX: relX,
@@ -57,7 +65,7 @@ namespace HKRLEnvMod.Observation
                 hurtboxCenterY: bounds.center.y,
                 hurtboxSizeX: bounds.size.x,
                 hurtboxSizeY: bounds.size.y,
-                hitboxActive: HasEnabledCollider(component.gameObject),
+                hitboxActive: HasActiveDamageCollider(component.gameObject),
                 damage: damage,
                 ttl: ttl,
                 phase: 0,
@@ -110,12 +118,18 @@ namespace HKRLEnvMod.Observation
             return new Bounds(gameObject.transform.position, Vector3.zero);
         }
 
-        private static bool HasEnabledCollider(GameObject gameObject)
+        private static bool HasActiveDamageCollider(GameObject gameObject)
         {
-            var colliders = gameObject.GetComponents<Collider2D>();
-            foreach (var collider in colliders)
+            var components = gameObject.GetComponentsInChildren<Component>(true);
+            foreach (var component in components)
             {
-                if (collider != null && collider.enabled)
+                if (component == null || component.GetType().Name != "DamageHero")
+                {
+                    continue;
+                }
+
+                var collider = component.GetComponent<Collider2D>();
+                if (collider == null || collider.enabled)
                 {
                     return true;
                 }
@@ -124,7 +138,7 @@ namespace HKRLEnvMod.Observation
             return false;
         }
 
-        private static int ReadFsmStateHash(GameObject gameObject)
+        private static FsmObservation ReadFsm(GameObject gameObject)
         {
             var components = gameObject.GetComponents<Component>();
             foreach (var component in components)
@@ -137,11 +151,14 @@ namespace HKRLEnvMod.Observation
                 var activeStateName = ReadFsmStateName(component);
                 if (!string.IsNullOrEmpty(activeStateName))
                 {
-                    return StableHash(activeStateName);
+                    var fsmName = ReadStringMember(component, "FsmName", "fsmName", "name");
+                    return new FsmObservation(
+                        StableHash(fsmName),
+                        StableHash(activeStateName));
                 }
             }
 
-            return 0;
+            return default;
         }
 
         private static string ReadFsmStateName(Component? fsm)
@@ -165,6 +182,30 @@ namespace HKRLEnvMod.Observation
                 activeState,
                 null) as string;
             return name ?? string.Empty;
+        }
+
+        private static string ReadStringMember(object target, params string[] names)
+        {
+            var type = target.GetType();
+            const BindingFlags flags = BindingFlags.Instance
+                | BindingFlags.Public
+                | BindingFlags.NonPublic;
+            foreach (var name in names)
+            {
+                var field = type.GetField(name, flags);
+                if (field?.GetValue(target) is string fieldValue)
+                {
+                    return fieldValue;
+                }
+
+                var property = type.GetProperty(name, flags);
+                if (property?.GetValue(target, null) is string propertyValue)
+                {
+                    return propertyValue;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static int ReadIntMember(Component component, params string[] names)
@@ -214,6 +255,18 @@ namespace HKRLEnvMod.Observation
             {
                 return 0;
             }
+        }
+
+        private readonly struct FsmObservation
+        {
+            public FsmObservation(int nameHash, int stateHash)
+            {
+                NameHash = nameHash;
+                StateHash = stateHash;
+            }
+
+            public int NameHash { get; }
+            public int StateHash { get; }
         }
     }
 }

@@ -37,9 +37,9 @@ namespace HKRLEnvMod.Transport
         private readonly object _gate = new();
 
         private TcpListener? _listener;
-        private TcpClient? _client;
+        private volatile TcpClient? _client;
         private Thread? _thread;
-        private bool _running;
+        private volatile bool _running;
         private long _sessionId;
 
         /// <summary>Inbound StepRequest frames, drained by the main thread.</summary>
@@ -54,8 +54,18 @@ namespace HKRLEnvMod.Transport
             {
                 throw new ArgumentException("authToken must not be empty", nameof(authToken));
             }
+            if (port < 1 || port > 65535)
+            {
+                throw new ArgumentOutOfRangeException(nameof(port), "port must be in [1, 65535]");
+            }
 
             _address = ResolveAddress(host);
+            if (IPAddress.Any.Equals(_address) || IPAddress.IPv6Any.Equals(_address))
+            {
+                throw new ArgumentException(
+                    "wildcard binds are forbidden; use loopback or an explicit LAN address",
+                    nameof(host));
+            }
             _port = port;
             _authToken = authToken;
         }
@@ -251,7 +261,7 @@ namespace HKRLEnvMod.Transport
             }
 
             var length = BitConverter.ToInt32(header, 0);
-            if (length < 0 || length > MaxFrameBytes)
+            if (length <= 0 || length > MaxFrameBytes)
             {
                 throw new IOException($"invalid frame length: {length}");
             }
@@ -267,8 +277,20 @@ namespace HKRLEnvMod.Transport
                 return true;
             }
 
-            var token = Encoding.UTF8.GetString(payload, AuthPrefix.Length, payload.Length - AuthPrefix.Length);
-            return string.Equals(token, _authToken, StringComparison.Ordinal);
+            byte[] expected = Encoding.UTF8.GetBytes(_authToken);
+            int suppliedLength = payload.Length - AuthPrefix.Length;
+            int difference = suppliedLength ^ expected.Length;
+            int compareLength = Math.Max(suppliedLength, expected.Length);
+            for (var i = 0; i < compareLength; i++)
+            {
+                byte supplied = i < suppliedLength
+                    ? payload[AuthPrefix.Length + i]
+                    : (byte)0;
+                byte wanted = i < expected.Length ? expected[i] : (byte)0;
+                difference |= supplied ^ wanted;
+            }
+
+            return difference == 0;
         }
 
         private static bool IsAuthFrame(byte[] payload)
@@ -333,6 +355,10 @@ namespace HKRLEnvMod.Transport
 
         private static IPAddress ResolveAddress(string host)
         {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                throw new ArgumentException("host must not be empty", nameof(host));
+            }
             if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
             {
                 return IPAddress.Loopback;

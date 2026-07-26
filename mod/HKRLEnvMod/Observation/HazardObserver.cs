@@ -10,6 +10,9 @@ namespace HKRLEnvMod.Observation
     /// </summary>
     public sealed class HazardObserver
     {
+        private readonly List<Collider2D> _sceneCandidates = new();
+        private int _sceneHandle = int.MinValue;
+
         public void ReadInto(
             ICollection<EntityObservation> entities,
             EntityRegistry registry,
@@ -29,19 +32,18 @@ namespace HKRLEnvMod.Observation
                 throw new System.ArgumentNullException(nameof(aliveInstanceIds));
             }
 
-            foreach (var collider in Object.FindObjectsOfType<Collider2D>())
+            RefreshSceneCandidates();
+            foreach (Collider2D collider in _sceneCandidates)
             {
-                if (collider == null || !collider.enabled || collider.gameObject == null)
+                if (collider == null
+                    || !collider.enabled
+                    || collider.gameObject == null
+                    || !collider.gameObject.activeInHierarchy)
                 {
                     continue;
                 }
 
                 var gameObject = collider.gameObject;
-                if (!IsLikelyHazard(gameObject))
-                {
-                    continue;
-                }
-
                 var instanceId = gameObject.GetInstanceID();
                 if (aliveInstanceIds.Contains(instanceId))
                 {
@@ -58,6 +60,30 @@ namespace HKRLEnvMod.Observation
                     baseThreat: 20.0f,
                     damage: 1,
                     flags: 1u << 0));
+            }
+        }
+
+        private void RefreshSceneCandidates()
+        {
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (scene.handle == _sceneHandle)
+            {
+                return;
+            }
+
+            _sceneHandle = scene.handle;
+            _sceneCandidates.Clear();
+            foreach (Collider2D collider in Object.FindObjectsOfType<Collider2D>())
+            {
+                if (collider == null
+                    || collider.gameObject == null
+                    || collider.gameObject.scene.handle != scene.handle
+                    || !IsLikelyHazard(collider.gameObject))
+                {
+                    continue;
+                }
+
+                _sceneCandidates.Add(collider);
             }
         }
 

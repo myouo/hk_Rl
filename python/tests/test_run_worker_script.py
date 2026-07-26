@@ -31,6 +31,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         registry=str(tmp_path / "checkpoints"),
         batch_dir=str(tmp_path / "batches"),
         heartbeat_jsonl=str(tmp_path / "heartbeats.jsonl"),
+        inference_threads=1,
         worker_id="game-pc-1",
         steps=None,
         max_consecutive_failures=5,
@@ -50,6 +51,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "env_host": "127.0.0.2",
         "env_port": 6001,
         "heartbeat_jsonl": str(tmp_path / "heartbeats.jsonl"),
+        "inference_threads": 1,
         "learner": "127.0.0.1:5600",
         "learner_upload_enabled": True,
         "latest_checkpoint": 1,
@@ -131,6 +133,8 @@ def test_run_worker_rejects_duplicate_task_wire_ids(
         ("steps", True, "steps"),
         ("max_consecutive_failures", -1, "max_consecutive_failures"),
         ("max_consecutive_failures", False, "max_consecutive_failures"),
+        ("inference_threads", 0, "inference_threads"),
+        ("inference_threads", False, "inference_threads"),
         ("env_host", "", "env_host"),
         ("env_host", "   ", "env_host"),
         ("env_port", 0, "env_port"),
@@ -173,6 +177,15 @@ def test_run_worker_mlp_model_uses_default_hidden_when_rnn_hidden_zero() -> None
     )
 
     assert model.trunk[0].out_features == 256
+
+
+def test_run_worker_configures_inference_threads(monkeypatch: object) -> None:
+    module = _load_script("run_worker.py")
+    configured: list[int] = []
+    monkeypatch.setattr(module.torch, "set_num_threads", configured.append)
+
+    assert module._configure_inference_threads(argparse.Namespace(inference_threads=2)) == 2
+    assert configured == [2]
 
 
 def test_run_worker_checkpoint_auth_token_only_for_http(monkeypatch: object) -> None:
@@ -317,6 +330,7 @@ def _worker_args(**overrides: object) -> argparse.Namespace:
         "env_host": None,
         "env_port": None,
         "heartbeat_jsonl": None,
+        "inference_threads": None,
         "learner": None,
         "max_consecutive_failures": 3,
         "registry": None,

@@ -9,8 +9,12 @@ namespace HKRLEnvMod.Env
     /// </summary>
     public sealed class ResetManager
     {
+        private const float ReadyStabilitySeconds = 0.1f;
+
         private readonly SceneController _scene;
         private readonly float _timeoutSeconds;
+        private readonly ReadyStabilityGate _readyGate =
+            new ReadyStabilityGate(ReadyStabilitySeconds);
         private float _elapsedSeconds;
         private bool _active;
 
@@ -19,7 +23,7 @@ namespace HKRLEnvMod.Env
         {
         }
 
-        public ResetManager(SceneController scene, float timeoutSeconds = 10.0f)
+        public ResetManager(SceneController scene, float timeoutSeconds = 30.0f)
         {
             if (timeoutSeconds <= 0.0f)
             {
@@ -34,13 +38,16 @@ namespace HKRLEnvMod.Env
 
         public bool IsActive => _active;
         public bool IsComplete { get; private set; }
+        public string? LastErrorInfo { get; private set; }
 
         /// <summary>Begin a reset for the given task; drives EpisodeLifecycle waits.</summary>
         public void BeginReset(int taskId, string? sceneName = null)
         {
             _elapsedSeconds = 0.0f;
+            _readyGate.Reset();
             _active = true;
             IsComplete = false;
+            LastErrorInfo = null;
             _scene.LoadTaskScene(taskId, sceneName);
         }
 
@@ -55,13 +62,17 @@ namespace HKRLEnvMod.Env
 
             if (!_scene.HasValidTarget)
             {
+                _scene.CancelPendingLoad();
                 _active = false;
                 IsComplete = false;
+                LastErrorInfo = _scene.DescribeReadiness();
                 return HKRL.StatusCode.SceneLoadFailed;
             }
 
             _elapsedSeconds += Time.unscaledDeltaTime;
-            if (_scene.IsSceneReady() && _scene.IsPlayerReady() && _scene.IsBossReady())
+            bool isReady =
+                _scene.IsSceneReady() && _scene.IsPlayerReady() && _scene.IsBossReady();
+            if (_readyGate.Observe(isReady, Time.unscaledTime))
             {
                 _active = false;
                 IsComplete = true;
@@ -75,6 +86,8 @@ namespace HKRLEnvMod.Env
 
             _active = false;
             IsComplete = false;
+            LastErrorInfo = _scene.DescribeReadiness();
+            _scene.CancelPendingLoad();
             if (!_scene.IsSceneReady())
             {
                 return HKRL.StatusCode.SceneLoadFailed;
@@ -89,9 +102,14 @@ namespace HKRLEnvMod.Env
 
         public void Clear()
         {
+            if (_active && !IsComplete)
+            {
+                _scene.CancelPendingLoad();
+            }
             _active = false;
             IsComplete = false;
             _elapsedSeconds = 0.0f;
+            _readyGate.Reset();
         }
     }
 }

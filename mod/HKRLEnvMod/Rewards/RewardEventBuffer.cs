@@ -52,6 +52,34 @@ namespace HKRLEnvMod.Rewards
             _events.Add(new RewardEventRecord(kind, entityId, amount, auxInt, auxInt2));
         }
 
+        /// <summary>
+        /// Add an event unless the same hook-derived record is already buffered
+        /// for this response. ObservationRewardTracker uses this for fallback
+        /// signals so ModHooks plus state deltas do not double-count reward.
+        /// </summary>
+        public void AddIfAbsent(
+            HKRL.RewardEventKind kind,
+            int entityId = 0,
+            float amount = 0.0f,
+            int auxInt = 0,
+            int auxInt2 = 0)
+        {
+            for (var i = 0; i < _events.Count; i++)
+            {
+                var item = _events[i];
+                if (item.Kind == kind
+                    && item.EntityId == entityId
+                    && item.Amount == amount
+                    && item.AuxInt == auxInt
+                    && item.AuxInt2 == auxInt2)
+                {
+                    return;
+                }
+            }
+
+            Add(kind, entityId, amount, auxInt, auxInt2);
+        }
+
         /// <summary>Drain events for this StepResponse and clear the buffer.</summary>
         public IReadOnlyList<RewardEventRecord> Drain()
         {

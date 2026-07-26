@@ -102,6 +102,23 @@ def test_load_task_config_preserves_wire_id() -> None:
     assert mantis.wire_id == 2
 
 
+def test_hitless_arena_configs_select_recurrent_primitive_training() -> None:
+    task = load_task_config(Path("../configs/tasks/gruz_mother_hitless_speed.yaml"))
+    train = load_train_config(Path("../configs/train/arena_hitless_gru.yaml"))
+
+    assert task.scene == "GG_Gruz_Mother"
+    assert task.time_limit_seconds == 45
+    assert task.action.enable_macro_actions is False
+    assert task.action.n_macro_actions == 0
+    assert task.action.expose_action_combinations is True
+    assert task.arena.auto_reset_on_terminal is True
+    assert task.arena.objective == "hitless_speedrun"
+    assert task.arena.target_kill_time_seconds == 30.0
+    assert train.algorithm == "recurrent_ppo"
+    assert train.sequence_length == 64
+    assert train.model.rnn_type == "gru"
+
+
 def test_validate_task_collection_rejects_duplicate_task_identity() -> None:
     tasks = [
         TaskConfig(task_id="same", wire_id=1, scene="A"),
@@ -129,8 +146,25 @@ def test_mod_scene_controller_uses_config_scene_with_wire_id_fallback() -> None:
     assert "LoadTaskScene(int taskId, string? sceneName = null)" in source
     assert "ResolveSceneName(taskId, sceneName)" in source
     assert "return configuredSceneName.Trim()" in source
-    assert "SceneManager.LoadScene(_targetSceneName)" in source
-    assert "_targetSceneName = string.Empty" in source
+    assert "gameManager.BeginSceneTransition(" in source
+    assert "SceneEntryLifecycle.MarkTransitionPending(gameManager)" in source
+    assert "gameManager.LoadGameFromUI(_saveSlot)" in source
+    assert 'GodhomeEntryGateName = "door_dreamEnter"' in source
+    assert "SceneManager.LoadScene(_targetSceneName)" not in source
+    assert "_loadFailed = true" in source
+    assert "PlayerObserver.IsReadyForControl(hero)" in source
+    assert "scene.handle != _sourceSceneHandle" in source
+    assert "BossSceneController.SetupEvent = ConfigureBossScene" in source
+    assert "controller.HasTransitionedIn" in source
+    assert "PlayMakerFSM.BroadcastEvent" not in source
+    assert '"Bench Control"' in source
+    assert '_loadedBenchFsm.SendEvent("GET UP")' in source
+    assert 'StaticVariableList.SetValue<string>("bossSceneToLoad"' in source
+    assert "hero.EnterWithoutInput(true)" in source
+    assert "hero.enterWithoutInput = true" not in source
+    assert "hero.ClearMPSendEvents()" in source
+    assert "gameManager.ResetSemiPersistentItems()" in source
+    assert "GameManager.SceneLoadVisualizations.GodsAndGlory" in source
     assert '0 => "GG_Gruz_Mother"' in source
     assert '1 => "GG_Hornet_1"' in source
     assert '2 => "GG_Mantis_Lords"' in source
@@ -141,6 +175,54 @@ def test_mod_scene_controller_uses_config_scene_with_wire_id_fallback() -> None:
     assert "_scene.LoadTaskScene(taskId, sceneName)" in reset_manager
     assert "!_scene.HasValidTarget" in reset_manager
     assert "HKRL.StatusCode.SceneLoadFailed" in reset_manager
+    assert "ReadyStabilityGate" in reset_manager
+    assert "_scene.CancelPendingLoad()" in reset_manager
+    load_start = source.index("public void LoadTaskScene")
+    load_end = source.index("public bool IsSceneReady", load_start)
+    assert "== _targetSceneName" not in source[load_start:load_end]
+    assert "BossLocator.FindActiveBosses()" in source
+    assert "BossLocator.FindConfiguredBosses()" in source
+
+
+def test_mod_player_readiness_requires_restored_game_physics() -> None:
+    root = Path(__file__).parents[2]
+    observer = (root / "mod/HKRLEnvMod/Observation/PlayerObserver.cs").read_text(encoding="utf-8")
+    readiness = (root / "mod/HKRLEnvMod/Env/EpisodeReadiness.cs").read_text(encoding="utf-8")
+
+    assert 'ReadBool(hero, true, "cState.transitioning")' in observer
+    assert 'ReadText(hero, string.Empty, "transitionState")' in observer
+    assert "body?.gravityScale ?? 0.0f" in observer
+    assert "collider?.enabled ?? false" in observer
+    assert 'ReadBool(hero, false, "CanJump")' in observer
+    assert 'ReadyHeroTransitionState = "WAITING_TO_TRANSITION"' in readiness
+    assert "gravityScale > 0.0f" in readiness
+    assert "hasCollider" in readiness
+    assert "ReadyStabilityGate" in readiness
+    assert "groundedJumpReady" in readiness
+
+
+def test_mod_action_readiness_uses_side_effect_free_game_queries() -> None:
+    root = Path(__file__).parents[2]
+    observer = (root / "mod/HKRLEnvMod/Observation/PlayerObserver.cs").read_text(encoding="utf-8")
+
+    assert '"CanDoubleJump"' in observer
+    assert '"CanDash"' in observer
+    assert '"CanDreamNail"' in observer
+    assert '"CanNailCharge"' in observer
+    assert "playerData?.hasSpell" in observer
+    assert '"cState.doubleJumpAvailable"' not in observer
+    assert 'ReadBool(hero, false, "CanNailArt")' not in observer
+
+
+def test_mod_runtime_config_supports_bootstrap_save_slot() -> None:
+    root = Path(__file__).parents[2]
+    runtime = (root / "mod/HKRLEnvMod/RuntimeConfiguration.cs").read_text(encoding="utf-8")
+    driver = (root / "mod/HKRLEnvMod/HKRLEnvMod.cs").read_text(encoding="utf-8")
+
+    assert 'SaveSlotEnv = "HKRL_SAVE_SLOT"' in runtime
+    assert "minimum: 1" in runtime
+    assert "maximum: 4" in runtime
+    assert "new SceneController(runtime.SaveSlot)" in driver
 
 
 def test_load_train_config_preserves_distributed_runtime_settings() -> None:

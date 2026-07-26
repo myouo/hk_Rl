@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from hkrl.protocol import RewardEvent, RewardEventKind
 from hkrl.reward import DefaultReward
@@ -73,3 +75,32 @@ def test_default_reward_rejects_negative_amount_events() -> None:
 
     with pytest.raises(ValueError, match="non-negative"):
         reward.shaping_free(events)
+
+
+def test_mod_reward_hooks_are_installed_and_uninstalled() -> None:
+    root = Path(__file__).parents[2]
+    sources = {
+        name: (root / f"mod/HKRLEnvMod/Rewards/{name}.cs").read_text(encoding="utf-8")
+        for name in ("DamageHooks", "HealHooks", "DeathHooks", "SceneHooks")
+    }
+    driver = (root / "mod/HKRLEnvMod/HKRLEnvMod.cs").read_text(encoding="utf-8")
+
+    assert "Modding.ModHooks.TakeHealthHook += OnTakeHealth" in sources["DamageHooks"]
+    assert "Modding.ModHooks.BeforeAddHealthHook += OnBeforeAddHealth" in sources["HealHooks"]
+    assert "Modding.ModHooks.BeforePlayerDeadHook += OnBeforePlayerDead" in sources["DeathHooks"]
+    assert "Modding.ModHooks.SceneChanged += OnSceneChanged" in sources["SceneHooks"]
+    for name in sources:
+        assert f"{name}.Uninstall();" in driver
+
+
+def test_mod_observation_reward_fallback_deduplicates_hook_events() -> None:
+    root = Path(__file__).parents[2]
+    tracker = (root / "mod/HKRLEnvMod/Rewards/ObservationRewardTracker.cs").read_text(
+        encoding="utf-8"
+    )
+    buffer = (root / "mod/HKRLEnvMod/Rewards/RewardEventBuffer.cs").read_text(encoding="utf-8")
+
+    assert "public void AddIfAbsent(" in buffer
+    assert "rewards.AddIfAbsent(HKRL.RewardEventKind.DamageTaken" in tracker
+    assert "rewards.AddIfAbsent(HKRL.RewardEventKind.Heal" in tracker
+    assert "rewards.AddIfAbsent(HKRL.RewardEventKind.BossKilled" in tracker

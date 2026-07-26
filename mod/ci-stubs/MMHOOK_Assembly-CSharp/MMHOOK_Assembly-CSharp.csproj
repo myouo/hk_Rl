@@ -3,4 +3,13 @@
     <AssemblyName>MMHOOK_Assembly-CSharp</AssemblyName>
     <RootNamespace>MMHOOK_AssemblyCSharp</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Assembly-CSharp\Assembly-CSharp.csproj">
+      <!-- Both CI stubs are intentionally net472. Pin the known TFM so the
+           Linux .NET SDK does not fail its project-reference negotiation with
+           an empty "Build FAILED" result for the Windows-flavoured framework. -->
+      <SetTargetFramework>TargetFramework=net472</SetTargetFramework>
+    </ProjectReference>
+  </ItemGroup>
 </Project>

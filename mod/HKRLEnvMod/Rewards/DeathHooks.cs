@@ -11,7 +11,20 @@ namespace HKRLEnvMod.Rewards
 
         public static void Install(RewardEventBuffer buffer)
         {
+            Uninstall();
             _buffer = buffer ?? throw new System.ArgumentNullException(nameof(buffer));
+            Modding.ModHooks.BeforePlayerDeadHook += OnBeforePlayerDead;
+        }
+
+        public static void Uninstall()
+        {
+            Modding.ModHooks.BeforePlayerDeadHook -= OnBeforePlayerDead;
+            _buffer = null;
+        }
+
+        private static void OnBeforePlayerDead()
+        {
+            RecordPlayerDeath();
         }
 
         public static void RecordPlayerDeath(int entityId = 0)

@@ -1,5 +1,5 @@
-# Remote GPU role for Windows-over-SSH distributed training.
-# Both services bind to loopback; Windows reaches them only through SSH
+# Remote GPU role for Linux/Windows-over-SSH distributed training.
+# Both services bind to loopback; the game host reaches them only through SSH
 # local-forward ports 5600 (rollout intake) and 5601 (checkpoint HTTP).
 defaults:
   - ./remote_learner.yaml

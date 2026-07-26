@@ -20,7 +20,7 @@ GIT_SHA  ?= $(shell git rev-parse HEAD 2>/dev/null)
 GIT_DIRTY ?= $(shell test -n "$$(git status --porcelain 2>/dev/null)" && echo true || echo false)
 
 .DEFAULT_GOAL := help
-.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke phase8-smoke phase8-dashboard phase8-profile phase8-eval-report phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
+.PHONY: help gen-schema gen-schema-py gen-schema-cs install install-hooks check lint format-check typecheck test fmt clean smoke mod-package mod-package-verify phase8-smoke phase8-dashboard phase8-profile phase8-eval-report phase8-release-checklist phase8-release-evidence phase8-verify-release-evidence
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -72,6 +72,12 @@ test: ## pytest unit suite
 
 smoke: ## Run random-policy smoke against a live env (Phase 2+)
 	$(PY) scripts/train.py --config configs/train/ppo_mlp.yaml --smoke
+
+mod-package: ## Package tagged HKRLEnvMod with its 44-Boss live evidence
+	$(PY) scripts/package_mod_release.py package
+
+mod-package-verify: ## Verify the versioned HKRLEnvMod archive and every hash
+	$(PY) scripts/package_mod_release.py verify
 
 phase8-smoke: ## Run offline distributed wiring smoke (no live game required)
 	$(PY) scripts/run_phase8_smoke.py --config configs/train/remote_learner.yaml --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml

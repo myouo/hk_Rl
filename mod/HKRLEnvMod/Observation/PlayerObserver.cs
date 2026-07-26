@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using HKRLEnvMod.Env;
 using UnityEngine;
 
 namespace HKRLEnvMod.Observation
@@ -31,7 +32,18 @@ namespace HKRLEnvMod.Observation
             float attackLockTimer = 0.0f,
             float castLockTimer = 0.0f,
             byte focusState = 0,
-            float dashCooldown = 0.0f)
+            float dashCooldown = 0.0f,
+            bool canDash = true,
+            bool canDreamNail = true,
+            bool canNailCharge = true,
+            bool hasSpell = true,
+            int actorStateHash = 0,
+            uint actionFlags = 0,
+            int spellFsmStateHash = 0,
+            int dreamNailFsmStateHash = 0,
+            int nailArtsFsmStateHash = 0,
+            float nailChargeTimer = 0.0f,
+            uint appliedInputButtons = 0)
         {
             PosX = posX;
             PosY = posY;
@@ -58,6 +70,17 @@ namespace HKRLEnvMod.Observation
             CastLockTimer = castLockTimer;
             FocusState = focusState;
             DashCooldown = dashCooldown;
+            CanDash = canDash;
+            CanDreamNail = canDreamNail;
+            CanNailCharge = canNailCharge;
+            HasSpell = hasSpell;
+            ActorStateHash = actorStateHash;
+            ActionFlags = actionFlags;
+            SpellFsmStateHash = spellFsmStateHash;
+            DreamNailFsmStateHash = dreamNailFsmStateHash;
+            NailArtsFsmStateHash = nailArtsFsmStateHash;
+            NailChargeTimer = nailChargeTimer;
+            AppliedInputButtons = appliedInputButtons;
         }
 
         public float PosX { get; }
@@ -85,6 +108,17 @@ namespace HKRLEnvMod.Observation
         public float CastLockTimer { get; }
         public byte FocusState { get; }
         public float DashCooldown { get; }
+        public bool CanDash { get; }
+        public bool CanDreamNail { get; }
+        public bool CanNailCharge { get; }
+        public bool HasSpell { get; }
+        public int ActorStateHash { get; }
+        public uint ActionFlags { get; }
+        public int SpellFsmStateHash { get; }
+        public int DreamNailFsmStateHash { get; }
+        public int NailArtsFsmStateHash { get; }
+        public float NailChargeTimer { get; }
+        public uint AppliedInputButtons { get; }
     }
 
     /// <summary>
@@ -94,12 +128,101 @@ namespace HKRLEnvMod.Observation
     /// </summary>
     public sealed class PlayerObserver
     {
-        private static Type? _playerDataType;
-        private static bool _playerDataTypeSearched;
+        private int _actionFsmHeroInstanceId;
+        private PlayMakerFSM? _spellControlFsm;
+        private PlayMakerFSM? _dreamNailFsm;
+        private PlayMakerFSM? _nailArtsFsm;
 
-        public PlayerObservation Read()
+        /// <summary>
+        /// True only after Hollow Knight's gameplay loop will consume PlayerAction
+        /// input. An active Hero can exist during scene/boss intros while the
+        /// acceptingInput gate is still false.
+        /// </summary>
+        public static bool IsReadyForControl(global::HeroController? hero)
         {
-            global::HeroController? hero = global::HeroController.instance;
+            if (hero == null
+                || hero.gameObject == null
+                || !hero.gameObject.activeInHierarchy)
+            {
+                return false;
+            }
+
+            Rigidbody2D? body = hero.GetComponent<Rigidbody2D>();
+            Collider2D? collider = hero.GetComponent<Collider2D>();
+            string heroState = ReadText(hero, string.Empty, "hero_state");
+            return EpisodeReadiness.IsHeroReady(
+                active: hero.gameObject.activeInHierarchy,
+                acceptingInput: ReadBool(
+                    hero,
+                    false,
+                    "acceptingInput",
+                    "AcceptingInput"),
+                controlRelinquished: ReadBool(
+                    hero,
+                    true,
+                    "controlReqlinquished",
+                    "controlRelinquished"),
+                gameplayState: !string.IsNullOrEmpty(heroState)
+                    && !string.Equals(
+                        heroState,
+                        "no_input",
+                        StringComparison.OrdinalIgnoreCase),
+                transitioning: ReadBool(hero, true, "cState.transitioning"),
+                transitionState: ReadText(hero, string.Empty, "transitionState"),
+                hasBody: body != null,
+                gravityScale: body?.gravityScale ?? 0.0f,
+                bodyKinematic: body?.isKinematic ?? true,
+                bodySimulated: body?.simulated ?? false,
+                positionConstraintsFree: HasFreePositionConstraints(body),
+                hasCollider: collider != null,
+                colliderEnabled: collider?.enabled ?? false,
+                tilemapTestActive: ReadBool(hero, false, "tilemapTestActive"),
+                groundedJumpReady: !hero.cState.onGround
+                    || ReadBool(hero, false, "CanJump"));
+        }
+
+        public static string DescribeControlReadiness(global::HeroController? hero)
+        {
+            if (hero == null || hero.gameObject == null)
+            {
+                return "hero=<unavailable>";
+            }
+
+            Rigidbody2D? body = hero.GetComponent<Rigidbody2D>();
+            Collider2D? collider = hero.GetComponent<Collider2D>();
+            string gravityScale =
+                body == null ? "<missing>" : body.gravityScale.ToString("F3");
+            string bodyKinematic =
+                body == null ? "<missing>" : body.isKinematic.ToString();
+            string bodySimulated =
+                body == null ? "<missing>" : body.simulated.ToString();
+            string bodyConstraints =
+                body == null ? "<missing>" : body.constraints.ToString();
+            string colliderEnabled =
+                collider == null ? "<missing>" : collider.enabled.ToString();
+            return "hero_active="
+                + $"{hero.gameObject.activeInHierarchy}, "
+                + $"accepting_input={ReadBool(hero, false, "acceptingInput", "AcceptingInput")}, "
+                + "control_relinquished="
+                + $"{ReadBool(hero, true, "controlReqlinquished", "controlRelinquished")}, "
+                + $"hero_state={ReadText(hero, "<missing>", "hero_state")}, "
+                + $"transitioning={ReadBool(hero, true, "cState.transitioning")}, "
+                + $"transition_state={ReadText(hero, "<missing>", "transitionState")}, "
+                + $"gravity_scale={gravityScale}, "
+                + $"body_kinematic={bodyKinematic}, "
+                + $"body_simulated={bodySimulated}, "
+                + $"body_constraints={bodyConstraints}, "
+                + $"position_constraints_free={HasFreePositionConstraints(body)}, "
+                + $"collider_enabled={colliderEnabled}, "
+                + $"tilemap_test_active={ReadBool(hero, false, "tilemapTestActive")}, "
+                + $"can_jump={ReadBool(hero, false, "CanJump")}, "
+                + $"bouncing={hero.cState.bouncing}, "
+                + $"shroom_bouncing={hero.cState.shroomBouncing}";
+        }
+
+        public PlayerObservation Read(uint appliedInputButtons = 0)
+        {
+            global::HeroController? hero = global::HeroController.SilentInstance;
             if (hero == null)
             {
                 return new PlayerObservation(
@@ -116,19 +239,25 @@ namespace HKRLEnvMod.Observation
                     doubleJumpAvailable: false,
                     canAttack: false,
                     canCast: false,
-                    canFocus: false);
+                    canFocus: false,
+                    canDash: false,
+                    canDreamNail: false,
+                    canNailCharge: false,
+                    hasSpell: false);
             }
 
             Vector3 position = hero.transform.position;
             Rigidbody2D? body = hero.GetComponent<Rigidbody2D>();
             Vector2 velocity = body != null ? body.velocity : Vector2.zero;
             sbyte facing = hero.transform.localScale.x < 0.0f ? (sbyte)(-1) : (sbyte)1;
-            var playerData = FindSingleton("PlayerData", "instance");
-            var hp = ReadInt(playerData, 1, "health", "Health");
-            var maxHp = ReadInt(playerData, 1, "maxHealth", "MaxHealth");
-            var soul = ReadInt(playerData, 0, "MPCharge", "soul", "Soul");
-            var maxSoul = ReadInt(playerData, 99, "maxMP", "MaxMP", "maxSoul", "MaxSoul");
-            var focusing = ReadBool(hero, false, "cState.focusing", "focusing", "Focusing");
+            global::PlayerData? playerData = global::PlayerData.instance;
+            global::HeroControllerStates states = hero.cState;
+            var hp = playerData?.health ?? 1;
+            var maxHp = playerData?.maxHealth ?? 1;
+            var soul = playerData?.MPCharge ?? 0;
+            var maxSoul = playerData?.maxMP ?? 99;
+            var focusing = states.focusing;
+            ActionTrace actionTrace = ReadActionTrace(hero);
             return new PlayerObservation(
                 position.x,
                 position.y,
@@ -139,37 +268,20 @@ namespace HKRLEnvMod.Observation
                 soul,
                 maxSoul,
                 facing,
-                onGround: ReadBool(hero, true, "cState.onGround", "onGround", "OnGround"),
+                onGround: states.onGround,
                 doubleJumpAvailable: ReadBool(
                     hero,
-                    true,
-                    "cState.doubleJumpAvailable",
-                    "doubleJumpAvailable",
-                    "DoubleJumpAvailable"),
-                canAttack: ReadBool(hero, true, "canAttack", "CanAttack"),
-                canCast: ReadBool(hero, true, "canCast", "CanCast"),
-                canFocus: ReadBool(hero, true, "canFocus", "CanFocus"),
-                wallSliding: ReadBool(
-                    hero,
                     false,
-                    "cState.wallSliding",
-                    "wallSliding",
-                    "WallSliding"),
-                jumping: ReadBool(hero, false, "cState.jumping", "jumping", "Jumping"),
-                falling: ReadBool(hero, false, "cState.falling", "falling", "Falling"),
-                dashing: ReadBool(hero, false, "cState.dashing", "dashing", "Dashing"),
-                shadowDashing: ReadBool(
-                    hero,
-                    false,
-                    "cState.shadowDashing",
-                    "shadowDashing",
-                    "ShadowDashing"),
-                invulnerable: ReadBool(
-                    hero,
-                    false,
-                    "cState.invulnerable",
-                    "invulnerable",
-                    "Invulnerable"),
+                    "CanDoubleJump"),
+                canAttack: ReadBool(hero, false, "CanAttack"),
+                canCast: ReadBool(hero, false, "CanCast"),
+                canFocus: ReadBool(hero, false, "CanFocus"),
+                wallSliding: states.wallSliding,
+                jumping: states.jumping,
+                falling: states.falling,
+                dashing: states.dashing,
+                shadowDashing: states.shadowDashing,
+                invulnerable: states.invulnerable,
                 invulnTimer: ReadFloat(
                     hero,
                     0.0f,
@@ -194,103 +306,164 @@ namespace HKRLEnvMod.Observation
                     0.0f,
                     "dashCooldown",
                     "dashCooldownTimer",
-                    "dash_cooldown"));
+                    "dash_cooldown"),
+                canDash: ReadBool(hero, false, "CanDash"),
+                canDreamNail: ReadBool(hero, false, "CanDreamNail"),
+                // Do not call CanNailArt here: that method consumes/reset the
+                // accumulated charge timer. CanNailCharge is a side-effect-free
+                // readiness query used by the game's own input loop.
+                canNailCharge: ReadBool(hero, false, "CanNailCharge"),
+                hasSpell: playerData?.hasSpell ?? false,
+                actorStateHash: actionTrace.ActorStateHash,
+                actionFlags: actionTrace.Flags,
+                spellFsmStateHash: actionTrace.SpellFsmStateHash,
+                dreamNailFsmStateHash: actionTrace.DreamNailFsmStateHash,
+                nailArtsFsmStateHash: actionTrace.NailArtsFsmStateHash,
+                nailChargeTimer: actionTrace.NailChargeTimer,
+                appliedInputButtons: appliedInputButtons);
         }
 
-        private static object? FindSingleton(string typeName, string memberName)
+        private ActionTrace ReadActionTrace(global::HeroController hero)
         {
-            var type = FindType(typeName);
-            if (type == null)
-            {
-                return null;
-            }
+            EnsureActionFsmCache(hero);
+            global::HeroControllerStates states = hero.cState;
+            uint flags = 0;
+            flags = SetFlag(flags, 0, states.attacking);
+            flags = SetFlag(flags, 1, states.upAttacking);
+            flags = SetFlag(flags, 2, states.downAttacking);
+            flags = SetFlag(flags, 3, states.nailCharging);
+            flags = SetFlag(flags, 4, ReadBool(hero, false, "nailArt_cyclone"));
+            flags = SetFlag(flags, 5, states.spellQuake);
+            flags = SetFlag(flags, 6, states.doubleJumping);
 
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-            var field = type.GetField(memberName, flags);
-            if (field != null)
-            {
-                return field.GetValue(null);
-            }
-
-            var property = type.GetProperty(memberName, flags);
-            if (property != null)
-            {
-                return property.GetValue(null, null);
-            }
-
-            return null;
+            return new ActionTrace(
+                actorStateHash: HashState(
+                    ReadText(hero, string.Empty, "hero_state")),
+                flags: flags,
+                spellFsmStateHash: HashFsmState(_spellControlFsm),
+                dreamNailFsmStateHash: HashFsmState(_dreamNailFsm),
+                nailArtsFsmStateHash: HashFsmState(_nailArtsFsm),
+                nailChargeTimer: ReadFloat(hero, 0.0f, "nailChargeTimer"));
         }
 
-        private static Type? FindType(string typeName)
+        private void EnsureActionFsmCache(global::HeroController hero)
         {
-            if (typeName == "PlayerData" && _playerDataTypeSearched)
+            int instanceId = hero.GetInstanceID();
+            if (_actionFsmHeroInstanceId == instanceId)
             {
-                return _playerDataType;
+                return;
             }
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            _actionFsmHeroInstanceId = instanceId;
+            _spellControlFsm = null;
+            _dreamNailFsm = null;
+            _nailArtsFsm = null;
+            foreach (PlayMakerFSM fsm in hero.GetComponentsInChildren<PlayMakerFSM>(true))
             {
-                foreach (var type in SafeGetTypes(assembly))
+                if (fsm == null)
                 {
-                    if (type.Name == typeName || type.FullName == typeName)
-                    {
-                        if (typeName == "PlayerData")
-                        {
-                            _playerDataType = type;
-                            _playerDataTypeSearched = true;
-                        }
+                    continue;
+                }
 
-                        return type;
-                    }
+                if (string.Equals(
+                        fsm.FsmName,
+                        "Spell Control",
+                        StringComparison.Ordinal))
+                {
+                    _spellControlFsm = fsm;
+                }
+                else if (string.Equals(
+                             fsm.FsmName,
+                             "Dream Nail",
+                             StringComparison.Ordinal))
+                {
+                    _dreamNailFsm = fsm;
+                }
+                else if (string.Equals(
+                             fsm.FsmName,
+                             "Nail Arts",
+                             StringComparison.Ordinal))
+                {
+                    _nailArtsFsm = fsm;
                 }
             }
-
-            if (typeName == "PlayerData")
-            {
-                _playerDataType = null;
-                _playerDataTypeSearched = true;
-            }
-
-            return null;
         }
 
-        private static Type[] SafeGetTypes(Assembly assembly)
+        private static uint SetFlag(uint flags, int bit, bool enabled)
         {
-            try
-            {
-                return assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException exception)
-            {
-                return Array.FindAll(exception.Types, type => type != null)!;
-            }
+            return enabled ? flags | (1u << bit) : flags;
         }
 
-        private static int ReadInt(object? target, int fallback, params string[] names)
+        private static int HashFsmState(PlayMakerFSM? fsm)
+        {
+            return fsm == null ? 0 : HashState(fsm.ActiveStateName);
+        }
+
+        private static int HashState(string? state)
+        {
+            return string.IsNullOrEmpty(state)
+                ? 0
+                : EntityReadHelpers.StableHash(state!);
+        }
+
+        private readonly struct ActionTrace
+        {
+            public ActionTrace(
+                int actorStateHash,
+                uint flags,
+                int spellFsmStateHash,
+                int dreamNailFsmStateHash,
+                int nailArtsFsmStateHash,
+                float nailChargeTimer)
+            {
+                ActorStateHash = actorStateHash;
+                Flags = flags;
+                SpellFsmStateHash = spellFsmStateHash;
+                DreamNailFsmStateHash = dreamNailFsmStateHash;
+                NailArtsFsmStateHash = nailArtsFsmStateHash;
+                NailChargeTimer = nailChargeTimer;
+            }
+
+            public int ActorStateHash { get; }
+            public uint Flags { get; }
+            public int SpellFsmStateHash { get; }
+            public int DreamNailFsmStateHash { get; }
+            public int NailArtsFsmStateHash { get; }
+            public float NailChargeTimer { get; }
+        }
+
+        private static int ReadInt(
+            object? target,
+            int fallback,
+            string first,
+            string second)
         {
             if (target == null)
             {
                 return fallback;
             }
 
-            foreach (var name in names)
+            if (TryReadIntName(target, first, out int result)
+                || TryReadIntName(target, second, out result))
             {
-                if (TryReadIntMember(target, name, out var memberValue))
-                {
-                    return memberValue;
-                }
-                if (TryReadGetInt(target, name, out var getIntValue))
-                {
-                    return getIntValue;
-                }
+                return result;
             }
 
             return fallback;
         }
 
-        private static bool TryReadIntMember(object target, string name, out int value)
+        private static bool TryReadIntName(object target, string name, out int value)
         {
             if (TryReadMemberPath(target, name, out var rawValue) && TryConvertInt(rawValue, out value))
+            {
+                return true;
+            }
+            if (TryInvokeZeroArg(target, name, out var invokedValue)
+                && TryConvertInt(invokedValue, out value))
+            {
+                return true;
+            }
+            if (TryReadGetInt(target, name, out value))
             {
                 return true;
             }
@@ -316,41 +489,120 @@ namespace HKRLEnvMod.Observation
             return false;
         }
 
-        private static bool ReadBool(object? target, bool fallback, params string[] names)
+        private static bool ReadBool(object? target, bool fallback, string name)
         {
-            if (target == null)
-            {
-                return fallback;
-            }
+            return target != null && TryReadBoolName(target, name, out bool result)
+                ? result
+                : fallback;
+        }
 
-            foreach (var name in names)
+        private static bool ReadBool(
+            object? target,
+            bool fallback,
+            string first,
+            string second)
+        {
+            if (target != null
+                && (TryReadBoolName(target, first, out bool result)
+                    || TryReadBoolName(target, second, out result)))
             {
-                if (TryReadMemberPath(target, name, out var value) && TryConvertBool(value, out var result))
-                {
-                    return result;
-                }
+                return result;
             }
 
             return fallback;
         }
 
-        private static float ReadFloat(object? target, float fallback, params string[] names)
+        private static bool ReadBool(
+            object? target,
+            bool fallback,
+            string first,
+            string second,
+            string third)
+        {
+            if (target != null
+                && (TryReadBoolName(target, first, out bool result)
+                    || TryReadBoolName(target, second, out result)
+                    || TryReadBoolName(target, third, out result)))
+            {
+                return result;
+            }
+
+            return fallback;
+        }
+
+        private static bool TryReadBoolName(
+            object target,
+            string name,
+            out bool result)
+        {
+            if ((TryReadMemberPath(target, name, out object? value)
+                    || TryInvokeZeroArg(target, name, out value))
+                && TryConvertBool(value, out result))
+            {
+                return true;
+            }
+
+            result = false;
+            return false;
+        }
+
+        private static float ReadFloat(object? target, float fallback, string name)
+        {
+            return target != null && TryReadFloatName(target, name, out float result)
+                ? result
+                : fallback;
+        }
+
+        private static float ReadFloat(
+            object? target,
+            float fallback,
+            string first,
+            string second,
+            string third)
         {
             if (target == null)
             {
                 return fallback;
             }
 
-            foreach (var name in names)
+            if (TryReadFloatName(target, first, out float result)
+                || TryReadFloatName(target, second, out result)
+                || TryReadFloatName(target, third, out result))
             {
-                if (TryReadMemberPath(target, name, out var value) && TryConvertFloat(value, out var result))
-                {
-                    return result;
-                }
-                if (TryReadGetFloat(target, name, out var getFloatValue))
-                {
-                    return getFloatValue;
-                }
+                return result;
+            }
+
+            return fallback;
+        }
+
+        private static bool TryReadFloatName(
+            object target,
+            string name,
+            out float result)
+        {
+            if (TryReadMemberPath(target, name, out object? value)
+                && TryConvertFloat(value, out result))
+            {
+                return true;
+            }
+            if (TryInvokeZeroArg(target, name, out value)
+                && TryConvertFloat(value, out result))
+            {
+                return true;
+            }
+            return TryReadGetFloat(target, name, out result);
+        }
+
+        private static string ReadText(object? target, string fallback, string name)
+        {
+            if (target == null)
+            {
+                return fallback;
+            }
+
+            if (TryReadMemberPath(target, name, out object? value) && value != null)
+            {
+                return value.ToString() ?? fallback;
             }
 
             return fallback;
@@ -373,8 +625,40 @@ namespace HKRLEnvMod.Observation
             return false;
         }
 
+        private static bool TryInvokeZeroArg(object target, string name, out object? value)
+        {
+            var method = target.GetType().GetMethod(
+                name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            if (method == null || method.ReturnType == typeof(void))
+            {
+                value = null;
+                return false;
+            }
+
+            try
+            {
+                value = method.Invoke(target, Array.Empty<object>());
+                return true;
+            }
+            catch (Exception)
+            {
+                value = null;
+                return false;
+            }
+        }
+
         private static bool TryReadMemberPath(object target, string path, out object? value)
         {
+            int separator = path.IndexOf('.');
+            if (separator < 0)
+            {
+                return TryReadRawMember(target, path, out value);
+            }
+
             value = target;
             var parts = path.Split('.');
             for (var i = 0; i < parts.Length; i++)
@@ -499,6 +783,19 @@ namespace HKRLEnvMod.Observation
             }
 
             return (byte)value;
+        }
+
+        private static bool HasFreePositionConstraints(Rigidbody2D? body)
+        {
+            if (body == null)
+            {
+                return false;
+            }
+
+            const RigidbodyConstraints2D positionConstraints =
+                RigidbodyConstraints2D.FreezePositionX
+                | RigidbodyConstraints2D.FreezePositionY;
+            return (body.constraints & positionConstraints) == RigidbodyConstraints2D.None;
         }
     }
 }

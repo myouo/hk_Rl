@@ -12,6 +12,11 @@ evaluation trivial.
 Core events may come from direct game hooks or from conservative observation
 deltas (player hp/soul and entity hp changes). Both paths write the same
 `RewardEvent` records; scalar shaping stays Python-side.
+The live mod installs Modding API hooks for player damage, healing, death, and
+scene changes. Observation deltas use `AddIfAbsent` so a hook and its fallback do
+not double-count the same record. Boss disappearance is a fallback kill signal
+for bosses that remove their HealthManager without exposing an hp=0 frame;
+identity replacement during a phase transition is excluded.
 
 ```text
 mod  ──RewardEvent[]──▶  hkrl/reward.py  ──scalar──▶  rollout buffer
@@ -64,6 +69,16 @@ Weights live in task configs (`configs/tasks/*.yaml`), not in code.
 4. **Core metric ≠ reward.** Decisions are driven by per-boss win rate, not the
    training reward curve.
 
+### Hitless speed arena
+
+[`gruz_mother_hitless_speed.yaml`](../configs/tasks/gruz_mother_hitless_speed.yaml)
+uses a deliberately sparse, strict profile: small Boss-damage feedback, strong
+player-damage/death penalties, no soul/heal reward, a small time cost, and
+macros disabled. It encourages the requested behavior but does not define
+success. Success is still evaluated as `BossKilled`, zero cumulative
+`DamageTaken`, and kill time within the configured deadline. Healing cannot turn
+a damaged run into a hitless run.
+
 ## 5. Lifecycle correctness
 
 Reward events are buffered in the mod and **cleared on reset**
@@ -74,3 +89,5 @@ classic reset-contamination bug (PRD §9.3).
 Mod `StepController` only emits reward events while the lifecycle is `RUNNING`.
 `BossKilled`, `PlayerDeath`, and unexpected `SceneChanged` events route the
 lifecycle to `TERMINATING` and are included in the terminal `StepResponse`.
+For simultaneous multi-boss tasks, an individual `BossKilled` is reported
+without terminating while another living boss entity remains.

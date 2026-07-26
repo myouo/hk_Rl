@@ -4,6 +4,71 @@ Phase 8 releases are evidence-driven. A release is not ready until local gates,
 offline distributed artifacts, remote CI, and game-machine checks have all been
 recorded.
 
+## 0. Frozen Mod Binary
+
+The production baseline is **HKRLEnvMod v0.8.0 / protocol schema v6**.
+`mod/HKRLEnvMod/Version.props` is the only Mod-version source. A release is not
+defined by a loose DLL: it is the tagged source commit, real-game build,
+installed-binary hash, complete Hall of Gods evidence, and deterministic
+archive taken together.
+
+Build and install against the real game assemblies, then fingerprint the exact
+installed DLL while running the complete live sweep:
+
+```bash
+scripts/linux/prepare_game_pc.sh \
+  --game-root "/path/to/Hollow Knight" \
+  --build-and-install-mod
+
+export HKRL_MOD_DLL="/path/to/Hollow Knight/hollow_knight_Data/Managed/Mods/HKRLEnvMod/HKRLEnvMod.dll"
+export HKRL_GLOBALGAMEMANAGERS="/path/to/Hollow Knight/hollow_knight_Data/globalgamemanagers"
+python scripts/live_godhome_sweep.py \
+  --mod-dll "$HKRL_MOD_DLL" \
+  --mod-version 0.8.0 \
+  --globalgamemanagers "$HKRL_GLOBALGAMEMANAGERS" \
+  --output runs/live/godhome-all-boss-sweep-v0.8.0.json \
+  --report runs/live/godhome-all-boss-sweep-v0.8.0.md \
+  --fail-on-failed
+
+python scripts/live_walk_smoothness.py \
+  --mod-dll "$HKRL_MOD_DLL" \
+  --output runs/live/walk-smoothness-post-fix.json \
+  --fail-on-stutter
+```
+
+The sweep records path-free SHA-256 fingerprints for the Mod DLL, installed
+game build table, and Boss catalog. Every fight must pass entry and same-scene
+reload lifecycle, full-health restoration, natural Boss activity, and Hero
+left/right/jump/gravity/landing/attack controls. It exposes no pause,
+timescale, Boss-health, Boss-FSM, position, or physics mutation route. The walk
+gate requires ordinary segmented decisions to retain at least 90% of the
+single-STEP movement speed using observed server time, with clean HP/events and
+the native 0.02-second fixed timestep.
+
+Once all gates pass, commit the complete source baseline and add the annotated
+tag `v0.8.0`. The official packager requires that tag and a clean worktree:
+
+```bash
+make mod-package
+make mod-package-verify
+```
+
+The outputs are:
+
+```text
+dist/mod/HKRLEnvMod-v0.8.0-schema6.zip
+dist/mod/HKRLEnvMod-v0.8.0-schema6.manifest.json
+dist/mod/HKRLEnvMod-v0.8.0-schema6.zip.sha256
+```
+
+The verifier rejects version/schema drift, untagged or dirty source, missing or
+extra ZIP entries, unsafe paths, duplicate files, hash/size mismatches,
+incomplete 44/44 evidence, reset contamination, and any difference between the
+tested and packaged Mod DLL. The movement evidence must also pass its 90% speed
+retention gate against that DLL. The archive contains only the two runtime DLLs,
+documentation/license, manifest, and live evidence. It never contains
+`hkrl-runtime.conf` or an authentication token.
+
 ## 1. Local Gates
 
 Run the Python quality gate first:

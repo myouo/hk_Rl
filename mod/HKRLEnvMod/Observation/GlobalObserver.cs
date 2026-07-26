@@ -50,7 +50,8 @@ namespace HKRLEnvMod.Observation
             int stageIndex = 0,
             float timeInEpisode = 0.0f)
         {
-            Scene scene = SceneManager.GetActiveScene();
+            Scene scene =
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene();
             int sceneHash = StableHash(scene.name);
             return new GlobalObservation(
                 sceneHash,

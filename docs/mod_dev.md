@@ -37,6 +37,12 @@ The GitHub `C# Mod Build` workflow compiles the mod against minimal CI stubs
 under `mod/ci-stubs/`; it catches repository-level C# compile/schema drift but
 does not replace a final build against real Hollow Knight assemblies.
 
+The distributable Mod version has a single source:
+`mod/HKRLEnvMod/Version.props`. `HKRLEnvMod.GetVersion()` reads the generated
+assembly version, so do not add a second literal version in C# or an install
+script. Protocol compatibility remains independently pinned by the matching
+schema constants in Python and C#.
+
 At runtime the mod starts the TCP environment server from the persistent
 `HKRLDriver`. Defaults are `127.0.0.1:5555`; set these environment variables
 before launching Hollow Knight to line up live smoke, evaluator, or worker
@@ -45,8 +51,17 @@ processes with a specific game instance:
 ```bash
 export HKRL_HOST=127.0.0.1
 export HKRL_PORT=5555
+export HKRL_SAVE_SLOT=1             # Godhome-capable save slot, 1..4
 export HKRL_AUTH_TOKEN=dev-secret   # optional; enables TCP env auth
 ```
+
+On Linux Steam/Proton, an already-running Steam client may not inherit variables
+from the worker-launch shell. The Mod therefore also accepts a strict
+`hkrl-runtime.conf` next to `HKRLEnvMod.dll`. Environment variables have higher
+priority. [`scripts/linux/start_game_worker.sh`](../scripts/linux/start_game_worker.sh)
+writes the file atomically with mode `0600`; token values are never logged. When
+RESET is first requested from the title menu, the Mod loads `HKRL_SAVE_SLOT`
+(default 1) before entering the configured Godhome arena.
 
 Python env clients (`check_env.py`, local training, workers, evaluators) send
 the same non-empty token automatically when it is present. Sending the auth
@@ -63,12 +78,17 @@ client. The main-thread controller also clears held input/repeat state when
 client session state changes or a control command preempts a repeat.
 
 `ActionApplier` stores the selected primitive during `FixedUpdate`.
-`InputInjector` then commits it from `ModHooks.HeroUpdateHook`, which runs
-immediately before the game's original `HeroController.Update` reads
-`InputHandler.Instance.inputActions`. This preserves the main-thread invariant
-while aligning injected `WasPressed`/`WasReleased` edges with the actual game
-input tick. Driver disposal neutralizes the action set and unsubscribes the hook
-so Mod reloads cannot accumulate callbacks.
+`InputInjector` then commits it from InControl's public `InputManager.OnUpdate`
+event, immediately after physical devices and `PlayerActionSet`s refresh. This
+lets both `HeroController` and independent PlayMaker consumers such as a bench
+FSM see the same injected input during that game-input tick. It preserves the
+main-thread invariant while aligning injected `WasPressed`/`WasReleased` edges
+with InControl's tick. Driver disposal neutralizes the action set and
+unsubscribes the event so Mod reloads cannot accumulate callbacks.
+`StepController` waits for `InputInjector.SuccessfulCommitCount` to advance
+before collecting a STEP response. This causal boundary prevents
+`action_repeat=1` from returning the observation captured before the selected
+action reached Hollow Knight.
 
 For multi-instance evaluation or worker scale-out on one game machine, launch
 each Hollow Knight instance with a distinct `HKRL_PORT` and pass the matching
@@ -102,6 +122,8 @@ WRONG:  network thread receives action and directly calls HeroController.
 
 RIGHT:
   NetworkThread:  recv StepRequest -> ConcurrentQueue.Enqueue
+  MainThread (Update, only at timeScale=0):
+      peek recovery command -> restore clock; leave request queued
   MainThread (FixedUpdate):
       dequeue latest action -> apply (InputInjector)
       collect observation, collect reward events
@@ -109,9 +131,11 @@ RIGHT:
   NetworkThread:  dequeue -> send StepResponse
 ```
 
-The network thread must never touch Unity objects. All game reads/writes happen
-in `FixedUpdate` on the main thread. Use `ConcurrentQueue` / ring buffers across
-the boundary.
+The network thread must never touch Unity objects. Gameplay reads/writes happen
+in `FixedUpdate` on the main thread. The only exception is the main-thread
+zero-scale clock wake-up above; it cannot dequeue, dispatch, observe, or respond.
+Use `ConcurrentQueue` / ring buffers across the boundary. See
+[ADR-0005](./adr/0005-pause-safe-game-time-control.md).
 
 ## 6. Robustness (PRD §9.9)
 
@@ -122,14 +146,67 @@ the boundary.
 - Unit-test the critical hooks: enter scene, read boss, reset, death, kill.
 
 The repository C# gate also runs `InputInjectionSmoke`: a runtime stub raises
-`HeroUpdateHook` and verifies every movement/aim/button mapping, nail-art release
-edge, neutral-on-dispose behavior, and hook removal. It does not replace the
-real-game acceptance gates in
-[`windows_ssh_deployment.md`](./windows_ssh_deployment.md).
+`InputManager.OnUpdate` and verifies every movement/aim/button mapping, nail-art release
+edge, commit acknowledgement, macro progression/reset, duration suspension,
+bounded movement continuation across a STEP response, immediate transient-button
+release, stale-continuation expiry, reward-hook lifecycle,
+neutral-on-dispose behavior, hook removal, and the
+environment/file runtime-config precedence used by Steam/Proton. It also verifies
+that game-requested time scales compose with the environment multiplier, the
+physics step stays fixed, PAUSE/RESUME recovers an externally stranded clock,
+and disposal restores/unhooks time control. Hero readiness smoke cases reject
+transitioning, relinquished/no-input, zero-gravity, kinematic, non-simulated,
+position-constrained, or collision-less states and require a continuous
+unscaled-time stability window. Transition-policy smoke cases also keep
+same-scene reloads on the direct fast-reload path instead of replaying
+workshop-only dream events. It does not
+replace the real-game acceptance gates in
+[`linux_ssh_deployment.md`](./linux_ssh_deployment.md).
 
 ## 7. Time control (PRD §9.6)
 
-`SimControl` manages `Time.timeScale` and `Time.fixedDeltaTime` to raise SPS
-without changing physics semantics inappropriately. `StepController` applies
-`PAUSE`, `RESUME`, and `SET_TIMESCALE` commands through `SimControl` on the main
-thread. Pair with `action_repeat`.
+`SimControl` hooks Hollow Knight's `GameManager.SetTimeScale(float)` and composes
+the environment multiplier through `TimeController.GenericTimeScale`. It keeps
+the captured baseline `Time.fixedDeltaTime` unchanged: acceleration increases
+fixed physics steps per wall-clock second instead of making collision/gravity
+integration coarser. `StepController` applies `PAUSE`, `RESUME`, and
+`SET_TIMESCALE` on the main thread. Pair with `action_repeat`.
+
+Because Unity does not schedule `FixedUpdate` at a zero time scale, the
+persistent driver has one narrow `Update` escape hatch. It may only peek at a
+queued recovery command and restore the clock; request consumption, actions,
+lifecycle changes, observations, and responses still happen in `FixedUpdate`.
+See [ADR-0005](./adr/0005-pause-safe-game-time-control.md).
+
+## 8. Main-thread performance
+
+`Time.fixedDeltaTime = 0.02` schedules a nominal 50 physics updates per
+game-time second; it is not a 50 FPS render cap. A rendered frame may have zero,
+one, or multiple fixed updates. Do not alter that baseline to hide observation
+latency, because doing so changes collision and gravity integration.
+
+The connected-client hot path follows these constraints:
+
+- `InputManager.OnUpdate` commits every game-input frame after physical action
+  sets refresh, so physical input cannot overwrite the policy action and
+  non-Hero FSMs see it. Member/method reflection is resolved only when the
+  `HeroActions` instance changes. Closed delegates perform subsequent commits
+  without `MethodInfo.Invoke` arrays or boxing.
+- Projectile candidate discovery scans `DamageHero`/`DamageEnemies` components
+  at most every 100 ms of unscaled time; it never enumerates every scene
+  `Transform` for each observation.
+- Likely hazard colliders are discovered once per active Unity scene handle and
+  filtered for active/enabled state on each observation.
+- Phase 0 diagnostic snapshots are not written while a protocol client is
+  active.
+- Title-menu save bootstrap may wait for the loaded scene's `Bench Control` FSM
+  to reach `Resting`, then send its canonical `GET UP` event once when the save
+  is marked `atBench`. The FSM restores the dynamic body/control; the Mod makes
+  no direct Transform or Rigidbody write, and no policy STEP is accepted before
+  `RUNNING`.
+
+Use `scripts/live_performance_benchmark.py` before and after hot-path changes.
+Compare STEP latency percentiles, requests/second, effective fixed
+updates/second, and the observed `time_scale`/`fixed_delta_time`; also record
+render FPS/frame pacing separately because SPS and visual smoothness answer
+different questions.
