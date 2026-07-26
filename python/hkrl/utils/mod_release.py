@@ -36,6 +36,24 @@ HERO_ACCEPTANCE_KEYS = (
     "attack_input_seen",
     "attack_state_seen",
 )
+MULTI_BOSS_META_FIELDS = {
+    "stable_id",
+    "entity_type",
+    "team",
+    "prefab_hash",
+    "fsm_name_hash",
+    "fsm_state_hash",
+    "position",
+    "relative_position",
+    "velocity",
+    "hp",
+    "max_hp",
+    "hurtbox",
+    "hitbox_active",
+    "phase",
+    "threat_score",
+    "flags",
+}
 
 
 class ModReleaseError(ValueError):
@@ -162,6 +180,8 @@ def validate_live_evidence(
     """Reject a Hall of Gods report that cannot certify the packaged DLL."""
 
     errors: list[str] = []
+    if payload.get("probe_schema") != "hkrl.godhome_sweep.v2":
+        errors.append("unexpected Godhome sweep evidence schema")
     if payload.get("schema_version") != metadata.protocol_schema_version:
         errors.append("protocol schema does not match the release")
     if payload.get("boss_mutation_allowed") is not False:
@@ -287,6 +307,16 @@ def validate_live_evidence(
         errors.append("result Boss IDs are not unique")
     if selected and result_ids != selected:
         errors.append("result order/identity does not match selected_boss_ids")
+
+    multi_result = next(
+        (
+            result
+            for result in results
+            if isinstance(result, dict) and result.get("boss_id") == "oblobbles"
+        ),
+        None,
+    )
+    errors.extend(_validate_multi_boss_meta(multi_result))
 
     if errors:
         raise ModReleaseError("invalid live Mod evidence: " + "; ".join(errors))
@@ -496,6 +526,7 @@ def build_mod_release(
             "boss_mutation_allowed": False,
             "simulation_control_allowed": False,
             "walk_speed_retention": walk_evidence["speed_retention"],
+            "multi_boss_meta": _multi_boss_acceptance(evidence),
         },
         "files": file_rows,
     }
@@ -670,6 +701,7 @@ def verify_mod_release(
                 "boss_mutation_allowed": False,
                 "simulation_control_allowed": False,
                 "walk_speed_retention": walk_evidence["speed_retention"],
+                "multi_boss_meta": _multi_boss_acceptance(evidence),
             }:
                 raise ModReleaseError(
                     "manifest live acceptance summary does not match the packaged DLL"
@@ -764,6 +796,99 @@ def _valid_fingerprint(
         and isinstance(digest, str)
         and FULL_SHA256.fullmatch(digest) is not None
     )
+
+
+def _validate_multi_boss_meta(result: object) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(result, dict):
+        return ["Oblobbles multi-Boss result is missing"]
+    meta = result.get("boss_meta")
+    if not isinstance(meta, dict):
+        return ["Oblobbles result has no multi-Boss metadata"]
+
+    count = meta.get("simultaneous_boss_count")
+    expected = meta.get("expected_min_bosses")
+    bosses = meta.get("bosses")
+    fields = meta.get("metadata_fields")
+    if meta.get("valid") is not True or meta.get("failures") != []:
+        errors.append("Oblobbles multi-Boss metadata did not pass")
+    if (
+        not isinstance(count, int)
+        or isinstance(count, bool)
+        or count < 2
+        or not isinstance(expected, int)
+        or isinstance(expected, bool)
+        or expected < 2
+    ):
+        errors.append("Oblobbles did not expose at least two simultaneous Bosses")
+    if meta.get("unique_stable_ids") is not True:
+        errors.append("Oblobbles Boss stable ids are not unique")
+    if not isinstance(fields, list) or not MULTI_BOSS_META_FIELDS.issubset(
+        item for item in fields if isinstance(item, str)
+    ):
+        errors.append("Oblobbles metadata field list is incomplete")
+    if not isinstance(bosses, list) or not isinstance(count, int) or len(bosses) != count:
+        errors.append("Oblobbles Boss metadata rows do not match the simultaneous count")
+        bosses = []
+
+    stable_ids: list[int] = []
+    required_row_fields = {
+        "stable_id",
+        "entity_type",
+        "team",
+        "prefab_hash",
+        "fsm_name_hash",
+        "fsm_state_hash",
+        "x",
+        "y",
+        "rel_x",
+        "rel_y",
+        "vx",
+        "vy",
+        "hp",
+        "max_hp",
+        "hurtbox_center_x",
+        "hurtbox_center_y",
+        "hurtbox_size_x",
+        "hurtbox_size_y",
+        "hitbox_active",
+        "phase",
+        "threat_score",
+        "flags",
+    }
+    for index, boss in enumerate(bosses):
+        if not isinstance(boss, dict) or not required_row_fields.issubset(boss):
+            errors.append(f"Oblobbles Boss metadata row {index} is incomplete")
+            continue
+        stable_id = boss.get("stable_id")
+        if not isinstance(stable_id, int) or isinstance(stable_id, bool) or stable_id <= 0:
+            errors.append(f"Oblobbles Boss metadata row {index} has an invalid stable id")
+        else:
+            stable_ids.append(stable_id)
+        if boss.get("entity_type") != 1 or boss.get("team") != 1:
+            errors.append(f"Oblobbles Boss metadata row {index} has the wrong type/team")
+    if len(stable_ids) != len(set(stable_ids)):
+        errors.append("Oblobbles Boss metadata rows repeat a stable id")
+    return errors
+
+
+def _multi_boss_acceptance(payload: dict[str, Any]) -> dict[str, Any]:
+    results = payload.get("results")
+    if not isinstance(results, list):
+        raise ModReleaseError("Godhome result rows are missing")
+    result = next(
+        (item for item in results if isinstance(item, dict) and item.get("boss_id") == "oblobbles"),
+        None,
+    )
+    if not isinstance(result, dict) or not isinstance(result.get("boss_meta"), dict):
+        raise ModReleaseError("Oblobbles multi-Boss metadata is missing")
+    meta = result["boss_meta"]
+    return {
+        "boss_id": "oblobbles",
+        "simultaneous_bosses": meta.get("simultaneous_boss_count"),
+        "unique_stable_ids": meta.get("unique_stable_ids"),
+        "verified": meta.get("valid"),
+    }
 
 
 def _valid_positive_size(value: object) -> bool:

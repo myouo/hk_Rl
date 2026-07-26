@@ -88,6 +88,9 @@ def test_enum_mirrors_have_expected_members() -> None:
     assert protocol.StatusCode.OK == 0
     assert protocol.StatusCode.NOT_RUNNING == 7
     assert protocol.EntityType.BOSS == 1
+    assert protocol.Team.NEUTRAL == 0
+    assert protocol.Team.ENEMY == 1
+    assert protocol.Team.PLAYER_CREATED == 2
 
 
 def test_encode_step_request_builds_schema_payload() -> None:

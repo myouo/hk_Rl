@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -44,6 +45,7 @@ from hkrl.utils.mod_release import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PROBE_SCHEMA = "hkrl.godhome_sweep.v2"
 P_X = 0
 P_Y = 1
 P_VX = 2
@@ -58,13 +60,26 @@ P_APPLIED_INPUT_BUTTONS = 31
 
 E_STABLE_ID = 0
 E_TYPE = 1
+E_TEAM = 2
+E_PREFAB_HASH = 3
+E_FSM_NAME = 4
 E_FSM_STATE = 5
 E_X = 6
 E_Y = 7
+E_REL_X = 8
+E_REL_Y = 9
 E_VX = 10
 E_VY = 11
 E_HP = 12
 E_MAX_HP = 13
+E_HURTBOX_CENTER_X = 14
+E_HURTBOX_CENTER_Y = 15
+E_HURTBOX_SIZE_X = 16
+E_HURTBOX_SIZE_Y = 17
+E_HITBOX_ACTIVE = 18
+E_PHASE = 21
+E_THREAT_SCORE = 22
+E_FLAGS = 23
 
 G_SCENE_HASH = 0
 G_TASK_ID = 2
@@ -85,6 +100,20 @@ class BossTelemetry:
     vy: float
     hp: float
     max_hp: float
+    entity_type: int = int(protocol.EntityType.BOSS)
+    team: int = int(protocol.Team.ENEMY)
+    prefab_hash: int = 0
+    fsm_name_hash: int = 0
+    rel_x: float = 0.0
+    rel_y: float = 0.0
+    hurtbox_center_x: float = 0.0
+    hurtbox_center_y: float = 0.0
+    hurtbox_size_x: float = 0.0
+    hurtbox_size_y: float = 0.0
+    hitbox_active: bool = False
+    phase: int = 0
+    threat_score: float = 0.0
+    flags: int = 0
 
 
 @dataclass(frozen=True)
@@ -171,9 +200,12 @@ class GodhomeProbe:
             if any(sample.action_flags & attacking_flag for sample in attack_samples):
                 break
         attack_input_seen = any(
-            sample.applied_input_buttons & attack_button_bit for sample in attack_samples
+            sample.applied_input_buttons & attack_button_bit
+            for sample in attack_samples
         )
-        attack_state_seen = any(sample.action_flags & attacking_flag for sample in attack_samples)
+        attack_state_seen = any(
+            sample.action_flags & attacking_flag for sample in attack_samples
+        )
 
         jump_samples: list[ProbeSnapshot] = []
         jump_takeoff = False
@@ -209,7 +241,8 @@ class GodhomeProbe:
                 for sample in attempt_samples
             )
             falling = airborne and any(
-                sample.player_vy < -VELOCITY_EPSILON or sample.falling for sample in attempt_samples
+                sample.player_vy < -VELOCITY_EPSILON or sample.falling
+                for sample in attempt_samples
             )
             landed = airborne and any(
                 sample.on_ground and sample.player_y <= baseline.player_y + 0.08
@@ -246,7 +279,9 @@ class GodhomeProbe:
         best_dx = {"left": 0.0, "right": 0.0}
         for round_index in range(3):
             order = (
-                (("left", 0), ("right", 2)) if round_index % 2 == 0 else (("right", 2), ("left", 0))
+                (("left", 0), ("right", 2))
+                if round_index % 2 == 0
+                else (("right", 2), ("left", 0))
             )
             for direction, movement in order:
                 direction_passed = (
@@ -270,10 +305,14 @@ class GodhomeProbe:
                 ]
                 movement_samples[direction].extend(samples)
                 if direction == "left":
-                    displacement = min(sample.player_x for sample in samples) - start.player_x
+                    displacement = (
+                        min(sample.player_x for sample in samples) - start.player_x
+                    )
                     best_dx[direction] = min(best_dx[direction], displacement)
                 else:
-                    displacement = max(sample.player_x for sample in samples) - start.player_x
+                    displacement = (
+                        max(sample.player_x for sample in samples) - start.player_x
+                    )
                     best_dx[direction] = max(best_dx[direction], displacement)
                 movement_attempts[direction].append(
                     {
@@ -285,15 +324,22 @@ class GodhomeProbe:
                 )
                 self._neutral(3, f"after_move_{direction}_{round_index + 1}")
 
-            if best_dx["left"] < -POSITION_EPSILON and best_dx["right"] > POSITION_EPSILON:
+            if (
+                best_dx["left"] < -POSITION_EPSILON
+                and best_dx["right"] > POSITION_EPSILON
+            ):
                 break
 
         left_samples = movement_samples["left"]
         right_samples = movement_samples["right"]
         left_dx = best_dx["left"]
         right_dx = best_dx["right"]
-        left_velocity_seen = any(sample.player_vx < -VELOCITY_EPSILON for sample in left_samples)
-        right_velocity_seen = any(sample.player_vx > VELOCITY_EPSILON for sample in right_samples)
+        left_velocity_seen = any(
+            sample.player_vx < -VELOCITY_EPSILON for sample in left_samples
+        )
+        right_velocity_seen = any(
+            sample.player_vx > VELOCITY_EPSILON for sample in right_samples
+        )
         # STEP responses are sampled after the committed input tick and the
         # injector is neutralized while Python is thinking. Position therefore
         # remains the authoritative controllability signal; velocity is useful
@@ -303,7 +349,12 @@ class GodhomeProbe:
 
         invalid_action_seen = any(
             "INVALID_ACTION" in sample.reward_events
-            for sample in (*left_samples, *right_samples, *jump_samples, *attack_samples)
+            for sample in (
+                *left_samples,
+                *right_samples,
+                *jump_samples,
+                *attack_samples,
+            )
         )
 
         return {
@@ -386,7 +437,8 @@ class GodhomeProbe:
                 "activation_steps": activation_steps,
                 "activation_strategy": "paced_right_neutral_jump_dash",
                 "activation_complete": bool(
-                    activity["post_ack_activity_observed"] and activity["full_health_observed"]
+                    activity["post_ack_activity_observed"]
+                    and activity["full_health_observed"]
                 ),
             }
         )
@@ -453,7 +505,9 @@ class GodhomeProbe:
             action_flags=int(player[P_ACTION_FLAGS]),
             applied_input_buttons=int(player[P_APPLIED_INPUT_BUTTONS]),
             boss_entities=bosses,
-            reward_events=tuple(event.kind.name for event in self.info.get("reward_events", [])),
+            reward_events=tuple(
+                event.kind.name for event in self.info.get("reward_events", [])
+            ),
         )
 
     def _neutral(
@@ -496,7 +550,9 @@ class GodhomeProbe:
             if self._button_available(button):
                 return
             self.step(f"wait_{button}_{index + 1}")
-        raise RuntimeError(f"action mask kept button:{button} unavailable for {max_ticks} ticks")
+        raise RuntimeError(
+            f"action mask kept button:{button} unavailable for {max_ticks} ticks"
+        )
 
     def _button_available(self, button: str) -> bool:
         layout = action_mask_layout(
@@ -505,7 +561,11 @@ class GodhomeProbe:
         )
         mask = np.asarray(self.info.get("action_mask", []), dtype=bool)
         label = f"button:{button}"
-        return label in layout and mask.shape == (len(layout),) and bool(mask[layout.index(label)])
+        return (
+            label in layout
+            and mask.shape == (len(layout),)
+            and bool(mask[layout.index(label)])
+        )
 
 
 def run_boss(
@@ -569,7 +629,9 @@ def run_boss(
             )
         )
         if post_reset.episode_id == previous_episode_id:
-            failures.append(f"same-scene RESET did not advance episode_id ({previous_episode_id})")
+            failures.append(
+                f"same-scene RESET did not advance episode_id ({previous_episode_id})"
+            )
         if post_reset.reward_events:
             failures.append(
                 "same-scene RESET leaked stale reward events: "
@@ -586,11 +648,23 @@ def run_boss(
                 "Boss did not return to a positive, full-health lifecycle "
                 "state after same-scene RESET"
             )
-        if boss_activity["full_health_max_hp"] != post_reset_boss_activity["full_health_max_hp"]:
+        if (
+            boss_activity["full_health_max_hp"]
+            != post_reset_boss_activity["full_health_max_hp"]
+        ):
             failures.append(
                 "same-scene RESET changed Boss health capacity: "
                 + f"{boss_activity['full_health_max_hp']} -> "
                 + f"{post_reset_boss_activity['full_health_max_hp']}"
+            )
+
+        boss_meta = summarize_boss_metadata(
+            probe.samples,
+            expected_min_bosses=boss.expected_min_boss_entities,
+        )
+        if not boss_meta["valid"]:
+            failures.extend(
+                f"Boss meta: {failure}" for failure in boss_meta["failures"]
             )
 
         initial_hp = _boss_hp_summary(initial)
@@ -617,6 +691,7 @@ def run_boss(
             },
             "boss_activity": boss_activity,
             "post_reset_boss_activity": post_reset_boss_activity,
+            "boss_meta": boss_meta,
             "hero": hero,
             "initial_snapshot": _snapshot_dict(initial),
             "post_reset_snapshot": _snapshot_dict(post_reset),
@@ -649,7 +724,9 @@ def validate_reset(
     if sample.task_id != boss.wire_id:
         failures.append(prefix + f"task id {sample.task_id} != {boss.wire_id}")
     if sample.player_hp <= 0 or sample.player_max_hp < sample.player_hp:
-        failures.append(prefix + f"invalid Hero HP {sample.player_hp}/{sample.player_max_hp}")
+        failures.append(
+            prefix + f"invalid Hero HP {sample.player_hp}/{sample.player_max_hp}"
+        )
     if len(sample.boss_entities) < boss.expected_min_boss_entities:
         failures.append(
             prefix
@@ -657,7 +734,9 @@ def validate_reset(
             + f"< {boss.expected_min_boss_entities}"
         )
     if sample.reward_events:
-        failures.append(prefix + "RESET returned reward events: " + ", ".join(sample.reward_events))
+        failures.append(
+            prefix + "RESET returned reward events: " + ", ".join(sample.reward_events)
+        )
     return failures
 
 
@@ -680,6 +759,120 @@ def validate_hero(hero: dict[str, Any]) -> list[str]:
     return failures
 
 
+def summarize_boss_metadata(
+    samples: list[ProbeSnapshot],
+    *,
+    expected_min_bosses: int,
+) -> dict[str, Any]:
+    """Validate and expose the richest simultaneous Boss-entity snapshot."""
+
+    if not samples:
+        raise ValueError("Boss metadata summary requires at least one sample")
+    if expected_min_bosses <= 0:
+        raise ValueError("expected_min_bosses must be positive")
+
+    # Some Hall of Gods scenes expose an inactive 0/0-HP transition object
+    # before replacing it with the real combat Boss. Prefer the simultaneous
+    # snapshot with the most complete live-health metadata, then the largest
+    # Boss set. This keeps placeholder discovery visible without mistaking it
+    # for the richest policy observation.
+    sample = max(
+        samples,
+        key=lambda value: (
+            sum(boss.hp > 0.0 and boss.max_hp > 0.0 for boss in value.boss_entities),
+            len(value.boss_entities),
+            sum(
+                boss.prefab_hash != 0
+                and boss.fsm_name_hash != 0
+                and boss.fsm_state_hash != 0
+                for boss in value.boss_entities
+            ),
+        ),
+    )
+    bosses = sample.boss_entities
+    failures: list[str] = []
+    stable_ids = [boss.stable_id for boss in bosses]
+    if len(bosses) < expected_min_bosses:
+        failures.append(
+            f"simultaneous Boss count {len(bosses)} < {expected_min_bosses}"
+        )
+    if len(set(stable_ids)) != len(stable_ids):
+        failures.append("simultaneous Boss stable ids are not unique")
+
+    combat_ready_count = sum(boss.hp > 0.0 and boss.max_hp > 0.0 for boss in bosses)
+    if combat_ready_count < expected_min_bosses:
+        failures.append(
+            f"combat-ready Boss count {combat_ready_count} < {expected_min_bosses}"
+        )
+
+    finite_fields = (
+        "x",
+        "y",
+        "rel_x",
+        "rel_y",
+        "vx",
+        "vy",
+        "hp",
+        "max_hp",
+        "hurtbox_center_x",
+        "hurtbox_center_y",
+        "hurtbox_size_x",
+        "hurtbox_size_y",
+        "threat_score",
+    )
+    for index, boss in enumerate(bosses):
+        label = f"Boss[{index}] id={boss.stable_id}"
+        if boss.stable_id <= 0:
+            failures.append(f"{label} has a non-positive stable id")
+        if boss.entity_type != int(protocol.EntityType.BOSS):
+            failures.append(f"{label} has entity_type={boss.entity_type}")
+        if boss.team != int(protocol.Team.ENEMY):
+            failures.append(f"{label} has team={boss.team}")
+        if boss.prefab_hash == 0:
+            failures.append(f"{label} has an empty prefab hash")
+        if boss.fsm_name_hash == 0 or boss.fsm_state_hash == 0:
+            failures.append(f"{label} has incomplete FSM metadata")
+        health_is_combat_ready = boss.hp > 0.0 and boss.max_hp > 0.0
+        health_is_transition_placeholder = boss.hp == 0.0 and boss.max_hp == 0.0
+        if not health_is_combat_ready and not health_is_transition_placeholder:
+            failures.append(f"{label} has invalid HP {boss.hp}/{boss.max_hp}")
+        elif health_is_combat_ready and boss.hp > boss.max_hp:
+            failures.append(f"{label} has invalid HP {boss.hp}/{boss.max_hp}")
+        for field in finite_fields:
+            if not math.isfinite(float(getattr(boss, field))):
+                failures.append(f"{label} has non-finite {field}")
+
+    return {
+        "sample_label": sample.label,
+        "simultaneous_boss_count": len(bosses),
+        "combat_ready_boss_count": combat_ready_count,
+        "transition_placeholder_count": len(bosses) - combat_ready_count,
+        "expected_min_bosses": expected_min_bosses,
+        "unique_stable_ids": len(set(stable_ids)) == len(stable_ids),
+        "metadata_fields": [
+            "stable_id",
+            "entity_type",
+            "team",
+            "prefab_hash",
+            "fsm_name_hash",
+            "fsm_state_hash",
+            "position",
+            "relative_position",
+            "velocity",
+            "hp",
+            "max_hp",
+            "hurtbox",
+            "hitbox_active",
+            "phase",
+            "threat_score",
+            "flags",
+        ],
+        "bosses": [asdict(boss) for boss in bosses],
+        "failures": failures,
+        "valid": not failures,
+    }
+
+
 def summarize_boss_activity(samples: list[ProbeSnapshot]) -> dict[str, Any]:
     """Summarize natural Boss telemetry without prescribing a movement pattern."""
 
@@ -693,7 +886,8 @@ def summarize_boss_activity(samples: list[ProbeSnapshot]) -> dict[str, Any]:
 
     first_ids = {boss.stable_id for boss in samples[0].boss_entities}
     entity_set_changed = any(
-        {boss.stable_id for boss in sample.boss_entities} != first_ids for sample in samples[1:]
+        {boss.stable_id for boss in sample.boss_entities} != first_ids
+        for sample in samples[1:]
     )
     position_changed = False
     velocity_seen = False
@@ -707,18 +901,22 @@ def summarize_boss_activity(samples: list[ProbeSnapshot]) -> dict[str, Any]:
             for observation in observations[1:]
         )
         velocity_seen = velocity_seen or any(
-            abs(observation.vx) > VELOCITY_EPSILON or abs(observation.vy) > VELOCITY_EPSILON
+            abs(observation.vx) > VELOCITY_EPSILON
+            or abs(observation.vy) > VELOCITY_EPSILON
             for observation in observations
         )
         fsm_changed = (
-            fsm_changed or len({observation.fsm_state_hash for observation in observations}) > 1
+            fsm_changed
+            or len({observation.fsm_state_hash for observation in observations}) > 1
         )
         hp_changed = hp_changed or any(
             observation.hp != first.hp for observation in observations[1:]
         )
 
     positive_hp_observed = any(
-        boss.hp > 0.0 and boss.max_hp > 0.0 for sample in samples for boss in sample.boss_entities
+        boss.hp > 0.0 and boss.max_hp > 0.0
+        for sample in samples
+        for boss in sample.boss_entities
     )
     full_health_sample = next(
         (sample for sample in samples if _boss_health_ready(sample)),
@@ -736,7 +934,11 @@ def summarize_boss_activity(samples: list[ProbeSnapshot]) -> dict[str, Any]:
         "hp_changed": hp_changed,
         "entity_set_changed": entity_set_changed,
         "post_ack_activity_observed": (
-            position_changed or velocity_seen or fsm_changed or hp_changed or entity_set_changed
+            position_changed
+            or velocity_seen
+            or fsm_changed
+            or hp_changed
+            or entity_set_changed
         ),
         "positive_hp_observed": positive_hp_observed,
         "full_health_observed": full_health_sample is not None,
@@ -747,7 +949,9 @@ def summarize_boss_activity(samples: list[ProbeSnapshot]) -> dict[str, Any]:
             []
             if full_health_sample is None
             else sorted(
-                boss.max_hp for boss in full_health_sample.boss_entities if boss.max_hp > 0.0
+                boss.max_hp
+                for boss in full_health_sample.boss_entities
+                if boss.max_hp > 0.0
             )
         ),
         "reset_object_gate_passed": True,
@@ -805,7 +1009,9 @@ def select_bosses(
         raise ValueError(f"unknown --start-at Boss id: {start_at}")
     selected = list(catalog.bosses)
     if start_at is not None:
-        start_index = next(index for index, boss in enumerate(selected) if boss.boss_id == start_at)
+        start_index = next(
+            index for index, boss in enumerate(selected) if boss.boss_id == start_at
+        )
         selected = selected[start_index:]
     if boss_ids:
         selected = [boss for boss in selected if boss.boss_id in boss_ids]
@@ -875,7 +1081,9 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_true",
         help="reuse verified results already present in --output",
     )
-    parser.add_argument("--list", action="store_true", help="print selected catalog and exit")
+    parser.add_argument(
+        "--list", action="store_true", help="print selected catalog and exit"
+    )
     parser.add_argument(
         "--fail-on-failed",
         action="store_true",
@@ -915,7 +1123,9 @@ def main(argv: list[str] | None = None) -> int:
 
     release_metadata = load_mod_release_metadata(REPO_ROOT)
     if not args.mod_dll:
-        raise ValueError("--mod-dll is required so evidence is bound to the tested binary")
+        raise ValueError(
+            "--mod-dll is required so evidence is bound to the tested binary"
+        )
     requested_mod_version = args.mod_version or release_metadata.mod_version
     if requested_mod_version != release_metadata.mod_version:
         raise ValueError(
@@ -941,7 +1151,9 @@ def main(argv: list[str] | None = None) -> int:
         installed_build = fingerprint_file(args.globalgamemanagers)
         missing = [boss.scene for boss in selected if boss.scene not in build_scenes]
         if missing:
-            raise ValueError("catalog scenes absent from installed build: " + ", ".join(missing))
+            raise ValueError(
+                "catalog scenes absent from installed build: " + ", ".join(missing)
+            )
 
     output = Path(args.output).expanduser()
     report = Path(args.report).expanduser()
@@ -958,7 +1170,8 @@ def main(argv: list[str] | None = None) -> int:
     results: dict[str, dict[str, Any]] = {
         boss_id: result
         for boss_id, result in existing.items()
-        if boss_id in {boss.boss_id for boss in selected} and result.get("status") == "verified"
+        if boss_id in {boss.boss_id for boss in selected}
+        and result.get("status") == "verified"
     }
     config = load_train_config(args.config)
     started = time.time()
@@ -1081,6 +1294,7 @@ def make_bundle(
         "remaining": len(selected) - len(ordered),
     }
     return {
+        "probe_schema": PROBE_SCHEMA,
         "schema_version": protocol.SCHEMA_VERSION,
         "catalog_version": catalog.catalog_version,
         "scope": "Hall of Gods scene, lifecycle, Boss telemetry, and Hero primitive controls",
@@ -1109,6 +1323,19 @@ def write_evidence(output: Path, report: Path, bundle: dict[str, Any]) -> None:
 
 def render_report(bundle: dict[str, Any]) -> str:
     counts = bundle["counts"]
+    multi_result = next(
+        (
+            result
+            for result in bundle["results"]
+            if result.get("boss_id") == "oblobbles"
+        ),
+        None,
+    )
+    multi_meta = (
+        multi_result.get("boss_meta", {})
+        if isinstance(multi_result, dict)
+        else {}
+    )
     lines = [
         "# Godhome all-Boss live compatibility sweep",
         "",
@@ -1124,6 +1351,12 @@ def render_report(bundle: dict[str, Any]) -> str:
         ),
         "- Constraint: ordinary Hero policy input only; no Boss or simulation-state mutation",
         "- Lifecycle: natural activation + full combat HP on entry and same-scene reload",
+        (
+            "- Multi-Boss meta: Oblobbles exposed "
+            f"{multi_meta.get('simultaneous_boss_count', '—')} simultaneous rows; "
+            f"unique stable ids={multi_meta.get('unique_stable_ids', '—')}; "
+            f"valid={multi_meta.get('valid', '—')}"
+        ),
         "- `@N`: extra bounded activation steps; `@0` means the Hero control probe activated it",
         "",
         (
@@ -1137,9 +1370,7 @@ def render_report(bundle: dict[str, Any]) -> str:
         activity = result.get("boss_activity", {})
         post_reset_activity = result.get("post_reset_boss_activity", {})
         hero = result.get("hero", {})
-        reset_text = (
-            f"{reset.get('initial_duration_s', '—')}/{reset.get('same_scene_duration_s', '—')} s"
-        )
+        reset_text = f"{reset.get('initial_duration_s', '—')}/{reset.get('same_scene_duration_s', '—')} s"
 
         def activity_text(value: dict[str, Any]) -> str:
             signals = "+".join(
@@ -1157,7 +1388,9 @@ def render_report(bundle: dict[str, Any]) -> str:
                 signals = f"{signals}+full-HP" if signals else "full-HP"
             return f"{signals or 'none'}@{value.get('activation_steps', '—')}"
 
-        lifecycle_text = f"{activity_text(activity)}/{activity_text(post_reset_activity)}"
+        lifecycle_text = (
+            f"{activity_text(activity)}/{activity_text(post_reset_activity)}"
+        )
         hero_text = (
             "L/R/J/G/L/A"
             if all(
@@ -1199,6 +1432,20 @@ def _boss_telemetry(obs: dict[str, np.ndarray]) -> list[BossTelemetry]:
                 vy=_round(entity[E_VY]),
                 hp=_round(entity[E_HP]),
                 max_hp=_round(entity[E_MAX_HP]),
+                entity_type=int(entity[E_TYPE]),
+                team=int(entity[E_TEAM]),
+                prefab_hash=int(entity[E_PREFAB_HASH]),
+                fsm_name_hash=int(entity[E_FSM_NAME]),
+                rel_x=_round(entity[E_REL_X]),
+                rel_y=_round(entity[E_REL_Y]),
+                hurtbox_center_x=_round(entity[E_HURTBOX_CENTER_X]),
+                hurtbox_center_y=_round(entity[E_HURTBOX_CENTER_Y]),
+                hurtbox_size_x=_round(entity[E_HURTBOX_SIZE_X]),
+                hurtbox_size_y=_round(entity[E_HURTBOX_SIZE_Y]),
+                hitbox_active=bool(entity[E_HITBOX_ACTIVE]),
+                phase=int(entity[E_PHASE]),
+                threat_score=_round(entity[E_THREAT_SCORE]),
+                flags=int(entity[E_FLAGS]),
             )
         )
     return bosses
@@ -1235,6 +1482,7 @@ def _load_resume_results(
     if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
         raise ValueError(f"invalid resume evidence bundle: {path}")
     expected_metadata = {
+        "probe_schema": PROBE_SCHEMA,
         "schema_version": protocol.SCHEMA_VERSION,
         "tested_mod": expected_tested_mod,
         "catalog": expected_catalog,
@@ -1242,7 +1490,9 @@ def _load_resume_results(
     }
     for key, expected in expected_metadata.items():
         if payload.get(key) != expected:
-            raise ValueError(f"resume evidence {key} does not match the current test input")
+            raise ValueError(
+                f"resume evidence {key} does not match the current test input"
+            )
     return {
         str(result["boss_id"]): result
         for result in payload["results"]

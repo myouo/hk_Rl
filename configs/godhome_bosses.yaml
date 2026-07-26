@@ -68,6 +68,7 @@ bosses:
     wire_id: 2011
     display_name: Oblobbles
     scene: GG_Oblobbles
+    expected_min_boss_entities: 2
   - boss_id: hive_knight
     wire_id: 2012
     display_name: Hive Knight

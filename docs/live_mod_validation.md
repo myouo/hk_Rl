@@ -130,7 +130,9 @@ Every Boss gets an isolated TCP connection and two clean RESET handshakes. The
 acceptance checks cover the requested scene hash and task id, `RUNNING`
 lifecycle, current-scene Boss entities, left/right Hero movement, jump
 input/takeoff/gravity/landing, attack input/state, empty reset events, and a new
-`episode_id` after same-scene reload.
+`episode_id` after same-scene reload. The evidence envelope is versioned as
+`hkrl.godhome_sweep.v2`; resume refuses a different probe version even when the
+Mod/game/catalog fingerprints match.
 
 RESET is deliberately an object/control gate and sends no policy action.
 After each RESET acknowledgement, the test uses a bounded, action-mask-aware
@@ -141,7 +143,11 @@ Mod-side input gap. Each entry must expose natural position, velocity, FSM, HP,
 or combat-entity-set activity and a positive/full combat-health baseline. The
 same checks run again after reload, and the sorted `max_hp` capacity vector must
 match. `0/0` transition/cinematic placeholders remain in telemetry but are not
-combat-health baselines. Failure to activate is a hard failure, not a warning.
+combat-health baselines. The catalog requires two simultaneous combat-ready
+Boss rows for Oblobbles. Each row records stable id, type/team, prefab and FSM
+hashes, world/relative position, velocity, HP, hurtbox/hitbox state, phase,
+threat score, and flags; duplicate ids or missing metadata fail the sweep.
+Failure to activate is a hard failure, not a warning.
 
 JSON and Markdown are atomically updated after each fight. Continue an
 interrupted run without retesting completed fights:
@@ -183,14 +189,16 @@ validation confirmed:
 - every RESET advanced `episode_id` and returned no stale reward event.
 
 The tested v0.8.0 DLL SHA-256 is
-`1b885f1cdb1e8ce29cecd2e304531a1107467d216e9fe34777d1ef95df6fb062`.
-Median first-entry RESET was `1.9278 s`; median same-scene RESET was `1.7041 s`.
-Absolute Radiance was the longest scene load (`20.7600 s` first entry,
-`19.8361 s` reload), within the 60-second gate. Winged Nosk required the
+`05950f3bf0ed83c5f48c6ae0f3d80759db089653a22894e33345001c6ad64955`.
+Median first-entry RESET was `1.7180 s`; median same-scene RESET was `1.7219 s`.
+Absolute Radiance was the longest scene load (`19.7401 s` first entry,
+`19.7346 s` reload), within the 60-second gate. Winged Nosk required the
 largest natural activation traversal (`288` paced steps first entry, `231` after
-reload). Troupe Master Grimm correctly transitioned from a `0/0` entry object
-to `1000/1000`; Nightmare King Grimm kept a `0/0` placeholder alongside its
-`1250/1250` combat entity. Neither case required a Boss event or state write.
+reload). Oblobbles exposed two simultaneous `450/450` combat Boss rows with
+unique stable ids and the complete v2 meta field set. Troupe Master Grimm
+correctly transitioned from a `0/0` entry object to `1000/1000`; Nightmare King
+Grimm kept one explicit `0/0` transition placeholder alongside its `1250/1250`
+combat entity. Neither case required a Boss event or state write.
 
 Evidence:
 [`godhome-all-boss-sweep-v0.8.0.json`](../runs/live/godhome-all-boss-sweep-v0.8.0.json)

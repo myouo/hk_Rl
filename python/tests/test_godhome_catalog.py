@@ -28,6 +28,7 @@ def test_catalog_has_all_44_distinct_hall_of_gods_fights() -> None:
     assert by_id["pure_vessel"].scene == "GG_Hollow_Knight"
     assert by_id["absolute_radiance"].scene == "GG_Radiance"
     assert by_id["nightmare_king_grimm"].variant_of == "troupe_master_grimm"
+    assert by_id["oblobbles"].expected_min_boss_entities == 2
 
 
 def test_catalog_builds_primitive_only_probe_tasks() -> None:
@@ -163,6 +164,58 @@ def test_sweep_validates_lifecycle_controls_and_boss_activity() -> None:
     )
 
 
+def test_sweep_exposes_and_validates_simultaneous_boss_metadata() -> None:
+    module = _load_script()
+    boss = load_godhome_catalog(CATALOG_PATH).bosses[0]
+    first = module.BossTelemetry(
+        stable_id=10,
+        fsm_state_hash=101,
+        x=5.0,
+        y=2.0,
+        vx=0.0,
+        vy=0.0,
+        hp=90.0,
+        max_hp=90.0,
+        prefab_hash=1001,
+        fsm_name_hash=2001,
+        rel_x=-1.0,
+        rel_y=0.5,
+        hurtbox_center_x=5.0,
+        hurtbox_center_y=2.0,
+        hurtbox_size_x=1.5,
+        hurtbox_size_y=2.5,
+        threat_score=100.5,
+        flags=16,
+    )
+    second = replace(
+        first,
+        stable_id=11,
+        prefab_hash=1002,
+        fsm_name_hash=2002,
+        fsm_state_hash=102,
+        x=8.0,
+        rel_x=2.0,
+    )
+    sample = replace(
+        _sample(module, boss, first, label="multi", episode_id=7),
+        boss_entities=(first, second),
+    )
+
+    summary = module.summarize_boss_metadata(
+        [sample],
+        expected_min_bosses=2,
+    )
+
+    assert summary["valid"]
+    assert summary["simultaneous_boss_count"] == 2
+    assert summary["combat_ready_boss_count"] == 2
+    assert summary["transition_placeholder_count"] == 0
+    assert summary["unique_stable_ids"]
+    assert {item["stable_id"] for item in summary["bosses"]} == {10, 11}
+    assert "prefab_hash" in summary["metadata_fields"]
+    assert "hurtbox" in summary["metadata_fields"]
+
+
 def test_sweep_accepts_deferred_boss_hp_only_after_natural_activation() -> None:
     module = _load_script()
     boss = load_godhome_catalog(CATALOG_PATH).bosses[0]
@@ -243,6 +296,82 @@ def test_sweep_health_gate_ignores_zero_hp_transition_placeholder() -> None:
     activity = module.summarize_boss_activity([sample])
     assert activity["full_health_observed"]
     assert activity["full_health_max_hp"] == [90.0]
+
+
+def test_boss_metadata_prefers_live_combat_row_over_transition_placeholder() -> None:
+    module = _load_script()
+    boss = load_godhome_catalog(CATALOG_PATH).bosses[0]
+    placeholder = module.BossTelemetry(
+        stable_id=10,
+        fsm_state_hash=101,
+        x=5.0,
+        y=-11.0,
+        vx=0.0,
+        vy=0.0,
+        hp=0.0,
+        max_hp=0.0,
+        prefab_hash=1001,
+        fsm_name_hash=2001,
+    )
+    combat = replace(
+        placeholder,
+        stable_id=11,
+        fsm_state_hash=202,
+        y=2.0,
+        hp=90.0,
+        max_hp=90.0,
+    )
+
+    summary = module.summarize_boss_metadata(
+        [
+            _sample(module, boss, placeholder, label="transition", episode_id=7),
+            _sample(module, boss, combat, label="combat", episode_id=7),
+        ],
+        expected_min_bosses=1,
+    )
+
+    assert summary["valid"]
+    assert summary["sample_label"] == "combat"
+    assert summary["bosses"][0]["stable_id"] == 11
+
+
+def test_boss_metadata_keeps_zero_hp_transition_row_when_real_boss_is_present() -> None:
+    module = _load_script()
+    boss = load_godhome_catalog(CATALOG_PATH).bosses[0]
+    placeholder = module.BossTelemetry(
+        stable_id=10,
+        fsm_state_hash=101,
+        x=5.0,
+        y=-11.0,
+        vx=0.0,
+        vy=0.0,
+        hp=0.0,
+        max_hp=0.0,
+        prefab_hash=1001,
+        fsm_name_hash=2001,
+    )
+    combat = replace(
+        placeholder,
+        stable_id=11,
+        fsm_state_hash=202,
+        y=2.0,
+        hp=90.0,
+        max_hp=90.0,
+    )
+    sample = replace(
+        _sample(module, boss, combat, label="mixed", episode_id=7),
+        boss_entities=(placeholder, combat),
+    )
+
+    summary = module.summarize_boss_metadata(
+        [sample],
+        expected_min_bosses=1,
+    )
+
+    assert summary["valid"]
+    assert summary["simultaneous_boss_count"] == 2
+    assert summary["combat_ready_boss_count"] == 1
+    assert summary["transition_placeholder_count"] == 1
 
 
 def test_sweep_uses_bounded_hero_primitives_for_dormant_boss_activation() -> None:
@@ -326,6 +455,12 @@ def test_report_renders_entry_and_reload_lifecycle_evidence() -> None:
                         "jump_landed": True,
                         "attack_state_seen": True,
                     },
+                    "boss_meta": {
+                        "simultaneous_boss_count": 2,
+                        "unique_stable_ids": True,
+                        "valid": True,
+                    },
+                    "boss_id": "oblobbles",
                 }
             ],
         }
@@ -335,6 +470,7 @@ def test_report_renders_entry_and_reload_lifecycle_evidence() -> None:
     assert "L/R/J/G/L/A" in report
     assert "HKRLEnvMod v0.8.0" in report
     assert "a" * 64 in report
+    assert "Oblobbles exposed 2 simultaneous rows" in report
 
 
 def test_resume_evidence_is_bound_to_the_same_binary_and_game_build(
@@ -362,6 +498,7 @@ def test_resume_evidence_is_bound_to_the_same_binary_and_game_build(
     evidence.write_text(
         json.dumps(
             {
+                "probe_schema": module.PROBE_SCHEMA,
                 "schema_version": 6,
                 "tested_mod": tested_mod,
                 "catalog": catalog,
@@ -379,6 +516,19 @@ def test_resume_evidence_is_bound_to_the_same_binary_and_game_build(
         expected_installed_build=installed_build,
     )
     assert set(resumed) == {"gruz_mother"}
+
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    payload["probe_schema"] = "hkrl.godhome_sweep.v1"
+    evidence.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="probe_schema"):
+        module._load_resume_results(
+            evidence,
+            expected_tested_mod=tested_mod,
+            expected_catalog=catalog,
+            expected_installed_build=installed_build,
+        )
+    payload["probe_schema"] = module.PROBE_SCHEMA
+    evidence.write_text(json.dumps(payload), encoding="utf-8")
 
     mismatched_mod = dict(tested_mod, dll_sha256="d" * 64)
     with pytest.raises(ValueError, match="tested_mod"):

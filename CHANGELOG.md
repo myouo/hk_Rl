@@ -16,7 +16,9 @@ the project version tracks the **schema_version** + roadmap phase.
   acceptance record to the exact installed `HKRLEnvMod.dll`. Release packaging
   rejects dirty or untagged sources, incomplete/contaminated live evidence,
   binary drift, unsafe archive paths, and machine-secret `hkrl-runtime.conf`
-  inclusion.
+  inclusion. The versioned `hkrl.godhome_sweep.v2` evidence gate also requires
+  two simultaneous Oblobbles entities with unique stable ids and complete
+  per-Boss type/team/prefab/FSM/transform/health/hitbox/threat metadata.
 - Fixed visible Hero walking stutter between synchronous policy decisions.
   Response suspension now keeps movement/aim axes and true hold controls for a
   bounded 200 ms bridge while stripping edge-triggered attack/dash/cast

@@ -37,13 +37,17 @@ python scripts/live_walk_smoothness.py \
 ```
 
 The sweep records path-free SHA-256 fingerprints for the Mod DLL, installed
-game build table, and Boss catalog. Every fight must pass entry and same-scene
-reload lifecycle, full-health restoration, natural Boss activity, and Hero
-left/right/jump/gravity/landing/attack controls. It exposes no pause,
-timescale, Boss-health, Boss-FSM, position, or physics mutation route. The walk
-gate requires ordinary segmented decisions to retain at least 90% of the
-single-STEP movement speed using observed server time, with clean HP/events and
-the native 0.02-second fixed timestep.
+game build table, and Boss catalog. Evidence uses the versioned
+`hkrl.godhome_sweep.v2` diagnostic schema, so `--resume` cannot mix results
+produced by different probe semantics. Every fight must pass entry and
+same-scene reload lifecycle, full-health restoration, natural Boss activity,
+and Hero left/right/jump/gravity/landing/attack controls. Oblobbles must expose
+at least two simultaneous Boss rows with unique stable ids and complete
+type/team/prefab/FSM/transform/health/hitbox/threat metadata. The driver exposes
+no pause, timescale, Boss-health, Boss-FSM, position, or physics mutation route.
+The walk gate requires ordinary segmented decisions to retain at least 90% of
+the single-STEP movement speed using observed server time, with clean HP/events
+and the native 0.02-second fixed timestep.
 
 Once all gates pass, commit the complete source baseline and add the annotated
 tag `v0.8.0`. The official packager requires that tag and a clean worktree:
@@ -64,8 +68,9 @@ dist/mod/HKRLEnvMod-v0.8.0-schema6.zip.sha256
 The verifier rejects version/schema drift, untagged or dirty source, missing or
 extra ZIP entries, unsafe paths, duplicate files, hash/size mismatches,
 incomplete 44/44 evidence, reset contamination, and any difference between the
-tested and packaged Mod DLL. The movement evidence must also pass its 90% speed
-retention gate against that DLL. The archive contains only the two runtime DLLs,
+tested and packaged Mod DLL. It also rejects missing or malformed simultaneous
+multi-Boss metadata. The movement evidence must pass its 90% speed-retention
+gate against that DLL. The archive contains only the two runtime DLLs,
 documentation/license, manifest, and live evidence. It never contains
 `hkrl-runtime.conf` or an authentication token.
 

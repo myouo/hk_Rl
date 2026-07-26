@@ -142,6 +142,15 @@ def test_live_acceptance_rejects_binary_drift_or_failed_boss(
             dll_size_bytes=Path(inputs["dll_path"]).stat().st_size,
         )
 
+    payload["results"][11]["boss_meta"]["simultaneous_boss_count"] = 1
+    with pytest.raises(ModReleaseError, match="at least two simultaneous Bosses"):
+        validate_live_evidence(
+            payload,
+            metadata=metadata,
+            dll_sha256=dll_digest,
+            dll_size_bytes=Path(inputs["dll_path"]).stat().st_size,
+        )
+
     walk_payload = json.loads(Path(inputs["walk_evidence_path"]).read_text(encoding="utf-8"))
     validate_walk_evidence(
         walk_payload,
@@ -203,12 +212,41 @@ def _release_inputs(tmp_path: Path, version: str) -> dict[str, Path]:
             },
             "initial_snapshot": {"reward_events": []},
             "post_reset_snapshot": {"reward_events": []},
+            "boss_meta": (
+                {
+                    "sample_label": "initial_reset",
+                    "simultaneous_boss_count": 2,
+                    "expected_min_bosses": 2,
+                    "unique_stable_ids": True,
+                    "metadata_fields": sorted(mod_release.MULTI_BOSS_META_FIELDS),
+                    "bosses": [
+                        _boss_meta_row(stable_id=101, x=90.0),
+                        _boss_meta_row(stable_id=102, x=110.0),
+                    ],
+                    "failures": [],
+                    "valid": True,
+                }
+                if boss_id == "boss_11"
+                else {
+                    "sample_label": "initial_reset",
+                    "simultaneous_boss_count": 1,
+                    "expected_min_bosses": 1,
+                    "unique_stable_ids": True,
+                    "metadata_fields": sorted(mod_release.MULTI_BOSS_META_FIELDS),
+                    "bosses": [_boss_meta_row(stable_id=index + 1, x=100.0)],
+                    "failures": [],
+                    "valid": True,
+                }
+            ),
         }
         for index, boss_id in enumerate(boss_ids)
     ]
+    results[11]["boss_id"] = "oblobbles"
+    boss_ids[11] = "oblobbles"
     evidence.write_text(
         json.dumps(
             {
+                "probe_schema": "hkrl.godhome_sweep.v2",
                 "schema_version": 6,
                 "boss_mutation_allowed": False,
                 "simulation_control_allowed": False,
@@ -297,4 +335,31 @@ def _release_inputs(tmp_path: Path, version: str) -> dict[str, Path]:
         "evidence_json_path": evidence,
         "evidence_report_path": report,
         "walk_evidence_path": walk_evidence,
+    }
+
+
+def _boss_meta_row(*, stable_id: int, x: float) -> dict[str, object]:
+    return {
+        "stable_id": stable_id,
+        "entity_type": 1,
+        "team": 1,
+        "prefab_hash": 1000 + stable_id,
+        "fsm_name_hash": 2000,
+        "fsm_state_hash": 3000,
+        "x": x,
+        "y": 14.0,
+        "rel_x": x - 100.0,
+        "rel_y": 8.0,
+        "vx": 0.0,
+        "vy": 0.0,
+        "hp": 450.0,
+        "max_hp": 450.0,
+        "hurtbox_center_x": x,
+        "hurtbox_center_y": 14.0,
+        "hurtbox_size_x": 3.0,
+        "hurtbox_size_y": 3.0,
+        "hitbox_active": False,
+        "phase": 0,
+        "threat_score": 100.0,
+        "flags": 16,
     }

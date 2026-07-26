@@ -90,6 +90,14 @@ class EntityType(enum.IntEnum):
     UNKNOWN = 255
 
 
+class Team(enum.IntEnum):
+    """Mirror of HKRL.Team."""
+
+    NEUTRAL = 0
+    ENEMY = 1
+    PLAYER_CREATED = 2
+
+
 class RewardEventKind(enum.IntEnum):
     """Mirror of HKRL.RewardEventKind. Payload semantics: docs/reward_design.md."""
 

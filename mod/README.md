@@ -68,7 +68,8 @@ The clean, tagged release is written as
 `dist/mod/HKRLEnvMod-v0.8.0-schema6.zip` with a sidecar manifest and SHA-256
 file. It contains `HKRLEnvMod.dll`, `Google.FlatBuffers.dll`, install
 documentation, the license, and binary-bound 44-Boss plus walk-smoothness live
-evidence. It deliberately excludes `hkrl-runtime.conf`: create that
+evidence. The acceptance manifest also certifies simultaneous per-Boss metadata
+for the two Oblobbles entities. It deliberately excludes `hkrl-runtime.conf`: create that
 permission-restricted, machine-specific file during deployment so
 authentication tokens never enter a release archive.
 

@@ -174,7 +174,8 @@ python scripts/live_boss_arena.py \
   --episodes 1 \
   --output runs/live/boss-arena-death-autoreset.json
 
-# 全量 Godhome 兼容巡检：44 个独立 Boss/变体、二次 RESET、Hero 基础控制
+# 全量 Godhome 兼容巡检：44 个独立 Boss/变体、二次 RESET、Hero 基础控制；
+# Oblobbles 额外强制验证同帧双 Boss 的独立完整 meta
 python scripts/live_godhome_sweep.py \
   --mod-dll /path/to/Mods/HKRLEnvMod/HKRLEnvMod.dll \
   --globalgamemanagers /path/to/hollow_knight_Data/globalgamemanagers \
