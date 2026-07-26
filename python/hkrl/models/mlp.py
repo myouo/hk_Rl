@@ -14,8 +14,14 @@ import torch
 from torch import Tensor, nn
 
 from hkrl.models.base import ActorCritic, RnnState
+from hkrl.models.encoders import without_raw_categorical_features
 from hkrl.models.heads import CompositeActionDistribution, HybridPolicyHead, ValueHead
-from hkrl.spaces import DEFAULT_N_MACROS
+from hkrl.spaces import (
+    DEFAULT_N_MACROS,
+    ENTITY_FEATURE_INDEX,
+    GLOBAL_FEATURE_INDEX,
+    PLAYER_FEATURE_INDEX,
+)
 from hkrl.utils.registry import register_model
 
 
@@ -85,9 +91,31 @@ class MlpActorCritic(ActorCritic):
 
 
 def _flatten_observation(obs: dict[str, Tensor]) -> Tensor:
-    global_state = obs["global"].flatten(start_dim=-1)
-    player_state = obs["player"].flatten(start_dim=-1)
-    entities = obs["entities"]
+    global_state = without_raw_categorical_features(
+        obs["global"],
+        (
+            GLOBAL_FEATURE_INDEX["scene_hash"],
+            GLOBAL_FEATURE_INDEX["arena_id"],
+        ),
+    ).flatten(start_dim=-1)
+    player_state = without_raw_categorical_features(
+        obs["player"],
+        (
+            PLAYER_FEATURE_INDEX["actor_state_hash"],
+            PLAYER_FEATURE_INDEX["spell_fsm_state_hash"],
+            PLAYER_FEATURE_INDEX["dream_nail_fsm_state_hash"],
+            PLAYER_FEATURE_INDEX["nail_arts_fsm_state_hash"],
+        ),
+    ).flatten(start_dim=-1)
+    entities = without_raw_categorical_features(
+        obs["entities"],
+        (
+            ENTITY_FEATURE_INDEX["entity_id"],
+            ENTITY_FEATURE_INDEX["prefab_hash"],
+            ENTITY_FEATURE_INDEX["fsm_name_hash"],
+            ENTITY_FEATURE_INDEX["fsm_state_hash"],
+        ),
+    )
     entity_mask = obs.get("entity_mask")
     if entity_mask is not None:
         mask = entity_mask.to(device=entities.device, dtype=entities.dtype).unsqueeze(-1)

@@ -1,0 +1,6 @@
+# Task: Traitor Lord. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: traitor_lord
+wire_id: 2022
+scene: GG_Traitor_Lord

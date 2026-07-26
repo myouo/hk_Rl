@@ -1,0 +1,6 @@
+# Task: Enraged Guardian (Crystal Guardian variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: enraged_guardian
+wire_id: 2020
+scene: GG_Crystal_Guardian_2

@@ -1,0 +1,6 @@
+# Task: Nailmasters Oro & Mato. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: nailmasters_oro_and_mato
+wire_id: 2038
+scene: GG_Nailmasters

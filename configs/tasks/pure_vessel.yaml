@@ -1,0 +1,6 @@
+# Task: Pure Vessel. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: pure_vessel
+wire_id: 2040
+scene: GG_Hollow_Knight

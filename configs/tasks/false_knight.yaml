@@ -1,0 +1,6 @@
+# Task: False Knight. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: false_knight
+wire_id: 2003
+scene: GG_False_Knight

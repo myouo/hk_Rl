@@ -1,0 +1,6 @@
+# Task: Massive Moss Charger. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: massive_moss_charger
+wire_id: 2007
+scene: GG_Mega_Moss_Charger

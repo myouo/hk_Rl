@@ -1,0 +1,6 @@
+# Task: Winged Nosk (Nosk variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: winged_nosk
+wire_id: 2016
+scene: GG_Nosk_Hornet

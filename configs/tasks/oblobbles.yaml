@@ -1,0 +1,6 @@
+# Task: Oblobbles (simultaneous multi-Boss fight). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: oblobbles
+wire_id: 2011
+scene: GG_Oblobbles

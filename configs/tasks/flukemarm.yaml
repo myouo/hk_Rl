@@ -1,0 +1,6 @@
+# Task: Flukemarm. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: flukemarm
+wire_id: 2008
+scene: GG_Flukemarm

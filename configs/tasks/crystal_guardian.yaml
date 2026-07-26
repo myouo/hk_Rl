@@ -1,0 +1,6 @@
+# Task: Crystal Guardian. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: crystal_guardian
+wire_id: 2019
+scene: GG_Crystal_Guardian

@@ -1,0 +1,6 @@
+# Task: Elder Hu. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: elder_hu
+wire_id: 2036
+scene: GG_Ghost_Hu

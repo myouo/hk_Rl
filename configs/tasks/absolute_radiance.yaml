@@ -1,0 +1,6 @@
+# Task: Absolute Radiance. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: absolute_radiance
+wire_id: 2043
+scene: GG_Radiance

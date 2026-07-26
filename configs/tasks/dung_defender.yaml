@@ -1,0 +1,6 @@
+# Task: Dung Defender. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: dung_defender
+wire_id: 2027
+scene: GG_Dung_Defender

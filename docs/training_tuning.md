@@ -8,8 +8,10 @@ This project has two deliberately separate configuration layers.
 2. [`configs/base.yaml`](../configs/base.yaml) plus `configs/train/*.yaml` are
    the composed, typed `TrainConfig`: algorithm, model, optimizer, rollout, and
    learner-runtime hyperparameters.
-3. `configs/tasks/*.yaml` owns arena-specific action cadence, observation tier,
-   episode limit, and reward weights.
+3. `configs/tasks/*.yaml` owns Boss identity and any arena-specific overrides.
+   The catalog-generated Hall of Gods tasks compose their common action,
+   observation, episode, and reward settings from
+   `configs/task_defaults/godhome_training.yaml`.
 
 Unknown keys fail validation. Do not copy hyperparameters into the experiment
 manifest; point both roles at composed train configs with the same training
@@ -55,6 +57,10 @@ The remote profile groups four 2,048-transition worker rollouts into one
 AMP `auto` selects native BF16 on Ampere-or-newer GPUs and FP16 plus GradScaler
 on Volta GPUs such as V100; it does not treat a software BF16 fallback as native
 support.
+Live scene/actor/prefab/FSM hashes are signed int32-scale values. The structured
+encoders remove those columns from continuous MLP inputs and use field-specific
+4,096-bucket embeddings, keeping V100 FP16 forwards finite without discarding
+Boss/state identity.
 The SSH profile starts FP16 scaling at 1,024 on Volta. Recoverable scaled-gradient
 overflow skips only that optimizer step, lowers the scale, and reports
 `amp_step_skipped` plus exact succeeded/skipped step counts.
@@ -73,6 +79,11 @@ not an FPS cap. Tune `local.time_scale` with
 `scripts/live_performance_benchmark.py` (for example 1×, 2×, then 3×) and retain
 the fastest value that preserves reset success, action validity, and game SPS.
 The local launcher restores 1× when a finite run exits normally.
+
+All 44 catalog Bosses have standalone files under `configs/tasks/`, but merely
+creating a task file does not enroll it. The active task set remains the explicit
+three-entry list in `configs/experiments/godhome_smart.yaml`; add tasks there only
+when their curriculum stage and fixed-seed evaluation gate are ready.
 
 Tune from fixed-seed evaluation, not reward:
 

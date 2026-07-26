@@ -1,0 +1,6 @@
+# Task: Failed Champion (False Knight variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: failed_champion
+wire_id: 2004
+scene: GG_Failed_Champion

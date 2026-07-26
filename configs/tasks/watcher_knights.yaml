@@ -1,0 +1,6 @@
+# Task: Watcher Knights. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: watcher_knights
+wire_id: 2029
+scene: GG_Watcher_Knights

@@ -1,0 +1,6 @@
+# Task: Gorb. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: gorb
+wire_id: 2035
+scene: GG_Ghost_Gorb

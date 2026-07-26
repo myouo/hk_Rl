@@ -1,0 +1,6 @@
+# Task: Vengefly King. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: vengefly_king
+wire_id: 2001
+scene: GG_Vengefly

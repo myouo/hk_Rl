@@ -1,0 +1,6 @@
+# Task: Grey Prince Zote. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: grey_prince_zote
+wire_id: 2023
+scene: GG_Grey_Prince_Zote

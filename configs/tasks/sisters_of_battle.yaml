@@ -1,0 +1,6 @@
+# Task: Sisters of Battle (Mantis Lords variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: sisters_of_battle
+wire_id: 2010
+scene: GG_Mantis_Lords_V

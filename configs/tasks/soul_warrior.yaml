@@ -1,0 +1,6 @@
+# Task: Soul Warrior. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: soul_warrior
+wire_id: 2024
+scene: GG_Mage_Knight

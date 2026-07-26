@@ -1,0 +1,6 @@
+# Task: Broken Vessel. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: broken_vessel
+wire_id: 2013
+scene: GG_Broken_Vessel

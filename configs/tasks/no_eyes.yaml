@@ -1,0 +1,6 @@
+# Task: No Eyes. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: no_eyes
+wire_id: 2030
+scene: GG_Ghost_No_Eyes

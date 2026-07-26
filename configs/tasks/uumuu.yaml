@@ -1,0 +1,6 @@
+# Task: Uumuu. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: uumuu
+wire_id: 2021
+scene: GG_Uumuu

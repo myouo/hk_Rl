@@ -1,0 +1,6 @@
+# Task: Hornet Sentinel (Hornet Protector variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: hornet_sentinel
+wire_id: 2006
+scene: GG_Hornet_2

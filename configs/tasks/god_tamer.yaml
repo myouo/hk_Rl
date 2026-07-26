@@ -1,0 +1,6 @@
+# Task: God Tamer. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: god_tamer
+wire_id: 2018
+scene: GG_God_Tamer

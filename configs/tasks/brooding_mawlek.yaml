@@ -1,0 +1,6 @@
+# Task: Brooding Mawlek. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: brooding_mawlek
+wire_id: 2002
+scene: GG_Brooding_Mawlek

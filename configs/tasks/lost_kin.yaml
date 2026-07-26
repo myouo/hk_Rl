@@ -1,0 +1,6 @@
+# Task: Lost Kin (Broken Vessel variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: lost_kin
+wire_id: 2014
+scene: GG_Lost_Kin

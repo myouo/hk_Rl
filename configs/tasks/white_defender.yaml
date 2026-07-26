@@ -1,0 +1,6 @@
+# Task: White Defender (Dung Defender variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: white_defender
+wire_id: 2028
+scene: GG_White_Defender

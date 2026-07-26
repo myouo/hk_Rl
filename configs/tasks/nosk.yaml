@@ -1,0 +1,6 @@
+# Task: Nosk. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: nosk
+wire_id: 2015
+scene: GG_Nosk

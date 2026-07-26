@@ -1,0 +1,6 @@
+# Task: Troupe Master Grimm. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: troupe_master_grimm
+wire_id: 2041
+scene: GG_Grimm

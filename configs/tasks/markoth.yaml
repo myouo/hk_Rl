@@ -1,0 +1,6 @@
+# Task: Markoth. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: markoth
+wire_id: 2033
+scene: GG_Ghost_Markoth

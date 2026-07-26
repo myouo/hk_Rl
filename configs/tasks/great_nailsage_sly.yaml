@@ -1,0 +1,6 @@
+# Task: Great Nailsage Sly. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: great_nailsage_sly
+wire_id: 2039
+scene: GG_Sly

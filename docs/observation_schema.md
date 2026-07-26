@@ -27,10 +27,14 @@ normalization in one place so privileged/reduced/human-visible ablations
 | hp / soul | `/ max_*` → [0,1] |
 | timers (cooldown/lock/ttl/invuln) | `clamp(t / T_MAX, 0, 1)` |
 | booleans/flags | 0/1; flags bit-unpacked to a vector |
-| hashes (scene/fsm/prefab) | embedding lookup, NOT fed as raw int |
+| hashes (scene/fsm/prefab) | field-specific 4,096-bucket embedding lookup, NOT fed as raw int |
 
 `ARENA_SCALE`, `VEL_SCALE`, `T_MAX` are constants in `hkrl/spaces.py`; document
 any change here.
+The model zeroes hash columns before every continuous MLP and obtains their
+signal only from the learned bucket embeddings. This ordering is required for
+FP16: live signed hashes have int32-scale magnitudes that exceed the finite
+range of IEEE half precision.
 `GlobalState.time_in_episode` is measured from the episode's first `RUNNING`
 tick, not from Unity scene load time, so same-scene resets start at zero.
 

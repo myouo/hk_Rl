@@ -11,9 +11,11 @@ from types import ModuleType
 
 import pytest
 from hkrl.godhome import GodhomeBossCatalog, load_godhome_catalog
+from hkrl.utils.config import load_task_config, load_yaml
 
 ROOT = Path(__file__).parents[2]
 CATALOG_PATH = ROOT / "configs/godhome_bosses.yaml"
+EXISTING_TRAINING_BOSSES = {"gruz_mother", "hornet_protector", "mantis_lords"}
 
 
 def test_catalog_has_all_44_distinct_hall_of_gods_fights() -> None:
@@ -44,6 +46,32 @@ def test_catalog_builds_primitive_only_probe_tasks() -> None:
     assert not task.action.enable_macro_actions
     assert task.action.n_macro_actions == 0
     assert not task.action.expose_action_combinations
+
+
+def test_every_catalog_boss_has_a_standalone_training_yaml_without_auto_enrollment() -> None:
+    catalog = load_godhome_catalog(CATALOG_PATH)
+    generated_count = 0
+
+    for boss in catalog.bosses:
+        task_path = ROOT / "configs/tasks" / f"{boss.boss_id}.yaml"
+        assert task_path.is_file(), boss.boss_id
+        task = load_task_config(task_path)
+        assert task.scene == boss.scene
+        assert task.observation.max_entities == 64
+        assert task.action.enable_macro_actions
+        assert task.action.n_macro_actions == 11
+        if boss.boss_id not in EXISTING_TRAINING_BOSSES:
+            generated_count += 1
+            assert task.task_id == boss.boss_id
+            assert task.wire_id == boss.wire_id
+
+    assert generated_count == 41
+    manifest = load_yaml(ROOT / "configs/experiments/godhome_smart.yaml")
+    assert manifest["tasks"] == [
+        "configs/tasks/gruz_mother.yaml",
+        "configs/tasks/hornet_protector.yaml",
+        "configs/tasks/mantis_lords.yaml",
+    ]
 
 
 @pytest.mark.parametrize(

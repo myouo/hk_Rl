@@ -7,6 +7,13 @@ the project version tracks the **schema_version** + roadmap phase.
 ## [Unreleased]
 
 ### Added
+- Added hash-aware global/player/entity encoders and live-scale CPU/CUDA AMP
+  regression coverage. Scene, arena, actor, prefab, and FSM hashes now use
+  bounded learned embeddings and are removed from continuous MLP inputs, which
+  prevents int32-scale live observations from overflowing V100 FP16 forwards.
+- Added standalone training task YAMLs for every Hall of Gods catalog entry,
+  composed from one shared default profile. The new tasks are deliberately not
+  enrolled in the active three-Boss experiment manifest.
 - Added a composed eager-CUDA remote role/experiment overlay for images whose
   Python/PyTorch pair cannot run TorchDynamo, while retaining AMP and fused
   Adam. Compile `auto` now detects unsupported Dynamo runtimes and falls back

@@ -1,0 +1,6 @@
+# Task: Soul Master. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: soul_master
+wire_id: 2025
+scene: GG_Soul_Master

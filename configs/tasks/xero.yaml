@@ -1,0 +1,6 @@
+# Task: Xero. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: xero
+wire_id: 2034
+scene: GG_Ghost_Xero

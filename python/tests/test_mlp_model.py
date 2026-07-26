@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import torch
 from hkrl.models.mlp import MlpActorCritic
-from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
+from hkrl.spaces import (
+    ENTITY_FEATURE_INDEX,
+    GLOBAL_FEATURE_INDEX,
+    N_AIM_Y,
+    N_BUTTONS,
+    N_DURATION,
+    N_MOVEMENT_X,
+    PLAYER_FEATURE_INDEX,
+)
 
 
 def test_mlp_actor_critic_act_and_evaluate_actions() -> None:
@@ -52,6 +60,37 @@ def test_mlp_actor_critic_masks_padded_entities_before_flattening() -> None:
 
     torch.testing.assert_close(value_a, value_b)
     torch.testing.assert_close(dist_a.movement_x.logits, dist_b.movement_x.logits)
+
+
+def test_mlp_actor_critic_drops_raw_int32_scale_hashes() -> None:
+    model = MlpActorCritic(
+        {
+            "global": (9,),
+            "player": (32,),
+            "entities": (2, 24),
+            "entity_mask": (2,),
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    obs = {
+        "global": torch.zeros((1, 9), dtype=torch.float32),
+        "player": torch.zeros((1, 32), dtype=torch.float32),
+        "entities": torch.zeros((1, 2, 24), dtype=torch.float32),
+        "entity_mask": torch.tensor([[True, False]]),
+    }
+    obs["global"][:, GLOBAL_FEATURE_INDEX["scene_hash"]] = -1_364_303_872
+    obs["global"][:, GLOBAL_FEATURE_INDEX["arena_id"]] = -1_364_303_872
+    obs["player"][:, PLAYER_FEATURE_INDEX["actor_state_hash"]] = 1_932_350_208
+    obs["entities"][:, 0, ENTITY_FEATURE_INDEX["entity_id"]] = 100_000
+    obs["entities"][:, 0, ENTITY_FEATURE_INDEX["prefab_hash"]] = 2_082_767_232
+    obs["entities"][:, 0, ENTITY_FEATURE_INDEX["fsm_name_hash"]] = 2_082_767_232
+    obs["entities"][:, 0, ENTITY_FEATURE_INDEX["fsm_state_hash"]] = 2_082_767_232
+
+    dist, value, _ = model(obs)
+
+    assert torch.isfinite(dist.log_prob(dist.mode())).all()
+    assert torch.isfinite(value).all()
 
 
 def _obs_dims(max_entities: int = 4, entity_dim: int = 5) -> dict[str, tuple[int, ...]]:

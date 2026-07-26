@@ -1,0 +1,6 @@
+# Task: Hive Knight. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: hive_knight
+wire_id: 2012
+scene: GG_Hive_Knight

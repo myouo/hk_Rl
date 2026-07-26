@@ -1,0 +1,6 @@
+# Task: Nightmare King Grimm (Troupe Master Grimm variant). Generated from the catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: nightmare_king_grimm
+wire_id: 2042
+scene: GG_Grimm_Nightmare

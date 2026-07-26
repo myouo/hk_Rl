@@ -1,0 +1,6 @@
+# Task: Galien. Generated from configs/godhome_bosses.yaml.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: galien
+wire_id: 2032
+scene: GG_Ghost_Galien

@@ -46,6 +46,17 @@ T_MAX = 2.0  # seconds, for clamping cooldown/lock/ttl/invuln timers
 # Feature vector sizes used by decoded observations before model-specific
 # embedding/splitting. Keep these aligned with docs/observation_schema.md.
 GLOBAL_FEATURE_DIM = 9
+GLOBAL_FEATURE_INDEX: dict[str, int] = {
+    "scene_hash": 0,
+    "arena_id": 1,
+    "task_id": 2,
+    "difficulty": 3,
+    "time_in_episode": 4,
+    "time_scale": 5,
+    "fixed_delta_time": 6,
+    "stage_index": 7,
+    "episode_id": 8,
+}
 PLAYER_FEATURE_DIMS: dict[str, int] = {
     "privileged": 32,
     "reduced": 21,
@@ -98,6 +109,32 @@ ENTITY_FEATURE_DIMS: dict[str, int] = {
     "privileged": 24,
     "reduced": 18,
     "human_visible": 12,
+}
+ENTITY_FEATURE_INDEX: dict[str, int] = {
+    "entity_id": 0,
+    "entity_type": 1,
+    "team": 2,
+    "prefab_hash": 3,
+    "fsm_name_hash": 4,
+    "fsm_state_hash": 5,
+    "pos_x": 6,
+    "pos_y": 7,
+    "rel_x": 8,
+    "rel_y": 9,
+    "vel_x": 10,
+    "vel_y": 11,
+    "hp": 12,
+    "max_hp": 13,
+    "hurtbox_center_x": 14,
+    "hurtbox_center_y": 15,
+    "hurtbox_size_x": 16,
+    "hurtbox_size_y": 17,
+    "hitbox_active": 18,
+    "damage": 19,
+    "ttl": 20,
+    "phase": 21,
+    "threat_score": 22,
+    "flags": 23,
 }
 
 

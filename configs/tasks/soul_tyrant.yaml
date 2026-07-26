@@ -1,0 +1,6 @@
+# Task: Soul Tyrant (Soul Master variant). Generated from the Godhome catalog.
+defaults:
+  - ../task_defaults/godhome_training.yaml
+task_id: soul_tyrant
+wire_id: 2026
+scene: GG_Soul_Tyrant
