@@ -89,8 +89,18 @@ timesteps, and burn-in.
 
 - `entity_mask` everywhere (attention key-padding + masked pooling); never let
   padded slots leak gradient/signal.
-- Reserve `torch.compile` and AMP (mixed precision) on the training path.
+- APPO's learner-only `TorchLearnerRuntime` provides config-driven AMP,
+  compiled `evaluate_actions`, and fused Adam. `auto` AMP prefers BF16 on
+  supported CUDA and otherwise uses scaled FP16; CPU auto mode remains FP32.
+- Per-task advantage normalization prevents one Boss's reward/variance scale
+  from dominating a mixed rollout update.
+- `target_kl` can end the remaining PPO epochs before a destructive policy
+  jump; updates report the actual optimizer-step and early-stop counts.
 - Batch sequences contiguously to keep GPU utilization high.
+
+These optimizations do not run in the local game action loop. Sequence-aware
+off-policy recurrent training remains a separate milestone; see
+[ADR-0008](./adr/0008-configured-learner-acceleration.md).
 
 ## 6. Ablations (PRD Phase 5)
 

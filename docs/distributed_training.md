@@ -153,7 +153,8 @@ PPO is sensitive to stale data. Mitigations:
 - **Synchronous PPO:** collect at a fixed version, update together.
 - **Async APPO:** allow bounded staleness, drop batches older than the configured
   threshold, and update with clipped PPO importance ratios over accepted
-  samples.
+  samples. Mixed-task batches normalize advantages within each `task_id`, and a
+  target-KL guard can stop remaining epochs.
 - **IMPALA/V-trace:** reserved for a future learner implementation.
 
 ## 5. Components
@@ -184,6 +185,21 @@ after partial learner startup.
 uses `cuda` and refuses to start when CUDA is unavailable. The generic
 `remote_learner.yaml` uses `auto` so CPU-only CI and local smoke runs remain
 possible.
+
+Learner acceleration is explicit and observable:
+
+- `amp_dtype`: `off`, `auto`, `float16`, or `bfloat16`;
+- `compile_mode`: `off`, `auto`, `default`, `reduce-overhead`, or
+  `max-autotune`;
+- `fused_optimizer`: `off`, `auto`, or `on`;
+- `target_kl`: positive policy-drift threshold, or `null` to disable;
+- `normalize_advantages_by_task`: isolate Boss/task advantage scales.
+
+The remote GPU profile enables `reduce-overhead`; generic CPU/local profiles
+keep compilation off. Every APPO update reports `amp_enabled`,
+`compile_enabled`, `fused_optimizer`, `task_count`, `optimizer_steps`,
+`epochs_completed`, and `kl_early_stop`. See
+[ADR-0008](./adr/0008-configured-learner-acceleration.md).
 
 For APPO, `learner.publish_every_updates` must be no greater than
 `learner.max_staleness + 1`. Otherwise the learner can advance beyond the

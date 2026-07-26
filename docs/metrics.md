@@ -12,6 +12,9 @@ time_to_kill          invalid_action_ratio  action_entropy
 policy_kl             value_loss            policy_loss
 explained_variance    SPS                   reset_success_rate
 reset_duration        worker_crash_count
+optimizer_steps       epochs_completed      kl_early_stop
+amp_enabled           compile_enabled       fused_optimizer
+task_count
 worker_learner_upload_submitted_batches
 worker_learner_upload_accepted_batches
 worker_learner_upload_rejected_batches
@@ -108,6 +111,14 @@ collision/gravity integration ([ADR-0005](./adr/0005-pause-safe-game-time-contro
 The default `0.02` interval means nominal 50 Hz physics, not a 50 FPS render
 limit: Unity can run zero or multiple fixed updates around a rendered frame.
 `reset_duration` is a first-class SPS factor.
+
+Learner throughput must be profiled separately from game SPS. APPO emits its
+actual optimizer-step/epoch counts, KL guard state, mixed-task count, and active
+AMP/compile/fused-Adam flags in learner summaries, update events, and checkpoint
+metrics. The hot path batches finite-value checks and task-wise advantage
+statistics to avoid per-tensor or per-Boss GPU-to-CPU synchronization. Compare
+compile cold start separately from steady-state learner samples/second on the
+target CUDA host.
 
 For real-game hot-path changes, run
 `python scripts/live_performance_benchmark.py --steps 400 --action-repeat 2`

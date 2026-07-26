@@ -95,8 +95,9 @@ final reward.
   the hot path.
 - TCP is the supported live transport. Local shared-memory remains the planned
   high-SPS path for single-machine runs after the mod-side SHM server lands.
-- Training: large-batch on GPU, `torch.compile` + mixed precision, sequence
-  (truncated-BPTT) batching for recurrent policies.
+- Training: APPO has config-driven learner-only `torch.compile`, AMP, fused
+  Adam, task-wise advantage normalization, and target-KL protection. Recurrent
+  PPO retains contiguous truncated-BPTT sequence batching.
 
 ## 6. Extensibility seams
 

@@ -13,6 +13,11 @@ learner:
   max_staleness: 4              # drop rollouts older than this many versions
   checkpoint_dir: checkpoints/
   publish_every_updates: 4       # must be <= max_staleness + 1 for APPO
+  amp_dtype: auto                 # BF16 on supported CUDA, otherwise FP16
+  compile_mode: auto              # CUDA: compile; CPU smoke/CI: eager
+  fused_optimizer: auto
+  target_kl: 0.03
+  normalize_advantages_by_task: true
 
 coordinator:
   bind: 127.0.0.1:5610

@@ -11,10 +11,11 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 from hkrl.models.base import ActorCritic
-from hkrl.training.numerics import require_finite_tensor
+from hkrl.training.accelerator import TorchLearnerRuntime
+from hkrl.training.numerics import require_finite_tensors
 from hkrl.training.rollout_buffer import RolloutBatch
 from hkrl.utils.config import TrainConfig
 from hkrl.utils.registry import register_algo
@@ -39,7 +40,8 @@ class APPO:
         self.model = model
         self.cfg = config
         self.max_staleness = max_staleness
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+        self.runtime = TorchLearnerRuntime(model, config)
+        self.optimizer = self.runtime.optimizer
         self.current_version = 0
         self._queue: list[RolloutBatch] = []
 
@@ -66,10 +68,14 @@ class APPO:
         if not self._queue:
             raise ValueError("APPO update requires at least one accepted batch")
 
-        device = _model_device(self.model)
+        device = self.runtime.device
         batch = _tensor_batch(self._queue, device)
         self._queue = []
-        advantages = _normalize_advantages(batch.advantages)
+        advantages = _normalize_advantages(
+            batch.advantages,
+            task_ids=batch.task_ids,
+            by_task=self.cfg.learner.normalize_advantages_by_task,
+        )
         num_samples = batch.old_log_probs.shape[0]
         if num_samples == 0:
             raise ValueError("accepted APPO batches contain no samples")
@@ -83,8 +89,11 @@ class APPO:
             "grad_norm": 0.0,
         }
         seen = 0
+        optimizer_steps = 0
+        epochs_completed = 0
+        kl_early_stop = False
 
-        for _ in range(self.cfg.epochs):
+        for epoch in range(self.cfg.epochs):
             indices = torch.randperm(num_samples, device=device)
             for start in range(0, num_samples, self.cfg.minibatch_size):
                 mb = indices[start : start + self.cfg.minibatch_size]
@@ -93,12 +102,25 @@ class APPO:
                 for key, value in metrics.items():
                     totals[key] += value * mb_size
                 seen += mb_size
+                optimizer_steps += 1
+                target_kl = self.cfg.learner.target_kl
+                if target_kl is not None and metrics["policy_kl"] > target_kl:
+                    kl_early_stop = True
+                    break
+            epochs_completed = epoch + 1
+            if kl_early_stop:
+                break
 
         self.current_version += 1
         metrics = {key: value / seen for key, value in totals.items()}
         metrics["explained_variance"] = self._explained_variance(batch)
         metrics["policy_version"] = float(self.current_version)
         metrics["samples"] = float(num_samples)
+        metrics["task_count"] = float(torch.unique(batch.task_ids).numel())
+        metrics["optimizer_steps"] = float(optimizer_steps)
+        metrics["epochs_completed"] = float(epochs_completed)
+        metrics["kl_early_stop"] = float(kl_early_stop)
+        metrics.update(self.runtime.metric_flags())
         return metrics
 
     @property
@@ -122,70 +144,90 @@ class APPO:
         )
         rnn_state = None if batch.rnn_state is None else batch.rnn_state.index_select(1, indices)
 
-        log_probs, entropy, values = self.model.evaluate_actions(
-            obs,
-            actions,
-            rnn_state=rnn_state,
-            action_mask=action_masks,
-        )
-        require_finite_tensor("model log_probs", log_probs)
-        require_finite_tensor("model entropy", entropy)
-        require_finite_tensor("model values", values)
-        ratio = torch.exp(log_probs - old_log_probs)
-        require_finite_tensor("appo ratio", ratio)
-        unclipped_policy = ratio * mb_advantages
-        clipped_policy = (
-            torch.clamp(
-                ratio,
-                1.0 - self.cfg.clip_range,
-                1.0 + self.cfg.clip_range,
+        with self.runtime.autocast():
+            log_probs, entropy, values = self.runtime.evaluate_actions(
+                obs,
+                actions,
+                rnn_state=rnn_state,
+                action_mask=action_masks,
             )
-            * mb_advantages
+            log_ratio = log_probs - old_log_probs
+            ratio = torch.exp(log_ratio)
+            unclipped_policy = ratio * mb_advantages
+            clipped_policy = (
+                torch.clamp(
+                    ratio,
+                    1.0 - self.cfg.clip_range,
+                    1.0 + self.cfg.clip_range,
+                )
+                * mb_advantages
+            )
+            policy_loss = -torch.minimum(unclipped_policy, clipped_policy).mean()
+
+            value_pred_clipped = old_values + (values - old_values).clamp(
+                -self.cfg.clip_range,
+                self.cfg.clip_range,
+            )
+            value_loss_unclipped = (values - returns).square()
+            value_loss_clipped = (value_pred_clipped - returns).square()
+            value_loss = 0.5 * torch.maximum(value_loss_unclipped, value_loss_clipped).mean()
+
+            entropy_mean = entropy.mean()
+            loss = (
+                policy_loss
+                + self.cfg.value_coef * value_loss
+                - self.cfg.entropy_coef * entropy_mean
+            )
+            approx_kl = ((ratio - 1.0) - log_ratio).mean()
+        require_finite_tensors(
+            (
+                ("model log_probs", log_probs),
+                ("model entropy", entropy),
+                ("model values", values),
+                ("appo ratio", ratio),
+                ("policy_loss", policy_loss),
+                ("value_loss", value_loss),
+                ("entropy_mean", entropy_mean),
+                ("policy_kl", approx_kl),
+                ("loss", loss),
+            )
         )
-        policy_loss = -torch.minimum(unclipped_policy, clipped_policy).mean()
 
-        value_pred_clipped = old_values + (values - old_values).clamp(
-            -self.cfg.clip_range,
-            self.cfg.clip_range,
+        grad_norm = self.runtime.backward_step(
+            loss,
+            max_grad_norm=self.cfg.max_grad_norm,
         )
-        value_loss_unclipped = (values - returns).square()
-        value_loss_clipped = (value_pred_clipped - returns).square()
-        value_loss = 0.5 * torch.maximum(value_loss_unclipped, value_loss_clipped).mean()
-
-        entropy_mean = entropy.mean()
-        loss = policy_loss + self.cfg.value_coef * value_loss - self.cfg.entropy_coef * entropy_mean
-        approx_kl = (old_log_probs - log_probs).mean()
-        for name, tensor in (
-            ("policy_loss", policy_loss),
-            ("value_loss", value_loss),
-            ("entropy_mean", entropy_mean),
-            ("policy_kl", approx_kl),
-            ("loss", loss),
-        ):
-            require_finite_tensor(name, tensor)
-
-        self.optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.max_grad_norm)
-        require_finite_tensor("grad_norm", grad_norm)
-        self.optimizer.step()
-
-        return {
-            "policy_loss": float(policy_loss.detach().cpu()),
-            "value_loss": float(value_loss.detach().cpu()),
-            "action_entropy": float(entropy_mean.detach().cpu()),
-            "policy_kl": float(approx_kl.detach().cpu()),
-            "grad_norm": float(grad_norm.detach().cpu()),
-        }
+        metric_names = (
+            "policy_loss",
+            "value_loss",
+            "action_entropy",
+            "policy_kl",
+            "grad_norm",
+        )
+        metric_values = (
+            torch.stack(
+                (
+                    policy_loss.detach().float(),
+                    value_loss.detach().float(),
+                    entropy_mean.detach().float(),
+                    approx_kl.detach().float(),
+                    grad_norm.detach().float(),
+                )
+            )
+            .cpu()
+            .tolist()
+        )
+        return dict(zip(metric_names, metric_values, strict=True))
 
     def _explained_variance(self, batch: _TensorBatch) -> float:
         with torch.no_grad():
-            _, _, values = self.model.evaluate_actions(
-                batch.obs,
-                batch.actions,
-                rnn_state=batch.rnn_state,
-                action_mask=batch.action_masks,
-            )
+            with self.runtime.autocast():
+                _, _, values = self.runtime.evaluate_actions(
+                    batch.obs,
+                    batch.actions,
+                    rnn_state=batch.rnn_state,
+                    action_mask=batch.action_masks,
+                )
             target_var = torch.var(batch.returns, unbiased=False)
             if float(target_var.cpu()) < 1.0e-8:
                 return 0.0
@@ -202,6 +244,7 @@ class _TensorBatch:
     old_values: Tensor
     returns: Tensor
     advantages: Tensor
+    task_ids: Tensor
     action_masks: Tensor | None
     rnn_state: Tensor | None
 
@@ -231,6 +274,7 @@ def _tensor_batch(batches: list[RolloutBatch], device: torch.device) -> _TensorB
         old_values=_flat_vector(_concat(batches, "values"), device),
         returns=_flat_vector(_concat(batches, "returns"), device),
         advantages=_flat_vector(_concat(batches, "advantages"), device),
+        task_ids=_flat_int_vector(_concat(batches, "task_ids"), device),
         action_masks=action_masks,
         rnn_state=_flatten_rnn_states(batches, device),
     )
@@ -323,6 +367,10 @@ def _flat_vector(array: object, device: torch.device) -> Tensor:
     return torch.as_tensor(array, dtype=torch.float32, device=device).reshape(-1)
 
 
+def _flat_int_vector(array: object, device: torch.device) -> Tensor:
+    return torch.as_tensor(array, dtype=torch.long, device=device).reshape(-1)
+
+
 def _flatten_rnn_states(batches: list[RolloutBatch], device: torch.device) -> Tensor | None:
     states = [batch.rnn_states for batch in batches]
     if all(state is None for state in states):
@@ -339,13 +387,50 @@ def _flatten_rnn_states(batches: list[RolloutBatch], device: torch.device) -> Te
     return torch.as_tensor(flat, dtype=torch.float32, device=device)
 
 
-def _normalize_advantages(advantages: Tensor) -> Tensor:
+def _normalize_advantages(
+    advantages: Tensor,
+    *,
+    task_ids: Tensor | None = None,
+    by_task: bool = False,
+) -> Tensor:
     if advantages.numel() <= 1:
         return advantages
-    std = advantages.std(unbiased=False)
-    if float(std.cpu()) < 1.0e-8:
-        return advantages - advantages.mean()
-    return (advantages - advantages.mean()) / (std + 1.0e-8)
+    if not by_task:
+        return _normalize_group(advantages)
+    if task_ids is None or task_ids.shape != advantages.shape:
+        raise ValueError("task_ids must match advantages for task-wise normalization")
+
+    _, inverse, counts = torch.unique(
+        task_ids,
+        sorted=False,
+        return_inverse=True,
+        return_counts=True,
+    )
+    group_counts = counts.to(dtype=advantages.dtype)
+    group_sums = torch.zeros_like(group_counts).scatter_add_(
+        0,
+        inverse,
+        advantages,
+    )
+    group_means = group_sums / group_counts
+    centered = advantages - group_means.index_select(0, inverse)
+    group_square_sums = torch.zeros_like(group_counts).scatter_add_(
+        0,
+        inverse,
+        centered.square(),
+    )
+    group_std = (group_square_sums / group_counts).sqrt().clamp_min(1.0e-8)
+    normalized = centered / group_std.index_select(0, inverse)
+    enough_samples = counts.index_select(0, inverse) > 1
+    return torch.where(enough_samples, normalized, advantages)
+
+
+def _normalize_group(values: Tensor) -> Tensor:
+    if values.numel() <= 1:
+        return values
+    centered = values - values.mean()
+    std = values.std(unbiased=False)
+    return centered / std.clamp_min(1.0e-8)
 
 
 def _index_obs(obs: dict[str, Tensor], indices: Tensor) -> dict[str, Tensor]:

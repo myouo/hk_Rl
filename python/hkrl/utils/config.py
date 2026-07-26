@@ -107,6 +107,17 @@ class LearnerRuntimeConfig(StrictConfigModel):
     max_staleness: int = Field(default=4, ge=0)
     checkpoint_dir: str = Field(default="checkpoints", min_length=1)
     publish_every_updates: int = Field(default=1, ge=1)
+    amp_dtype: Literal["off", "auto", "float16", "bfloat16"] = "auto"
+    compile_mode: Literal[
+        "off",
+        "auto",
+        "default",
+        "reduce-overhead",
+        "max-autotune",
+    ] = "off"
+    fused_optimizer: Literal["off", "auto", "on"] = "auto"
+    target_kl: float | None = Field(default=0.03, gt=0.0)
+    normalize_advantages_by_task: bool = True
 
 
 class CoordinatorRuntimeConfig(StrictConfigModel):

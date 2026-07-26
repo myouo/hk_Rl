@@ -7,6 +7,7 @@ defaults:
 learner:
   bind: 127.0.0.1:5600
   device: cuda
+  compile_mode: reduce-overhead
   checkpoint_dir: runs/ssh-distributed/checkpoints
 
 coordinator:

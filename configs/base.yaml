@@ -32,3 +32,10 @@ model:
   attention_heads: 4
   rnn_type: gru    # gru | lstm | none
   rnn_hidden: 256
+
+learner:
+  amp_dtype: auto                 # CUDA: BF16 when supported, else FP16; CPU: off
+  compile_mode: "off"             # quote: bare YAML off is parsed as false
+  fused_optimizer: auto           # fused Adam on CUDA when available
+  target_kl: 0.03                 # stop an update before PPO drifts too far
+  normalize_advantages_by_task: true

@@ -10,7 +10,7 @@ import torch
 from hkrl.models.base import ActorCritic
 from hkrl.models.mlp import MlpActorCritic
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
-from hkrl.training.appo import APPO
+from hkrl.training.appo import APPO, _normalize_advantages
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
 
@@ -88,10 +88,21 @@ def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> No
         "grad_norm",
         "policy_version",
         "samples",
+        "task_count",
+        "optimizer_steps",
+        "epochs_completed",
+        "kl_early_stop",
+        "amp_enabled",
+        "compile_enabled",
+        "fused_optimizer",
     ):
         assert key in metrics
         assert np.isfinite(metrics[key])
     assert metrics["samples"] == 4.0
+    assert metrics["task_count"] == 1.0
+    assert metrics["amp_enabled"] == 0.0
+    assert metrics["compile_enabled"] == 0.0
+    assert metrics["fused_optimizer"] == 0.0
     assert any(
         not torch.equal(previous, current)
         for previous, current in zip(before, model.parameters(), strict=True)
@@ -129,6 +140,75 @@ def test_appo_update_rejects_non_finite_model_outputs_before_step() -> None:
         appo.update()
 
     assert torch.equal(model.weight.detach(), before)
+
+
+def test_appo_normalizes_advantages_inside_each_task() -> None:
+    advantages = torch.tensor([1.0, 3.0, 100.0, 300.0])
+    task_ids = torch.tensor([10, 10, 20, 20])
+
+    normalized = _normalize_advantages(
+        advantages,
+        task_ids=task_ids,
+        by_task=True,
+    )
+
+    assert torch.allclose(normalized, torch.tensor([-1.0, 1.0, -1.0, 1.0]))
+    assert float(normalized[task_ids == 10].mean()) == pytest.approx(0.0)
+    assert float(normalized[task_ids == 20].mean()) == pytest.approx(0.0)
+
+
+def test_appo_preserves_singleton_task_advantage() -> None:
+    advantages = torch.tensor([7.0, 1.0, 3.0])
+    task_ids = torch.tensor([10, 20, 20])
+
+    normalized = _normalize_advantages(
+        advantages,
+        task_ids=task_ids,
+        by_task=True,
+    )
+
+    assert torch.allclose(normalized, torch.tensor([7.0, -1.0, 1.0]))
+
+
+def test_appo_kl_guard_stops_remaining_optimizer_steps() -> None:
+    model = _RnnAwareActorCritic()
+    model.weight.data.fill_(2.0)
+    cfg = TrainConfig(
+        algorithm="appo",
+        epochs=5,
+        minibatch_size=4,
+        learning_rate=1.0e-2,
+        learner={"target_kl": 0.01},
+    )
+    appo = APPO(model, cfg)
+    assert appo.ingest(_rnn_batch(policy_version=0), current_version=0)
+
+    metrics = appo.update()
+
+    assert metrics["kl_early_stop"] == 1.0
+    assert metrics["optimizer_steps"] == 1.0
+    assert metrics["epochs_completed"] == 1.0
+    assert metrics["policy_kl"] > 0.01
+
+
+def test_appo_rejects_cuda_only_acceleration_on_cpu() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    with pytest.raises(ValueError, match=r"float16.*CUDA"):
+        APPO(
+            model,
+            TrainConfig(
+                algorithm="appo",
+                learner={"amp_dtype": "float16"},
+            ),
+        )
+    with pytest.raises(ValueError, match=r"fused_optimizer.*CUDA"):
+        APPO(
+            model,
+            TrainConfig(
+                algorithm="appo",
+                learner={"fused_optimizer": "on"},
+            ),
+        )
 
 
 class _RnnAwareActorCritic(ActorCritic):

@@ -82,6 +82,7 @@ def test_windows_ssh_role_configs_keep_live_action_loop_local() -> None:
     assert remote.model == worker.model
     assert remote.learner.bind == "127.0.0.1:5600"
     assert remote.learner.device == "cuda"
+    assert remote.learner.compile_mode == "reduce-overhead"
     assert worker.learner.bind == "127.0.0.1:5600"
     assert worker.transport.name == "tcp"
     assert worker.transport.host == "127.0.0.1"
@@ -234,6 +235,11 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     assert config.learner.max_staleness == 4
     assert config.learner.checkpoint_dir == "checkpoints/"
     assert config.learner.publish_every_updates == 4
+    assert config.learner.amp_dtype == "auto"
+    assert config.learner.compile_mode == "auto"
+    assert config.learner.fused_optimizer == "auto"
+    assert config.learner.target_kl == 0.03
+    assert config.learner.normalize_advantages_by_task is True
     assert config.coordinator.bind == "127.0.0.1:5610"
     assert config.coordinator.num_workers == 4
     assert config.security.bind_scope == "lan"

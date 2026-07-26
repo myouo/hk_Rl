@@ -123,6 +123,10 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     assert summary["accepted_batches"] == 1
     assert summary["batch_dir"] == str(batch_dir)
     assert summary["latest_checkpoint"] == 2
+    assert summary["metrics"]["amp_enabled"] == 0.0
+    assert summary["metrics"]["compile_enabled"] == 0.0
+    assert summary["metrics"]["fused_optimizer"] == 0.0
+    assert summary["metrics"]["optimizer_steps"] > 0.0
     assert summary["policy_version"] == 1
     assert summary["queued_batches"] == 0
     assert summary["rejected_batches"] == 0
@@ -132,6 +136,7 @@ def test_run_learner_ingests_batch_dir_and_updates(tmp_path: Path) -> None:
     resume_args = argparse.Namespace(**vars(args))
     resume_args.batch_dir = None
     resumed = module.run_from_args(resume_args)
+    assert resumed["metrics"] == {}
     assert resumed["optimizer_restored"] is True
     assert resumed["policy_version"] == 1
 

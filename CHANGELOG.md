@@ -6,6 +6,15 @@ the project version tracks the **schema_version** + roadmap phase.
 
 ## [Unreleased]
 
+### Added
+- Began the post-v0.8.0 smart-training scaffold with config-driven APPO learner
+  acceleration: CUDA BF16/FP16 AMP, optional compiled action evaluation, fused
+  Adam, per-task advantage normalization, and a target-KL early-stop guard.
+  Learner metrics expose the active optimization modes, task count, optimizer
+  steps, completed epochs, and KL stops while CPU smoke remains FP32. Batched
+  finite checks and vectorized per-task statistics avoid repeated GPU-host
+  synchronization, and CLI/smoke summaries retain the update metrics.
+
 ## [0.8.0] - 2026-07-26
 
 ### Added

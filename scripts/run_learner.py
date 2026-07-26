@@ -190,6 +190,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "latest_checkpoint": None if latest is None else latest.version,
         "max_entities": layout["max_entities"],
         "max_staleness": max_staleness,
+        "metrics": server.last_metrics,
         "model": cfg.model.name,
         "n_macro_actions": layout["n_macro_actions"],
         "network_accepted_batches": network_accepted,
