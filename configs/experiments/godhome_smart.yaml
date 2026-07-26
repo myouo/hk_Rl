@@ -22,6 +22,9 @@ local:
   registry_endpoint: http://127.0.0.1:5601/
   worker_id: linux-game-0
   inference_threads: 1
+  # Background polling never blocks the local action loop. A tuning checkpoint
+  # interrupts/discards only the unfinished rollout fragment at a safe boundary.
+  checkpoint_poll_interval_s: 2.0
   # Raise only after live_performance_benchmark confirms stable SPS/resets.
   time_scale: 1.0
   batch_dir: runs/godhome-smart/local-batches

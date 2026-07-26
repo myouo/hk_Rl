@@ -80,9 +80,11 @@ compose
 This is an early curriculum profile for increasing combat contact without
 making survival failure dominate every exploratory trajectory. It does not
 change the shaping-free evaluator or implicitly enroll the other catalog
-Bosses. Treat a reward-profile change as a new run: preserve the old checkpoint
-and rollout metrics instead of continuing the optimizer under a different
-objective.
+Bosses. Material reward-profile changes still define a new comparison segment:
+preserve the old checkpoint and rollout metrics. The live-tuning control may
+apply a new segment without restarting, but its version is embedded in
+checkpoints and rollouts so batches from different objectives are never mixed.
+See [`training_tuning.md`](./training_tuning.md#live-tuning-without-a-restart).
 
 ## 4. Anti-reward-hacking (PRD §9.4)
 

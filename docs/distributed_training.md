@@ -32,7 +32,7 @@ batched multi-env inference, which we don't need here.
 obs_global, obs_player, obs_entities, entity_mask,
 actions, log_probs, values, advantages, returns,
 rewards, dones, truncateds, action_masks, prev_actions, prev_rewards, rnn_states,
-episode_ids, task_ids, discount_exponents, policy_version
+episode_ids, task_ids, discount_exponents, policy_version, tuning_version
 ```
 
 Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences for
@@ -62,12 +62,18 @@ batches. A repeated `wire_id` would make rollout `task_ids` ambiguous and can
 make a worker skip a required `SET_TASK`, so it is a startup error rather than a
 dashboard-only warning.
 
+`tuning_version` binds every transition to one complete live reward/optimizer
+snapshot. A learner accepts only its currently active tuning version, preventing
+an in-flight worker from mixing pre-change rewards with a post-change update.
+
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner
-integration tests. Format v3 retains v2's explicit `prev_rewards` and marks the
-hierarchical macro behavior-probability contract from ADR-0009; v2 batches are
-rejected because their stored log probabilities used different semantics.
+integration tests. Format v4 extends ADR-0009's v3 layout with
+`tuning_version`; v3 batches are rejected because they cannot prove which live
+objective produced their scalar rewards.
 Workers that both spool and upload compress once and reuse the same bytes.
+Spool filenames continue their per-worker sequence after a process restart, so
+unuploaded evidence is not overwritten.
 Network transports for batches should preserve this field contract even if they
 use a different envelope. Deserialization rejects batches
 whose fields do not share the same `(time, env)` prefix, and rejects recurrent
@@ -106,8 +112,8 @@ length-prefixed NPZ rollout uploads on `learner.bind` (or `--bind`) before the
 same update cycle, and `scripts/run_worker.py --learner HOST:PORT` sends each
 completed rollout to that intake endpoint. The TCP batch channel is asynchronous
 and carries only completed rollouts, never action-loop inference.
-The TCP envelope type is `hkrl.rollout_batch.v3`, matching the NPZ format that
-contains explicit recurrent `prev_rewards`.
+The TCP envelope type is `hkrl.rollout_batch.v4`, matching the NPZ format that
+contains explicit recurrent `prev_rewards` and the tuning version.
 `run_worker.py` reports learner upload counters as submitted, accepted, and
 rejected batches; stale policy-version rejections therefore remain visible
 instead of being counted as successful uploads.
@@ -123,12 +129,22 @@ counted as `network_failed_batches` and the listener continues serving; a single
 bad worker upload must not terminate a long-running remote learner.
 At startup, `scripts/run_learner.py` publishes a policy-version 0 checkpoint
 when the registry is empty, or loads the registry's latest checkpoint and syncs
-the model, learner policy/update counters, and optimizer state from its payload.
+the model, learner policy/update counters, optimizer state, and live-tuning
+snapshot from its payload.
 Older checkpoints without optimizer state remain loadable but resume with a
 fresh optimizer. Start or resume the learner
 before pointing workers at the checkpoint registry; workers then hash-verify and
 load the same learner weights before collecting their first rollout instead of
 sampling with independent random initialization.
+The registry's sole authenticated write endpoint is `POST /live-tuning`.
+Requests are full, monotonically versioned snapshots written atomically on a
+loopback-only service. The learner flushes any partial old-version queue,
+applies the snapshot between updates, publishes it in a checkpoint, and writes
+an acknowledgement. A game worker polls checkpoints on a background thread;
+ordinary policy updates wait for the next rollout boundary, while a newer
+tuning version discards the unfinished prefix and cleanly resets at the next
+local action boundary. Remote checkpoint I/O therefore never enters the
+latency-sensitive action loop.
 In `--serve-forever` mode the learner writes bounded JSON events to stdout for
 readiness, accepted updates, stale rollout rejection, and failed uploads. Each
 update event includes the latest training metrics and checkpoint version for

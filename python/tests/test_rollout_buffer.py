@@ -346,6 +346,18 @@ def test_rollout_batch_deserialize_rejects_negative_policy_version() -> None:
         deserialize_rollout_batch(serialize_rollout_batch(batch))
 
 
+def test_rollout_batch_preserves_and_validates_tuning_version() -> None:
+    batch = _sample_batch(policy_version=4)
+    batch.tuning_version = 7
+
+    loaded = deserialize_rollout_batch(serialize_rollout_batch(batch))
+    assert loaded.tuning_version == 7
+
+    batch.tuning_version = -1
+    with pytest.raises(ValueError, match="tuning_version"):
+        deserialize_rollout_batch(serialize_rollout_batch(batch))
+
+
 def test_rollout_batch_deserialize_rejects_non_finite_values() -> None:
     batch = _sample_batch(policy_version=16)
     batch.rewards = batch.rewards.copy()

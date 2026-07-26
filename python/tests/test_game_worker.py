@@ -373,6 +373,100 @@ def test_game_worker_hot_swaps_new_checkpoint_before_rollout() -> None:
     assert batch.policy_version == 7
 
 
+def test_game_worker_applies_checkpoint_tuning_at_rollout_boundary() -> None:
+    env = TunableFakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    checkpoint_client = FakeCheckpointClient(
+        {
+            "model_state_dict": model.state_dict(),
+            "policy_version": 3,
+            "tuning_version": 1,
+            "live_tuning": {
+                "version": 1,
+                "reward": {"boss_damage": 1.0, "player_death": -20.0},
+                "worker": {"time_scale": 2.0},
+            },
+        }
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+        checkpoint_client=checkpoint_client,  # type: ignore[arg-type]
+        time_scale=3.0,
+    )
+
+    batch = worker.collect_rollout()
+
+    assert batch.policy_version == 3
+    assert batch.tuning_version == 1
+    assert worker.tuning_version == 1
+    assert env.reward_overrides == [
+        {"boss_damage": 1.0, "player_death": -20.0},
+    ]
+    assert env.applied_time_scales == [2.0]
+    assert env.reset_count == 1
+
+
+def test_game_worker_discards_partial_rollout_for_pending_tuning() -> None:
+    env = TunableFakeEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=2),
+    )
+    original_step = env.step
+
+    def queue_after_first_step(
+        action: dict[str, Any],
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        result = original_step(action)
+        if env.step_count == 1:
+            worker._queue_checkpoint(
+                2,
+                {
+                    "model_state_dict": model.state_dict(),
+                    "policy_version": 5,
+                    "tuning_version": 1,
+                    "live_tuning": {
+                        "version": 1,
+                        "reward": {"boss_damage": 1.0},
+                    },
+                },
+            )
+        return result
+
+    env.step = queue_after_first_step  # type: ignore[method-assign]
+
+    batch = worker.collect_rollout()
+
+    assert env.step_count == 3
+    assert env.reset_count == 2
+    assert batch.rewards.shape == (2, 1)
+    assert batch.policy_version == 5
+    assert batch.tuning_version == 1
+    assert env.reward_overrides == [{"boss_damage": 1.0}]
+
+
 def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
     env = FakeEnv()
     model = MlpActorCritic(
@@ -417,6 +511,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "learner_upload_rejected_batches": 0,
             "learner_upload_submitted_batches": 1,
             "policy_version": 0,
+            "tuning_version": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
             "sps": 4.0,
@@ -432,6 +527,7 @@ def test_game_worker_run_uploads_batches_and_heartbeats() -> None:
             "learner_upload_rejected_batches": 0,
             "learner_upload_submitted_batches": 2,
             "policy_version": 0,
+            "tuning_version": 0,
             "rollout_duration_s": 0.5,
             "rollout_steps": 2,
             "sps": 4.0,
@@ -482,6 +578,7 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
         "learner_upload_rejected_batches": 0,
         "learner_upload_submitted_batches": 0,
         "policy_version": 0,
+        "tuning_version": 0,
         "rollout_duration_s": 0.0,
         "rollout_steps": 0,
         "sps": 0.0,
@@ -786,6 +883,19 @@ class TimeScaledFailOnceEnv(FailOnceEnv):
     def __init__(self) -> None:
         super().__init__()
         self.applied_time_scales: list[float] = []
+
+    def set_timescale(self, scale: float) -> None:
+        self.applied_time_scales.append(scale)
+
+
+class TunableFakeEnv(FakeEnv):
+    def __init__(self) -> None:
+        super().__init__()
+        self.reward_overrides: list[dict[str, float]] = []
+        self.applied_time_scales: list[float] = []
+
+    def set_reward_overrides(self, overrides: dict[str, float]) -> None:
+        self.reward_overrides.append(dict(overrides))
 
     def set_timescale(self, scale: float) -> None:
         self.applied_time_scales.append(scale)

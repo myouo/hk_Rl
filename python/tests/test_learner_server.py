@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ from hkrl.models.mlp import MlpActorCritic
 from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
+from hkrl.utils.live_tuning import LiveTuning, atomic_write_json
 
 
 def test_learner_server_submits_updates_and_publishes_checkpoint(tmp_path: Path) -> None:
@@ -114,6 +116,81 @@ def test_learner_server_force_flushes_partial_batch_group(tmp_path: Path) -> Non
     assert server.submit(_rollout_batch(model, policy_version=0))
     assert server.serve(force=True) is True
     assert server.update_count == 1
+
+
+def test_learner_server_applies_tuning_after_flushing_old_partial_queue(
+    tmp_path: Path,
+) -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    server = LearnerServer(
+        model=model,
+        config=TrainConfig(
+            algorithm="appo",
+            epochs=1,
+            minibatch_size=2,
+            learning_rate=3.0e-4,
+        ),
+        registry=CheckpointRegistry(str(tmp_path)),
+        batches_per_update=4,
+    )
+    assert server.submit(_rollout_batch(model, policy_version=0))
+    tuning = LiveTuning(
+        version=1,
+        learner={"learning_rate": 1.0e-4, "entropy_coef": 0.02},
+        reward={"boss_damage": 1.0},
+    )
+    atomic_write_json(server.live_tuning_path, tuning.checkpoint_payload())
+
+    status = server.reconcile_live_tuning()
+
+    assert status is not None
+    assert status["flushed_update"] is True
+    assert server.update_count == 1
+    assert server.tuning_version == 1
+    assert server.cfg.learning_rate == 1.0e-4
+    assert server.cfg.entropy_coef == 0.02
+    assert all(group["lr"] == 1.0e-4 for group in server.algo.optimizer.param_groups)
+    assert server.last_checkpoint is not None
+    checkpoint = torch.load(
+        server.registry.resolve_path(server.last_checkpoint),
+        map_location="cpu",
+        weights_only=True,
+    )
+    assert checkpoint["tuning_version"] == 1
+    assert checkpoint["live_tuning"]["reward"]["boss_damage"] == 1.0
+
+    stale = _rollout_batch(model, policy_version=server.policy_version)
+    assert stale.tuning_version == 0
+    assert not server.submit(stale)
+    current = _rollout_batch(model, policy_version=server.policy_version)
+    current.tuning_version = 1
+    assert server.submit(current)
+
+
+def test_learner_server_recovers_missing_tuning_status_from_checkpoint(
+    tmp_path: Path,
+) -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    server = LearnerServer(
+        model=model,
+        config=TrainConfig(algorithm="ppo"),
+        registry=CheckpointRegistry(str(tmp_path)),
+    )
+    tuning = LiveTuning(version=3, reward={"boss_damage": 1.0})
+    assert server.restore_live_tuning(tuning.checkpoint_payload())
+    server.last_checkpoint = server.registry.publish(
+        server.checkpoint_payload(),
+        policy_version=server.policy_version,
+        step=server.update_count,
+    )
+
+    status = server.ensure_live_tuning_status()
+
+    assert status is not None
+    assert status["recovered_after_restart"] is True
+    assert status["tuning_version"] == 3
+    assert json.loads(server.live_tuning_status_path.read_text())["checkpoint_version"] == 1
+    assert server.ensure_live_tuning_status() is None
 
 
 def _rollout_batch(model: MlpActorCritic, policy_version: int) -> RolloutBatch:

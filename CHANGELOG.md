@@ -7,6 +7,15 @@ the project version tracks the **schema_version** + roadmap phase.
 ## [Unreleased]
 
 ### Added
+- Added authenticated, versioned live tuning for reward weights, safe
+  PPO/APPO optimizer/loss knobs, and game `time_scale`. The learner applies full
+  snapshots at update boundaries, checkpoints and restores them, and exposes
+  requested/applied status through the loopback registry. The new
+  `scripts/tune_training.py` supports inspect, set, unset, reset, audit notes,
+  and acknowledgement waiting.
+- Added non-blocking background checkpoint polling on GameWorkers. A new tuning
+  checkpoint discards only the unfinished rollout prefix and cleanly resets at
+  the next local action boundary; remote I/O never stalls local inference.
 - Added an opt-in `godhome_engagement_v1` reward overlay for the three active
   curriculum tasks. Boss damage remains `1.0`; player damage/death penalties
   are reduced to `-2`/`-20` without enrolling the remaining Boss catalog.
@@ -41,6 +50,9 @@ the project version tracks the **schema_version** + roadmap phase.
   workflow.
 
 ### Changed
+- RolloutBatch NPZ/TCP format is now v4 and carries `tuning_version`; learners
+  reject objective-version drift. Worker spool sequences also continue across
+  restarts instead of overwriting earlier rollout files.
 - Linux game launchers now expose `--save-slot` and `--time-scale`, preserve an
   existing runtime save selection, and fail closed instead of silently
   reverting to slot 1. This prevents an incomplete save from permanently
@@ -969,3 +981,4 @@ the project version tracks the **schema_version** + roadmap phase.
 - ADR-0002 serialization: FlatBuffers single source of truth.
 - ADR-0003 mod framework: HK Modding API.
 - ADR-0004 local inference + remote training decoupled.
+- ADR-0010 live tuning: authenticated, versioned, boundary-safe snapshots.

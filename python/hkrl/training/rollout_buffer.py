@@ -37,6 +37,7 @@ class RolloutBatch:
     episode_ids: np.ndarray
     task_ids: np.ndarray
     policy_version: int
+    tuning_version: int = 0
     discount_exponents: np.ndarray | None = None
 
 
@@ -163,7 +164,7 @@ class RolloutBuffer:
         _require_finite("advantages", self.advantages[:length])
         _require_finite("returns", self.returns[:length])
 
-    def to_batch(self, policy_version: int) -> RolloutBatch:
+    def to_batch(self, policy_version: int, tuning_version: int = 0) -> RolloutBatch:
         length = self._length()
         _require_finite_stored_window(self, length)
         return RolloutBatch(
@@ -186,6 +187,7 @@ class RolloutBuffer:
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
             policy_version=policy_version,
+            tuning_version=tuning_version,
             discount_exponents=self.discount_exponents[:length].copy(),
         )
 

@@ -15,7 +15,7 @@ import numpy as np
 
 from hkrl.training.rollout_buffer import RolloutBatch
 
-BATCH_FORMAT_VERSION = 3
+BATCH_FORMAT_VERSION = 4
 
 _ARRAY_FIELDS: tuple[str, ...] = (
     "obs_global",
@@ -101,6 +101,7 @@ def _batch_payload(batch: RolloutBatch) -> dict[str, Any]:
         payload[field] = np.asarray(value)
     payload["batch_format_version"] = np.array([BATCH_FORMAT_VERSION], dtype=np.int32)
     payload["policy_version"] = np.array([batch.policy_version], dtype=np.int64)
+    payload["tuning_version"] = np.array([batch.tuning_version], dtype=np.int64)
     payload["rnn_states_present"] = np.array([batch.rnn_states is not None], dtype=np.bool_)
     payload["rnn_states"] = (
         np.asarray(batch.rnn_states)
@@ -122,6 +123,9 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
     policy_version = _scalar_int(data, "policy_version")
     if policy_version < 0:
         raise ValueError("RolloutBatch policy_version must be non-negative")
+    tuning_version = _scalar_int(data, "tuning_version")
+    if tuning_version < 0:
+        raise ValueError("RolloutBatch tuning_version must be non-negative")
 
     batch = RolloutBatch(
         obs_global=arrays["obs_global"],
@@ -143,6 +147,7 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
         episode_ids=arrays["episode_ids"],
         task_ids=arrays["task_ids"],
         policy_version=policy_version,
+        tuning_version=tuning_version,
         discount_exponents=arrays["discount_exponents"],
     )
     _validate_batch_shapes(batch)

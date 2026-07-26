@@ -1,13 +1,14 @@
-"""Authenticated, read-only HTTP serving for checkpoint registries.
+"""Authenticated HTTP serving for checkpoints and bounded live-tuning control.
 
-The service exposes only ``index.jsonl`` and immutable ``checkpoint_v*.pt``
-files from one registry root. It is intended to bind to loopback and be reached
-through an SSH local-forward by GameWorkers.
+Checkpoint files remain read-only. The sole write endpoint accepts a validated,
+monotonic live-tuning snapshot and atomically stores it beside the registry. The
+service is intended to bind to loopback and be reached through an SSH forward.
 """
 
 from __future__ import annotations
 
 import hmac
+import json
 import re
 import socket
 import threading
@@ -19,13 +20,21 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from hkrl.learner.batch_intake import split_endpoint
+from hkrl.utils.live_tuning import (
+    LIVE_TUNING_REQUEST,
+    LIVE_TUNING_STATUS,
+    LiveTuning,
+    atomic_write_json,
+    load_live_tuning,
+)
 
 _CHECKPOINT_NAME = re.compile(r"checkpoint_v[0-9]{6,}\.pt\Z")
 _COPY_CHUNK_BYTES = 1024 * 1024
+_MAX_TUNING_BYTES = 64 * 1024
 
 
 class CheckpointHttpServer:
-    """Threaded, read-only checkpoint registry HTTP server."""
+    """Threaded checkpoint registry + narrow authenticated control endpoint."""
 
     def __init__(
         self,
@@ -116,8 +125,10 @@ def _handler_factory(
     root: Path,
     auth_token: str | None,
 ) -> type[BaseHTTPRequestHandler]:
+    tuning_lock = threading.Lock()
+
     class CheckpointRequestHandler(BaseHTTPRequestHandler):
-        server_version = "HKRLCheckpointRegistry/1"
+        server_version = "HKRLCheckpointRegistry/2"
         protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:
@@ -127,20 +138,30 @@ def _handler_factory(
             self._serve(send_body=False)
 
         def do_POST(self) -> None:
-            self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+            if not self._authorize():
+                return
+            if _request_path(self.path) != "/live-tuning":
+                self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+                return
+            self._store_live_tuning()
 
         def log_message(self, message_format: str, *args: Any) -> None:
             return
 
         def _serve(self, *, send_body: bool) -> None:
-            if not _authorized(self.headers.get("Authorization"), auth_token):
-                self.send_response(HTTPStatus.UNAUTHORIZED)
-                self.send_header("WWW-Authenticate", "Bearer")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
+            if not self._authorize():
                 return
 
-            path = _resolve_served_path(root, self.path)
+            request_path = _request_path(self.path)
+            control_name = {
+                "/live-tuning": LIVE_TUNING_REQUEST,
+                "/live-tuning/status": LIVE_TUNING_STATUS,
+            }.get(request_path or "")
+            path = (
+                root / control_name
+                if control_name is not None
+                else _resolve_served_path(root, self.path)
+            )
             if path is None or not path.is_file():
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
@@ -159,6 +180,8 @@ def _handler_factory(
                     (
                         "application/x-ndjson; charset=utf-8"
                         if path.name == "index.jsonl"
+                        else "application/json; charset=utf-8"
+                        if path.name in {LIVE_TUNING_REQUEST, LIVE_TUNING_STATUS}
                         else "application/octet-stream"
                     ),
                 )
@@ -168,7 +191,12 @@ def _handler_factory(
                     "Cache-Control",
                     (
                         "no-store"
-                        if path.name == "index.jsonl"
+                        if path.name
+                        in {
+                            "index.jsonl",
+                            LIVE_TUNING_REQUEST,
+                            LIVE_TUNING_STATUS,
+                        }
                         else "public, max-age=31536000, immutable"
                     ),
                 )
@@ -178,6 +206,85 @@ def _handler_factory(
 
                 while chunk := file_handle.read(_COPY_CHUNK_BYTES):
                     self.wfile.write(chunk)
+
+        def _authorize(self) -> bool:
+            if _authorized(self.headers.get("Authorization"), auth_token):
+                return True
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+
+        def _store_live_tuning(self) -> None:
+            content_type = self.headers.get("Content-Type", "")
+            if content_type.split(";", 1)[0].strip().lower() != "application/json":
+                self.send_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+                return
+            try:
+                content_length = int(self.headers.get("Content-Length", ""))
+            except ValueError:
+                self.send_error(HTTPStatus.LENGTH_REQUIRED)
+                return
+            if not 0 < content_length <= _MAX_TUNING_BYTES:
+                self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                return
+            body = self.rfile.read(content_length)
+            if len(body) != content_length:
+                self.send_error(HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                tuning = LiveTuning.model_validate(json.loads(body))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": f"invalid live tuning: {exc}"},
+                )
+                return
+
+            with tuning_lock:
+                try:
+                    current = load_live_tuning(root / LIVE_TUNING_REQUEST)
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    self._send_json(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        {"error": f"stored live tuning is invalid: {exc}"},
+                    )
+                    return
+                current_version = 0 if current is None else current.version
+                if tuning.version != current_version + 1:
+                    self._send_json(
+                        HTTPStatus.CONFLICT,
+                        {
+                            "current_version": current_version,
+                            "error": "live tuning version must increment by exactly one",
+                        },
+                    )
+                    return
+                atomic_write_json(
+                    root / LIVE_TUNING_REQUEST,
+                    tuning.checkpoint_payload(),
+                )
+
+            self._send_json(
+                HTTPStatus.CREATED,
+                {
+                    "digest": tuning.digest,
+                    "requested_version": tuning.version,
+                },
+            )
+
+        def _send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
+            encoded = (
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+            )
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(encoded)
 
     return CheckpointRequestHandler
 
@@ -215,3 +322,10 @@ def _resolve_served_path(root: Path, request_target: str) -> Path | None:
     except ValueError:
         return None
     return candidate
+
+
+def _request_path(request_target: str) -> str | None:
+    try:
+        return unquote(urlsplit(request_target).path)
+    except ValueError:
+        return None

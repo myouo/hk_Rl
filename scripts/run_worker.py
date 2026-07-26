@@ -15,6 +15,7 @@ import argparse
 import json
 import math
 import os
+import re
 from collections.abc import Callable
 from contextlib import suppress
 from numbers import Integral, Real
@@ -54,13 +55,19 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True)
     p.add_argument("--tasks", nargs="+", help="optional task list cycled per rollout")
     p.add_argument("--env-host", help="override TCP env host from the train config")
-    p.add_argument("--env-port", type=int, help="override TCP env port from the train config")
+    p.add_argument(
+        "--env-port", type=int, help="override TCP env port from the train config"
+    )
     p.add_argument("--learner", help="learner endpoint host:port")
     p.add_argument("--registry", help="checkpoint registry endpoint")
     p.add_argument("--batch-dir", help="directory for NPZ rollout batch spooling")
     p.add_argument("--heartbeat-jsonl", help="append worker heartbeats to JSONL")
-    p.add_argument("--worker-id", default="worker-0", help="stable worker id for batch names")
-    p.add_argument("--steps", type=int, default=None, help="optional finite rollout sample count")
+    p.add_argument(
+        "--worker-id", default="worker-0", help="stable worker id for batch names"
+    )
+    p.add_argument(
+        "--steps", type=int, default=None, help="optional finite rollout sample count"
+    )
     p.add_argument("--max-consecutive-failures", type=int, default=3)
     p.add_argument(
         "--inference-threads",
@@ -69,12 +76,20 @@ def build_argparser() -> argparse.ArgumentParser:
         help="optional PyTorch CPU intra-op thread count for local inference",
     )
     p.add_argument(
+        "--checkpoint-poll-interval-s",
+        type=float,
+        default=2.0,
+        help="background checkpoint polling interval; never blocks the action loop",
+    )
+    p.add_argument(
         "--time-scale",
         type=float,
         default=None,
         help="optional game-time multiplier; fixedDeltaTime remains unchanged",
     )
-    p.add_argument("--dry-run", action="store_true", help="validate wiring without env connection")
+    p.add_argument(
+        "--dry-run", action="store_true", help="validate wiring without env connection"
+    )
     return p
 
 
@@ -88,6 +103,10 @@ def main(argv: list[str] | None = None) -> int:
 def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
     _validate_worker_args(args)
     inference_threads = _configure_inference_threads(args)
+    checkpoint_poll_interval_s = _positive_float(
+        getattr(args, "checkpoint_poll_interval_s", 2.0),
+        name="checkpoint_poll_interval_s",
+    )
     time_scale = _optional_positive_float(
         getattr(args, "time_scale", None),
         name="time_scale",
@@ -113,7 +132,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         max_entities=task.observation.max_entities,
     )
     checkpoint_client = (
-        CheckpointClient(args.registry, auth_token=_checkpoint_auth_token(cfg, args.registry))
+        CheckpointClient(
+            args.registry, auth_token=_checkpoint_auth_token(cfg, args.registry)
+        )
         if args.registry
         else None
     )
@@ -135,6 +156,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "env_port": _env_port(cfg, args),
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "inference_threads": inference_threads,
+            "checkpoint_poll_interval_s": checkpoint_poll_interval_s,
             "learner": args.learner,
             "learner_upload_enabled": args.learner is not None,
             "latest_checkpoint": latest_checkpoint,
@@ -145,6 +167,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "task_id": task.task_id,
             "task_ids": [item.task_id for item in tasks],
             "time_scale": time_scale,
+            "tuning_version": 0,
             "worker_id": args.worker_id,
         }
 
@@ -174,9 +197,12 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             auth_token=resolve_auth_token(cfg) if args.learner is not None else None,
             uploaded=uploaded_batches,
         ),
-        heartbeat_sink=_make_heartbeat_sink(args.heartbeat_jsonl, args.worker_id, heartbeats),
+        heartbeat_sink=_make_heartbeat_sink(
+            args.heartbeat_jsonl, args.worker_id, heartbeats
+        ),
         task_provider=_make_task_provider(tasks),
         max_consecutive_failures=args.max_consecutive_failures,
+        checkpoint_poll_interval_s=checkpoint_poll_interval_s,
         time_scale=time_scale,
     )
     try:
@@ -194,6 +220,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "heartbeat_jsonl": args.heartbeat_jsonl,
             "heartbeats_written": len(heartbeats),
             "inference_threads": inference_threads,
+            "checkpoint_poll_interval_s": checkpoint_poll_interval_s,
             "last_error": worker.last_error,
             **upload_summary,
             "learner": args.learner,
@@ -207,12 +234,13 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "spooled_batches": spooled_batches,
             "task_id": task.task_id,
             "task_ids": [item.task_id for item in tasks],
-            "time_scale": time_scale,
+            "time_scale": worker.time_scale,
+            "tuning_version": worker.tuning_version,
             "worker_crash_count": worker.worker_crash_count,
             "worker_id": args.worker_id,
         }
     finally:
-        if time_scale is not None:
+        if worker.time_scale is not None:
             with suppress(Exception):
                 env.unwrapped.set_timescale(1.0)
         env.close()
@@ -299,7 +327,9 @@ def _validate_worker_args(args: argparse.Namespace) -> None:
     _non_empty_path_like(getattr(args, "task", None), name="task")
     task_paths = getattr(args, "tasks", None)
     if task_paths is not None:
-        if isinstance(task_paths, (str, bytes)) or not isinstance(task_paths, list | tuple):
+        if isinstance(task_paths, (str, bytes)) or not isinstance(
+            task_paths, list | tuple
+        ):
             raise ValueError("tasks must be a sequence of paths")
         if not task_paths:
             raise ValueError("tasks must contain at least one path")
@@ -320,6 +350,10 @@ def _validate_worker_args(args: argparse.Namespace) -> None:
     inference_threads = getattr(args, "inference_threads", None)
     if inference_threads is not None:
         _positive_int(inference_threads, name="inference_threads")
+    _positive_float(
+        getattr(args, "checkpoint_poll_interval_s", 2.0),
+        name="checkpoint_poll_interval_s",
+    )
     _optional_positive_float(
         getattr(args, "time_scale", None),
         name="time_scale",
@@ -354,6 +388,13 @@ def _optional_positive_float(value: Any, *, name: str) -> float | None:
         raise ValueError(f"{name} must be a positive finite number")
     result = float(value)
     if not math.isfinite(result) or result <= 0.0:
+        raise ValueError(f"{name} must be a positive finite number")
+    return result
+
+
+def _positive_float(value: Any, *, name: str) -> float:
+    result = _optional_positive_float(value, name=name)
+    if result is None:
         raise ValueError(f"{name} must be a positive finite number")
     return result
 
@@ -479,7 +520,9 @@ def _make_batch_uploader(
         return None
 
     directory = (
-        None if batch_dir is None else Path(_non_empty_path_like(batch_dir, name="batch_dir"))
+        None
+        if batch_dir is None
+        else Path(_non_empty_path_like(batch_dir, name="batch_dir"))
     )
     client = (
         None
@@ -487,14 +530,19 @@ def _make_batch_uploader(
         else BatchIntakeClient(learner_endpoint, auth_token=auth_token)
     )
     safe_worker = _safe_filename_component(worker_id)
-    sequence = 0
+    sequence = (
+        0 if directory is None else _latest_spool_sequence(directory, safe_worker)
+    )
 
     def upload(batch: RolloutBatch) -> bool | None:
         nonlocal sequence
         sequence += 1
         path: Path | None = None
         if directory is not None:
-            path = directory / f"{safe_worker}_{sequence:08d}_v{batch.policy_version:06d}.npz"
+            path = (
+                directory
+                / f"{safe_worker}_{sequence:08d}_v{batch.policy_version:06d}.npz"
+            )
         if path is not None and client is not None:
             payload = serialize_rollout_batch(batch)
             save_serialized_rollout_batch(path, payload)
@@ -521,7 +569,9 @@ def _upload_summary(uploaded: list[bool]) -> dict[str, int]:
         index for index, value in enumerate(uploaded) if not isinstance(value, bool)
     ]
     if malformed_indexes:
-        raise ValueError(f"uploaded batch ACKs must be bool at indexes {malformed_indexes}")
+        raise ValueError(
+            f"uploaded batch ACKs must be bool at indexes {malformed_indexes}"
+        )
     accepted = sum(1 for value in uploaded if value)
     submitted = len(uploaded)
     return {
@@ -536,6 +586,19 @@ def _safe_filename_component(value: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value)
     safe = safe.strip("._")
     return safe or "worker"
+
+
+def _latest_spool_sequence(directory: Path, safe_worker: str) -> int:
+    """Continue a worker's spool sequence across process restarts."""
+    if not directory.is_dir():
+        return 0
+    filename = re.compile(rf"^{re.escape(safe_worker)}_([0-9]+)_v[0-9]+[.]npz$")
+    latest = 0
+    for path in directory.iterdir():
+        match = filename.fullmatch(path.name)
+        if match is not None:
+            latest = max(latest, int(match.group(1)))
+    return latest
 
 
 if __name__ == "__main__":

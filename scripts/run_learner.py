@@ -51,7 +51,9 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
     p.add_argument("--task", help="task YAML used to infer learner model layout")
-    p.add_argument("--tasks", nargs="+", help="task YAMLs used to infer learner model layout")
+    p.add_argument(
+        "--tasks", nargs="+", help="task YAMLs used to infer learner model layout"
+    )
     p.add_argument("--bind", default=None, help="override config.learner.bind")
     p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
     p.add_argument(
@@ -66,7 +68,9 @@ def build_argparser() -> argparse.ArgumentParser:
         help="keep accepting TCP rollout batches and updating until interrupted",
     )
     p.add_argument("--intake-timeout-s", type=float, default=10.0)
-    p.add_argument("--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir")
+    p.add_argument(
+        "--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir"
+    )
     p.add_argument(
         "--device",
         default=None,
@@ -102,7 +106,9 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         getattr(args, "device", None) or cfg.learner.device,
     )
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
-    max_staleness = cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    max_staleness = (
+        cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    )
     batches_per_update = (
         cfg.learner.batches_per_update
         if getattr(args, "batches_per_update", None) is None
@@ -162,6 +168,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
                 "policy_version": server.policy_version,
                 "startup_checkpoint": startup_checkpoint.version,
                 "task_ids": [task.task_id for task in tasks],
+                "tuning_version": server.tuning_version,
             },
         )
         network_batches, network_accepted, network_failed = _serve_network_forever(
@@ -209,6 +216,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "submitted_batches": submitted_batches,
         "task_ids": [task.task_id for task in tasks],
         "tier": layout["tier"],
+        "tuning_version": server.tuning_version,
     }
 
 
@@ -313,7 +321,10 @@ def _prepare_startup_checkpoint(
         )
     )
     server.model.load_state_dict(state["model_state_dict"])
-    optimizer_restored = server.restore_optimizer_state(state.get("optimizer_state_dict"))
+    optimizer_restored = server.restore_optimizer_state(
+        state.get("optimizer_state_dict")
+    )
+    server.restore_live_tuning(state.get("live_tuning"))
     policy_version = _checkpoint_non_negative_int(
         state.get("policy_version", latest.policy_version),
         name="policy_version",
@@ -327,6 +338,7 @@ def _prepare_startup_checkpoint(
     if hasattr(server.algo, "current_version"):
         server.algo.current_version = policy_version
     server.last_checkpoint = latest
+    server.ensure_live_tuning_status()
     return latest, optimizer_restored
 
 
@@ -372,7 +384,9 @@ def _serve_network_intake(
     validate_service_auth(bind, cfg)
     auth_token = resolve_auth_token(cfg)
     accepted = 0
-    with BatchIntakeServer(server, bind, auth_token=auth_token, timeout_s=timeout_s) as intake:
+    with BatchIntakeServer(
+        server, bind, auth_token=auth_token, timeout_s=timeout_s
+    ) as intake:
         for _ in range(intake_count):
             result = intake.serve_once()
             accepted += int(result.accepted)
@@ -391,11 +405,14 @@ def _serve_network_forever(
     submitted = 0
     accepted = 0
     failed = 0
-    with BatchIntakeServer(server, bind, auth_token=auth_token, timeout_s=timeout_s) as intake:
+    with BatchIntakeServer(
+        server, bind, auth_token=auth_token, timeout_s=timeout_s
+    ) as intake:
         while True:
             try:
                 result = intake.serve_once()
             except TimeoutError:
+                _emit_tuning_event(server)
                 continue
             except KeyboardInterrupt:
                 break
@@ -415,7 +432,12 @@ def _serve_network_forever(
             submitted += 1
             if result.accepted:
                 accepted += 1
-                updated = bool(server.serve())
+                tuning_status = _reconcile_live_tuning(server)
+                updated = (
+                    bool(tuning_status.get("flushed_update"))
+                    if tuning_status is not None
+                    else bool(server.serve())
+                )
                 last_checkpoint = getattr(server, "last_checkpoint", None)
                 _emit_event(
                     "learner_update" if updated else "rollout_queued",
@@ -428,6 +450,7 @@ def _serve_network_forever(
                         "peer": getattr(result, "peer", "unknown"),
                         "policy_version": int(getattr(server, "policy_version", 0)),
                         "submitted_batches": submitted,
+                        "tuning_version": int(getattr(server, "tuning_version", 0)),
                     },
                 )
             else:
@@ -438,9 +461,35 @@ def _serve_network_forever(
                         "peer": getattr(result, "peer", "unknown"),
                         "policy_version": int(getattr(server, "policy_version", 0)),
                         "submitted_batches": submitted,
+                        "tuning_version": int(getattr(server, "tuning_version", 0)),
                     },
                 )
     return submitted, accepted, failed
+
+
+def _reconcile_live_tuning(server: LearnerServer) -> dict[str, object] | None:
+    reconcile = getattr(server, "reconcile_live_tuning", None)
+    if not callable(reconcile):
+        return None
+    try:
+        status = reconcile()
+    except Exception as exc:
+        _emit_event(
+            "tuning_failed",
+            {
+                "error": f"{type(exc).__name__}: {exc}",
+                "policy_version": int(getattr(server, "policy_version", 0)),
+                "tuning_version": int(getattr(server, "tuning_version", 0)),
+            },
+        )
+        return None
+    if status is not None:
+        _emit_event("tuning_applied", status)
+    return status
+
+
+def _emit_tuning_event(server: LearnerServer) -> None:
+    _reconcile_live_tuning(server)
 
 
 def _emit_event(event: str, payload: dict[str, Any]) -> None:
@@ -461,7 +510,9 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     return tasks
 
 
-def _resolve_layout(args: argparse.Namespace, tasks: list[TaskConfig]) -> dict[str, Any]:
+def _resolve_layout(
+    args: argparse.Namespace, tasks: list[TaskConfig]
+) -> dict[str, Any]:
     task = tasks[0] if tasks else None
     max_entities = args.max_entities
     if max_entities is None:
@@ -519,7 +570,9 @@ def _validate_learner_args(args: argparse.Namespace) -> None:
         getattr(args, "intake_timeout_s", 10.0),
         name="intake_timeout_s",
     )
-    _optional_non_negative_int(getattr(args, "max_staleness", None), name="max_staleness")
+    _optional_non_negative_int(
+        getattr(args, "max_staleness", None), name="max_staleness"
+    )
     _optional_positive_int(
         getattr(args, "publish_every_updates", None),
         name="publish_every_updates",

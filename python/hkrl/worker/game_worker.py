@@ -8,6 +8,7 @@ NEVER crosses the remote network.
 from __future__ import annotations
 
 import math
+import threading
 import time
 from collections.abc import Callable, Mapping
 from numbers import Integral, Real
@@ -29,6 +30,7 @@ from hkrl.spaces import (
 from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
+from hkrl.utils.live_tuning import LiveTuning
 from hkrl.worker.checkpoint_client import CheckpointClient
 
 
@@ -51,6 +53,7 @@ class GameWorker:
         task_provider: Callable[[], Any | None] | None = None,
         max_consecutive_failures: int = 3,
         clock: Callable[[], float] | None = None,
+        checkpoint_poll_interval_s: float = 2.0,
         time_scale: float | None = None,
     ) -> None:
         if max_consecutive_failures < 0:
@@ -62,6 +65,12 @@ class GameWorker:
             or float(time_scale) <= 0.0
         ):
             raise ValueError("time_scale must be a positive finite number")
+        if (
+            isinstance(checkpoint_poll_interval_s, bool)
+            or not math.isfinite(float(checkpoint_poll_interval_s))
+            or float(checkpoint_poll_interval_s) <= 0.0
+        ):
+            raise ValueError("checkpoint_poll_interval_s must be positive and finite")
 
         self.env = env
         self.model = model
@@ -72,8 +81,18 @@ class GameWorker:
         self.heartbeat_sink = heartbeat_sink
         self.task_provider = task_provider
         self.max_consecutive_failures = max_consecutive_failures
-        self.time_scale = None if time_scale is None else float(time_scale)
+        self.checkpoint_poll_interval_s = float(checkpoint_poll_interval_s)
+        self._base_time_scale: float | None = None if time_scale is None else float(time_scale)
+        self.time_scale: float | None = None if time_scale is None else float(time_scale)
         self._time_scale_needs_apply = self.time_scale is not None
+        self.live_tuning: LiveTuning | None = None
+        self.tuning_version = 0
+        self._checkpoint_lock = threading.Lock()
+        self._pending_checkpoint: tuple[int, dict[str, object]] | None = None
+        self._checkpoint_monitor_stop = threading.Event()
+        self._checkpoint_monitor_thread: threading.Thread | None = None
+        self._checkpoint_monitor_seen_version = -1
+        self.last_checkpoint_poll_error: str | None = None
         self._clock = clock or time.monotonic
         self.device = _model_device(model)
         initial_rnn_state = model.initial_state(batch_size=1, device=self.device)
@@ -146,17 +165,21 @@ class GameWorker:
             raise ValueError("total_steps must be positive")
 
         steps = 0
-        while total_steps is None or steps < total_steps:
-            try:
-                batch = self.collect_rollout()
-                self.last_batch = batch
-                self._upload_batch(batch)
-                self._emit_heartbeat(batch)
-                self.consecutive_failures = 0
-                self.last_error = None
-                steps += int(batch.rewards.size)
-            except Exception as exc:
-                self._handle_runtime_failure(exc)
+        self._start_checkpoint_monitor()
+        try:
+            while total_steps is None or steps < total_steps:
+                try:
+                    batch = self.collect_rollout()
+                    self.last_batch = batch
+                    self._upload_batch(batch)
+                    self._emit_heartbeat(batch)
+                    self.consecutive_failures = 0
+                    self.last_error = None
+                    steps += int(batch.rewards.size)
+                except Exception as exc:
+                    self._handle_runtime_failure(exc)
+        finally:
+            self._stop_checkpoint_monitor()
 
     def collect_rollout(self) -> RolloutBatch:
         """Fill one flat rollout and return a GAE-ready RolloutBatch."""
@@ -167,7 +190,23 @@ class GameWorker:
         self.model.eval()
         self._ensure_reset()
 
-        for _ in range(self.cfg.rollout_steps):
+        collected = 0
+        while collected < self.cfg.rollout_steps:
+            if collected > 0 and self._maybe_apply_pending_tuning():
+                # The prefix was collected under a different objective/version.
+                # Discard it instead of mixing definitions in one learner batch.
+                self.buffer.clear()
+                collected = 0
+                self._obs = None
+                self._info = {}
+                self._rnn_state = self.model.initial_state(
+                    batch_size=1,
+                    device=self.device,
+                )
+                self._clear_memory_context()
+                self._ensure_reset()
+                continue
+
             assert self._obs is not None
             obs = self._obs
             info = self._info
@@ -254,6 +293,7 @@ class GameWorker:
                     self._info = {}
                 else:
                     self._reset()
+            collected += 1
 
         last_value = self._bootstrap_value()
         self.buffer.compute_returns(
@@ -261,7 +301,10 @@ class GameWorker:
             gamma=self.cfg.gamma,
             gae_lambda=self.cfg.gae_lambda,
         )
-        batch = self.buffer.to_batch(policy_version=self.policy_version)
+        batch = self.buffer.to_batch(
+            policy_version=self.policy_version,
+            tuning_version=self.tuning_version,
+        )
         self._record_rollout_timing(batch, started_at)
         return batch
 
@@ -269,21 +312,159 @@ class GameWorker:
         if self.checkpoint_client is None:
             return False
 
+        pending = self._peek_pending_checkpoint()
         latest_version = self.checkpoint_client.latest_version()
-        if latest_version < 0 or latest_version <= self.checkpoint_version:
+        pending_version = -1 if pending is None else pending[0]
+        selected_version = max(latest_version, pending_version)
+        if selected_version < 0 or selected_version <= self.checkpoint_version:
             return False
 
-        state = self.checkpoint_client.pull(latest_version)
+        state = (
+            pending[1]
+            if pending is not None and pending[0] == selected_version
+            else self.checkpoint_client.pull(selected_version)
+        )
+        self._discard_pending_checkpoint(selected_version)
+        return self._load_checkpoint_state(selected_version, state)
+
+    def _load_checkpoint_state(
+        self,
+        checkpoint_version: int,
+        state: Mapping[str, object],
+    ) -> bool:
         model_state = state.get("model_state_dict")
         if not isinstance(model_state, Mapping):
             raise ValueError("checkpoint missing model_state_dict")
         self.model.load_state_dict(model_state)
-        self.checkpoint_version = latest_version
-        policy_version = state.get("policy_version", latest_version)
+        _, tuning = _checkpoint_tuning(state)
+        if tuning is not None:
+            self._apply_live_tuning(tuning)
+        self.checkpoint_version = checkpoint_version
+        policy_version = state.get("policy_version", checkpoint_version)
         if not isinstance(policy_version, Integral):
             raise ValueError("checkpoint policy_version must be an integer")
         self.policy_version = int(policy_version)
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+        return True
+
+    def _maybe_apply_pending_tuning(self) -> bool:
+        pending = self._peek_pending_checkpoint()
+        if pending is None:
+            return False
+        checkpoint_version, state = pending
+        tuning_version, _ = _checkpoint_tuning(state)
+        if tuning_version <= self.tuning_version:
+            return False
+        self._discard_pending_checkpoint(checkpoint_version)
+        return self._load_checkpoint_state(checkpoint_version, state)
+
+    def _peek_pending_checkpoint(self) -> tuple[int, dict[str, object]] | None:
+        with self._checkpoint_lock:
+            return self._pending_checkpoint
+
+    def _discard_pending_checkpoint(self, through_version: int) -> None:
+        with self._checkpoint_lock:
+            pending = self._pending_checkpoint
+            if pending is not None and pending[0] <= through_version:
+                self._pending_checkpoint = None
+
+    def _queue_checkpoint(
+        self,
+        checkpoint_version: int,
+        state: dict[str, object],
+    ) -> None:
+        with self._checkpoint_lock:
+            pending = self._pending_checkpoint
+            if pending is None or checkpoint_version > pending[0]:
+                self._pending_checkpoint = (checkpoint_version, state)
+
+    def _start_checkpoint_monitor(self) -> None:
+        if self.checkpoint_client is None:
+            return
+        thread = self._checkpoint_monitor_thread
+        if thread is not None and thread.is_alive():
+            return
+        self._checkpoint_monitor_stop.clear()
+        self._checkpoint_monitor_seen_version = self.checkpoint_version
+        thread = threading.Thread(
+            target=self._checkpoint_monitor_loop,
+            name="hkrl-checkpoint-monitor",
+            daemon=True,
+        )
+        self._checkpoint_monitor_thread = thread
+        thread.start()
+
+    def _stop_checkpoint_monitor(self) -> None:
+        self._checkpoint_monitor_stop.set()
+        thread = self._checkpoint_monitor_thread
+        self._checkpoint_monitor_thread = None
+        if thread is not None:
+            thread.join(timeout=1.0)
+
+    def _checkpoint_monitor_loop(self) -> None:
+        assert self.checkpoint_client is not None
+        while not self._checkpoint_monitor_stop.wait(self.checkpoint_poll_interval_s):
+            try:
+                version = self.checkpoint_client.latest_version()
+                if version <= max(
+                    self.checkpoint_version,
+                    self._checkpoint_monitor_seen_version,
+                ):
+                    self.last_checkpoint_poll_error = None
+                    continue
+                state = self.checkpoint_client.pull(version)
+                self._queue_checkpoint(version, state)
+                self._checkpoint_monitor_seen_version = version
+                self.last_checkpoint_poll_error = None
+            except Exception as exc:
+                self.last_checkpoint_poll_error = f"{type(exc).__name__}: {exc}"
+
+    def _apply_live_tuning(self, tuning: LiveTuning) -> bool:
+        if tuning.version < self.tuning_version:
+            raise ValueError(
+                f"checkpoint tuning version regressed from {self.tuning_version} "
+                f"to {tuning.version}"
+            )
+        if tuning.version == self.tuning_version:
+            if self.live_tuning is not None and tuning.digest != self.live_tuning.digest:
+                raise ValueError(f"tuning version {tuning.version} changed content")
+            return False
+
+        previous_reward = (
+            {}
+            if self.live_tuning is None
+            else self.live_tuning.reward.model_dump(exclude_none=True)
+        )
+        reward_overrides = tuning.reward.model_dump(exclude_none=True)
+        if reward_overrides != previous_reward:
+            set_reward_overrides = _find_attr(self.env, "set_reward_overrides")
+            if not callable(set_reward_overrides):
+                raise RuntimeError(
+                    "live reward tuning requires env.set_reward_overrides(overrides)"
+                )
+            set_reward_overrides(reward_overrides)
+            # Do not let one episode straddle two reward definitions.
+            self._obs = None
+            self._info = {}
+            self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
+            self._clear_memory_context()
+
+        previous_scale = self.time_scale
+        configured_scale = tuning.worker.time_scale
+        self.time_scale = (
+            self._base_time_scale if configured_scale is None else float(configured_scale)
+        )
+        if self.time_scale is None and previous_scale is not None:
+            self.time_scale = 1.0
+        if self.time_scale is not None and self.time_scale != previous_scale:
+            set_timescale = _find_attr(self.env, "set_timescale")
+            if not callable(set_timescale):
+                raise RuntimeError("live worker tuning requires env.set_timescale(scale)")
+            set_timescale(self.time_scale)
+            self._time_scale_needs_apply = False
+
+        self.live_tuning = tuning
+        self.tuning_version = tuning.version
         return True
 
     def _maybe_switch_task(self) -> bool:
@@ -340,6 +521,7 @@ class GameWorker:
                 "learner_endpoint": self.learner_endpoint,
                 **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
+                "tuning_version": self.tuning_version,
                 "rollout_duration_s": self.last_rollout_duration_s,
                 "rollout_steps": int(batch.rewards.size),
                 "sps": self.last_sps,
@@ -359,6 +541,7 @@ class GameWorker:
                 "learner_endpoint": self.learner_endpoint,
                 **self._learner_upload_metrics(),
                 "policy_version": self.policy_version,
+                "tuning_version": self.tuning_version,
                 "rollout_duration_s": 0.0,
                 "rollout_steps": 0,
                 "sps": 0.0,
@@ -708,6 +891,27 @@ def _model_device(model: ActorCritic) -> torch.device:
         return next(model.parameters()).device
     except StopIteration:
         return torch.device("cpu")
+
+
+def _checkpoint_tuning(
+    state: Mapping[str, object],
+) -> tuple[int, LiveTuning | None]:
+    raw_version = state.get("tuning_version", 0)
+    if isinstance(raw_version, bool) or not isinstance(raw_version, Integral):
+        raise ValueError("checkpoint tuning_version must be an integer")
+    version = int(raw_version)
+    if version < 0:
+        raise ValueError("checkpoint tuning_version must be non-negative")
+
+    payload = state.get("live_tuning")
+    if payload is None:
+        if version != 0:
+            raise ValueError("checkpoint tuning_version requires live_tuning")
+        return version, None
+    tuning = LiveTuning.model_validate(payload)
+    if tuning.version != version:
+        raise ValueError("checkpoint live_tuning version does not match tuning_version")
+    return version, tuning
 
 
 def _find_reconnect(env: Any) -> Callable[[], None] | None:

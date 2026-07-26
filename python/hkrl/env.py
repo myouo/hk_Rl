@@ -9,6 +9,7 @@ observation, reward, termination flags, and info (including the action mask).
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import gymnasium as gym
@@ -36,7 +37,7 @@ from hkrl.spaces import (
     make_observation_space,
 )
 from hkrl.transport.base import Transport
-from hkrl.utils.config import TaskConfig
+from hkrl.utils.config import RewardWeights, TaskConfig
 
 
 class EnvProtocolError(RuntimeError):
@@ -63,6 +64,7 @@ class HKRLEnv(gym.Env):
         super().__init__()
         self.transport = transport
         self._custom_reward_fn = reward_fn is not None
+        self._reward_overrides: dict[str, float] = {}
         self.reward_fn = reward_fn or DefaultReward(task.reward)
         self._configure_task(task)
         self._tick_id = 0
@@ -252,11 +254,28 @@ class HKRLEnv(gym.Env):
             time_scale=float(scale),
         )
 
+    def set_reward_overrides(self, overrides: Mapping[str, float]) -> None:
+        """Replace reward overrides at a worker-controlled safe boundary."""
+        if self._custom_reward_fn:
+            raise RuntimeError("live reward tuning is unavailable with a custom reward_fn")
+        validated = RewardWeights.model_validate(
+            {
+                **self.task.reward.model_dump(),
+                **dict(overrides),
+            }
+        )
+        self._reward_overrides = {name: float(value) for name, value in overrides.items()}
+        self.reward_fn = DefaultReward(validated)
+
     # -- helpers --------------------------------------------------------------
     def _configure_task(self, task: TaskConfig) -> None:
         self.task = task
         if not self._custom_reward_fn:
-            self.reward_fn = DefaultReward(task.reward)
+            weights = task.reward.model_copy(
+                update=self._reward_overrides,
+                deep=True,
+            )
+            self.reward_fn = DefaultReward(weights)
         self.observation_space = make_observation_space(
             max_entities=task.observation.max_entities,
             tier=task.observation.tier,

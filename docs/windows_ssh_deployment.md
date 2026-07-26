@@ -112,7 +112,8 @@ by the live Windows deployment.
 The launcher starts:
 
 - APPO rollout intake on `127.0.0.1:5600`;
-- read-only checkpoint registry HTTP on `127.0.0.1:5601`;
+- read-only checkpoint downloads plus authenticated live-tuning control on
+  `127.0.0.1:5601`;
 - three compatible task layouts by default.
 
 Both services remain loopback-only. The registry serves only `index.jsonl` and

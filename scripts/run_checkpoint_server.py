@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve learner checkpoints read-only to SSH-forwarded GameWorkers."""
+"""Serve checkpoints plus narrow live-tuning control through an SSH forward."""
 
 from __future__ import annotations
 

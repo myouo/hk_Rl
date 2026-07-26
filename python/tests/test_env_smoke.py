@@ -460,6 +460,37 @@ def test_env_set_task_sends_wire_id_and_rebuilds_spaces() -> None:
     assert info["lifecycle_state"] is protocol.LifecycleState.RUNNING
 
 
+def test_env_reward_overrides_survive_task_switch_and_can_reset() -> None:
+    from hkrl.env import HKRLEnv
+
+    initial_task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    next_task = load_task_config("../configs/tasks/hornet_protector.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.COUNTDOWN,
+            ),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=initial_task)
+
+    env.set_reward_overrides({"boss_damage": 7.0})
+    env.set_task(
+        next_task,
+        options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1},
+    )
+
+    assert env.reward_fn.w.boss_damage == 7.0
+    assert env.reward_fn.w.player_death == next_task.reward.player_death
+    env.set_reward_overrides({})
+    assert env.reward_fn.w.boss_damage == next_task.reward.boss_damage
+
+
 def test_env_step_requires_completed_reset() -> None:
     from hkrl.env import EnvProtocolError, HKRLEnv
 

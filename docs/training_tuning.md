@@ -19,6 +19,73 @@ Unknown keys fail validation. Do not copy hyperparameters into the experiment
 manifest; point both roles at composed train configs with the same training
 contract.
 
+## Live tuning without a restart
+
+The authenticated checkpoint registry also exposes a narrow, loopback-only
+control endpoint. `scripts/tune_training.py` submits a complete, monotonically
+versioned override snapshot. The learner applies it only between updates,
+publishes it in a hash-verified checkpoint, and the local worker applies that
+checkpoint only after discarding any unfinished rollout prefix. Reward changes
+therefore never mix two objectives in one uploaded batch.
+
+Keep the existing SSH forward for port 5601 and load the same token used by the
+worker:
+
+```bash
+set -a
+source runs/remote-training/worker.env
+set +a
+
+# Inspect the requested and learner-applied versions.
+python scripts/tune_training.py --show
+
+# Change several safe knobs atomically and wait for learner acknowledgement.
+python scripts/tune_training.py \
+  --set reward.boss_damage=1.0 \
+  --set reward.player_death=-15 \
+  --set learner.entropy_coef=0.02 \
+  --set worker.time_scale=3.0 \
+  --note "more engagement, less edge camping" \
+  --wait-applied 30
+
+# Return one field to its startup YAML value while retaining other overrides.
+python scripts/tune_training.py \
+  --unset reward.player_death \
+  --wait-applied 30
+
+# Return every live field to its startup YAML value.
+python scripts/tune_training.py --reset --wait-applied 30
+```
+
+The CLI accepts these fields:
+
+- `reward.*`: `boss_damage`, `player_damage`, `soul_gained`, `heal_amount`,
+  `boss_kill`, `player_death`, `time_penalty`, `invalid_action`
+- learner: `learning_rate`, `entropy_coef`, `value_coef`, `clip_range`,
+  `max_grad_norm`, `target_kl` (`off` disables the KL stop)
+- worker: `time_scale`
+
+The learner checks the request after each upload and on its idle intake timeout
+(10 seconds by default). The worker checks for the resulting checkpoint in a
+background thread every `local.checkpoint_poll_interval_s` (2 seconds in the
+aggregate manifest), so remote I/O never stalls the local action loop.
+`--wait-applied` confirms the learner boundary; the worker's next heartbeat
+confirms the same `tuning_version` on the game host. A worker may discard one
+unfinished rollout fragment, but it never uploads a mixed-version batch.
+
+Tensor/layout and sampling-geometry fields remain restart-only:
+`rollout_steps`, `minibatch_size`, `epochs`, `sequence_length`, `burn_in`,
+`batches_per_update`, model dimensions, observation/action layouts,
+`action_repeat`, transport, and task enrollment. Changing those fields requires
+a new composed YAML and a controlled restart because existing buffers, compiled
+graphs, or checkpoints may have incompatible shapes.
+
+Each request and applied acknowledgement is atomically persisted as
+`live_tuning.json` / `live_tuning_status.json` in the checkpoint registry. The
+full snapshot is embedded in every later checkpoint, so learner and worker
+restarts preserve the active values. `tuning_version` is also carried by every
+rollout; the learner rejects batches from a different objective version.
+
 ## Where each knob lives
 
 | Goal | Setting | File to tune |
@@ -38,6 +105,7 @@ contract.
 | model capacity | `model.entity_hidden`, attention layers/heads, `rnn_hidden` | train config |
 | game decision cadence | `action.action_repeat` | task config |
 | simulation wall-clock multiplier | `local.time_scale` | experiment manifest |
+| background tuning latency | `local.checkpoint_poll_interval_s` | experiment manifest |
 | reward composition | `reward.*` | task config |
 
 APPO sequence chunks start from the exact recorded behavior hidden state, so its

@@ -8,6 +8,8 @@ from typing import Any
 
 import torch
 
+from hkrl.utils.live_tuning import LiveTuning
+
 
 def validate_checkpoint_payload(payload: object) -> dict[str, object]:
     """Return a loadable checkpoint payload after structural/numeric checks."""
@@ -19,6 +21,19 @@ def validate_checkpoint_payload(payload: object) -> dict[str, object]:
     policy_version = payload.get("policy_version")
     if policy_version is not None:
         _validate_non_negative_int("policy_version", policy_version)
+
+    tuning_version = payload.get("tuning_version")
+    live_tuning = payload.get("live_tuning")
+    if tuning_version is not None:
+        _validate_non_negative_int("tuning_version", tuning_version)
+    if live_tuning is not None:
+        tuning = LiveTuning.model_validate(live_tuning)
+        if tuning_version is None:
+            raise ValueError("checkpoint live_tuning requires tuning_version")
+        if tuning.version != int(tuning_version):
+            raise ValueError("checkpoint live_tuning version does not match tuning_version")
+    elif tuning_version not in (None, 0):
+        raise ValueError("checkpoint tuning_version requires live_tuning")
 
     return payload
 

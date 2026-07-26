@@ -63,11 +63,13 @@ def test_local_inference_plan_keeps_action_loop_on_game_host() -> None:
     assert plan["env_endpoint"] == "127.0.0.1:5555"
     assert plan["learner_endpoint"] == "127.0.0.1:5600"
     assert plan["inference_threads"] == 1
+    assert plan["checkpoint_poll_interval_s"] == 2.0
     assert plan["time_scale"] == 1.0
     assert plan["steps"] == 64
     assert plan["worker_id"] == "test-worker"
     assert "--steps" in plan["command"]
     assert "--tasks" in plan["command"]
+    assert "--checkpoint-poll-interval-s" in plan["command"]
     assert "--time-scale" in plan["command"]
 
 

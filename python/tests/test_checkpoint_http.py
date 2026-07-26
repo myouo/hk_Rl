@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 from urllib.error import HTTPError
@@ -93,6 +94,50 @@ def test_checkpoint_http_rejects_writes(tmp_path: Path) -> None:
 
     assert error.value.code == 405
     assert not (tmp_path / "index.jsonl").exists()
+
+
+def test_checkpoint_http_accepts_monotonic_authenticated_live_tuning(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "version": 1,
+        "reward": {"boss_damage": 1.0, "player_death": -20.0},
+        "learner": {"entropy_coef": 0.02},
+        "worker": {"time_scale": 3.0},
+    }
+    with _running_server(tmp_path, auth_token="secret") as endpoint:
+        request = Request(
+            endpoint + "live-tuning",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": "Bearer secret",
+                "Content-Type": "application/json",
+            },
+        )
+        with urlopen(request, timeout=2.0) as response:
+            result = json.loads(response.read())
+        assert response.status == 201
+        assert result["requested_version"] == 1
+
+        get_request = Request(endpoint + "live-tuning")
+        get_request.add_header("Authorization", "Bearer secret")
+        with urlopen(get_request, timeout=2.0) as response:
+            assert json.loads(response.read())["reward"]["boss_damage"] == 1.0
+
+        with pytest.raises(HTTPError) as conflict:
+            urlopen(request, timeout=2.0)
+        assert conflict.value.code == 409
+
+        unauthorized = Request(
+            endpoint + "live-tuning",
+            data=json.dumps({**payload, "version": 2}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(HTTPError) as denied:
+            urlopen(unauthorized, timeout=2.0)
+        assert denied.value.code == 401
 
 
 def test_checkpoint_http_creates_registry_root_and_starts_idempotently(

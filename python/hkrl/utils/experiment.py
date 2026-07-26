@@ -25,7 +25,7 @@ from hkrl.utils.config import (
 
 
 class RemoteExperimentRole(StrictConfigModel):
-    """Remote GPU learner and read-only checkpoint registry."""
+    """Remote GPU learner and checkpoint/live-tuning registry."""
 
     train_config: str = Field(min_length=1)
     learner_bind: str = Field(default="127.0.0.1:5600", min_length=1)
@@ -45,6 +45,7 @@ class LocalExperimentRole(StrictConfigModel):
     )
     worker_id: str = Field(default="game-worker-0", min_length=1)
     inference_threads: int = Field(default=1, ge=1)
+    checkpoint_poll_interval_s: float = Field(default=2.0, gt=0.0)
     time_scale: float = Field(default=1.0, gt=0.0)
     batch_dir: str = Field(default="runs/game-worker/batches", min_length=1)
     heartbeat_jsonl: str = Field(

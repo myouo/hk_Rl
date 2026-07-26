@@ -32,6 +32,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         batch_dir=str(tmp_path / "batches"),
         heartbeat_jsonl=str(tmp_path / "heartbeats.jsonl"),
         inference_threads=1,
+        checkpoint_poll_interval_s=2.0,
         worker_id="game-pc-1",
         steps=None,
         max_consecutive_failures=5,
@@ -52,6 +53,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "env_port": 6001,
         "heartbeat_jsonl": str(tmp_path / "heartbeats.jsonl"),
         "inference_threads": 1,
+        "checkpoint_poll_interval_s": 2.0,
         "learner": "127.0.0.1:5600",
         "learner_upload_enabled": True,
         "latest_checkpoint": 1,
@@ -62,6 +64,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "task_id": "gruz_mother",
         "task_ids": ["gruz_mother"],
         "time_scale": None,
+        "tuning_version": 0,
         "worker_id": "game-pc-1",
     }
 
@@ -136,6 +139,9 @@ def test_run_worker_rejects_duplicate_task_wire_ids(
         ("max_consecutive_failures", False, "max_consecutive_failures"),
         ("inference_threads", 0, "inference_threads"),
         ("inference_threads", False, "inference_threads"),
+        ("checkpoint_poll_interval_s", 0.0, "checkpoint_poll_interval_s"),
+        ("checkpoint_poll_interval_s", float("inf"), "checkpoint_poll_interval_s"),
+        ("checkpoint_poll_interval_s", False, "checkpoint_poll_interval_s"),
         ("time_scale", 0.0, "time_scale"),
         ("time_scale", float("inf"), "time_scale"),
         ("time_scale", False, "time_scale"),
@@ -227,6 +233,26 @@ def test_run_worker_batch_spooler_rejects_empty_batch_dir() -> None:
 
     with pytest.raises(ValueError, match="batch_dir"):
         module._make_batch_uploader("", "game-pc-1", [])
+
+
+def test_run_worker_batch_spooler_continues_sequence_after_restart(
+    tmp_path: Path,
+) -> None:
+    module = _load_script("run_worker.py")
+    existing = tmp_path / "game_pc_1_00000007_v000004.npz"
+    existing.write_bytes(b"preserve")
+    written: list[str] = []
+    uploader = module._make_batch_uploader(
+        str(tmp_path),
+        "game/pc:1",
+        written,
+    )
+    assert uploader is not None
+
+    uploader(_sample_batch(policy_version=5))
+
+    assert Path(written[0]).name == "game_pc_1_00000008_v000005.npz"
+    assert existing.read_bytes() == b"preserve"
 
 
 def test_run_worker_heartbeat_sink_writes_coordinator_jsonl(tmp_path: Path) -> None:
@@ -367,6 +393,7 @@ def _worker_args(**overrides: object) -> argparse.Namespace:
         "env_port": None,
         "heartbeat_jsonl": None,
         "inference_threads": None,
+        "checkpoint_poll_interval_s": 2.0,
         "learner": None,
         "max_consecutive_failures": 3,
         "registry": None,

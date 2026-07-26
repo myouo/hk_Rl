@@ -192,7 +192,7 @@ class RecurrentRolloutBuffer:
         _require_finite("advantages", self.advantages[:length])
         _require_finite("returns", self.returns[:length])
 
-    def to_batch(self, policy_version: int) -> RolloutBatch:
+    def to_batch(self, policy_version: int, tuning_version: int = 0) -> RolloutBatch:
         """Return a flat RolloutBatch view for logging/upload boundaries."""
         length = self._length()
         _require_finite_stored_window(self, length)
@@ -216,6 +216,7 @@ class RecurrentRolloutBuffer:
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
             policy_version=policy_version,
+            tuning_version=tuning_version,
             discount_exponents=self.discount_exponents[:length].copy(),
         )
 
