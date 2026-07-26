@@ -60,6 +60,80 @@ def test_appo_ingest_rejects_model_incompatible_batches() -> None:
     assert appo.queued_batches == 0
 
 
+def test_appo_ingest_rejects_float_coded_actions() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rnn_batch(policy_version=3)
+    batch.actions = batch.actions.astype(np.float32)
+
+    assert not appo.ingest(batch, current_version=3)
+    assert appo.queued_batches == 0
+
+    batch = _rnn_batch(policy_version=3)
+    batch.prev_actions = batch.prev_actions.astype(np.float32)
+    assert not appo.ingest(batch, current_version=3)
+    assert appo.queued_batches == 0
+
+
+def test_appo_ingest_rejects_empty_categorical_action_mask_group() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rollout_batch(model)
+    batch.action_masks[..., :N_MOVEMENT_X] = False
+
+    assert not appo.ingest(batch, current_version=1)
+    assert appo.queued_batches == 0
+
+
+def test_appo_ingest_rejects_selected_masked_primitive_action() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rollout_batch(model)
+    batch.actions[..., 0] = 2
+    batch.action_masks[..., 2] = False
+
+    assert not appo.ingest(batch, current_version=1)
+    assert appo.queued_batches == 0
+
+
+def test_appo_macro_mask_ignores_canonical_primitive_fields() -> None:
+    model = MlpActorCritic(
+        _obs_spec(),
+        hidden=16,
+        enable_macro=True,
+        n_macros=2,
+    )
+    appo = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    batch = _rnn_batch(policy_version=0)
+    batch.actions = np.pad(batch.actions, ((0, 0), (0, 0), (0, 1)))
+    batch.actions[..., 0] = 1
+    batch.actions[..., 1] = 1
+    batch.actions[..., -1] = 1
+    batch.prev_actions = np.pad(batch.prev_actions, ((0, 0), (0, 0), (0, 1)))
+    batch.action_masks = np.ones((4, 1, 22), dtype=bool)
+    batch.action_masks[..., 1] = False
+    batch.action_masks[..., 4] = False
+    batch.action_masks[..., 15] = False
+
+    assert appo.ingest(batch, current_version=0)
+
+    rejected = _rnn_batch(policy_version=0)
+    rejected.actions = batch.actions.copy()
+    rejected.prev_actions = batch.prev_actions.copy()
+    rejected.action_masks = batch.action_masks.copy()
+    rejected.action_masks[..., 20] = False
+    other = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    assert not other.ingest(rejected, current_version=0)
+
+    noncanonical = _rnn_batch(policy_version=0)
+    noncanonical.actions = batch.actions.copy()
+    noncanonical.actions[..., 0] = 2
+    noncanonical.prev_actions = batch.prev_actions.copy()
+    noncanonical.action_masks = np.ones((4, 1, 22), dtype=bool)
+    other = APPO(model, TrainConfig(algorithm="appo"), max_staleness=2)
+    assert not other.ingest(noncanonical, current_version=0)
+
+
 def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> None:
     torch.manual_seed(123)
     model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
@@ -89,6 +163,9 @@ def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> No
         "policy_version",
         "samples",
         "task_count",
+        "sequence_count",
+        "sequence_length",
+        "bptt_enabled",
         "optimizer_steps",
         "epochs_completed",
         "kl_early_stop",
@@ -117,6 +194,7 @@ def test_appo_passes_rollout_rnn_states_to_model() -> None:
         minibatch_size=2,
         learning_rate=1.0e-2,
         entropy_coef=0.0,
+        sequence_length=2,
     )
     appo = APPO(model, cfg, max_staleness=1)
 
@@ -124,10 +202,34 @@ def test_appo_passes_rollout_rnn_states_to_model() -> None:
     metrics = appo.update()
 
     assert metrics["samples"] == 4.0
+    assert metrics["sequence_count"] == 2.0
+    assert metrics["sequence_length"] == 2.0
+    assert metrics["bptt_enabled"] == 1.0
+    assert (1, 1, 3) in model.seen_rnn_shapes
+    assert (1, 2, 12) in model.seen_prev_action_shapes
+    assert (1, 2) in model.seen_prev_reward_shapes
+
+
+def test_appo_splits_sequences_when_episode_id_changes() -> None:
+    model = _RnnAwareActorCritic()
+    cfg = TrainConfig(
+        algorithm="appo",
+        epochs=1,
+        minibatch_size=8,
+        sequence_length=4,
+    )
+    batch = _rnn_batch(policy_version=0)
+    batch.dones[:] = False
+    batch.episode_ids[:, 0] = np.array([1, 1, 2, 2], dtype=np.uint64)
+    appo = APPO(model, cfg)
+
+    assert appo.ingest(batch, current_version=0)
+    metrics = appo.update()
+
+    assert metrics["samples"] == 4.0
+    assert metrics["sequence_count"] == 2.0
     assert (1, 2, 3) in model.seen_rnn_shapes
-    assert model.seen_rnn_shapes[-1] == (1, 4, 3)
-    assert (2, 12) in model.seen_prev_action_shapes
-    assert (4,) in model.seen_prev_reward_shapes
+    assert (2, 4, 12) in model.seen_prev_action_shapes
 
 
 def test_appo_update_rejects_non_finite_model_outputs_before_step() -> None:
@@ -211,6 +313,19 @@ def test_appo_rejects_cuda_only_acceleration_on_cpu() -> None:
         )
 
 
+def test_appo_rejects_silently_ignored_burn_in() -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+
+    with pytest.raises(ValueError, match="burn_in=0"):
+        APPO(
+            model,
+            TrainConfig(
+                algorithm="appo",
+                burn_in=1,
+            ),
+        )
+
+
 class _RnnAwareActorCritic(ActorCritic):
     def __init__(self) -> None:
         super().__init__()
@@ -260,10 +375,10 @@ class _RnnAwareActorCritic(ActorCritic):
         self.seen_rnn_shapes.append(None if rnn_state is None else tuple(rnn_state.shape))
         self.seen_prev_action_shapes.append(tuple(obs["prev_action"].shape))
         self.seen_prev_reward_shapes.append(tuple(obs["prev_reward"].shape))
-        batch_size = actions.shape[0]
-        value = self.weight.expand(batch_size)
-        log_prob = self.weight.expand(batch_size)
-        entropy = self.weight.expand(batch_size) * 0.0
+        output_shape = actions.shape[:-1]
+        value = self.weight.expand(output_shape)
+        log_prob = self.weight.expand(output_shape)
+        entropy = self.weight.expand(output_shape) * 0.0
         return log_prob, entropy, value
 
 

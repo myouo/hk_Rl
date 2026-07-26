@@ -10,6 +10,18 @@ namespace HKRLEnvMod.Action
     /// </summary>
     public sealed class MacroActionScheduler
     {
+        public const int ApproachTicks = 4;
+        public const int RetreatTicks = 4;
+        public const int JumpAttackTicks = 2;
+        public const int PogoTicks = 5;
+        public const int DashAwayTicks = 1;
+        public const int DashThroughTicks = 1;
+        public const int CastForwardTicks = 1;
+        public const int CastUpTicks = 1;
+        public const int FocusWhenSafeTicks = 120;
+        public const int ShortHopTicks = 1;
+        public const int LongJumpTicks = 4;
+
         private readonly Queue<PrimitiveInput> _plan = new();
 
         /// <summary>Begin executing a macro; subsequent ticks emit its primitives.</summary>
@@ -30,6 +42,29 @@ namespace HKRLEnvMod.Action
 
         public bool IsActive => _plan.Count > 0;
 
+        /// <summary>
+        /// Number of primitive ticks emitted by a known macro. Kept public so the
+        /// cross-language action contract can verify Python decision timing.
+        /// </summary>
+        public static int ExpectedDurationTicks(int macroId)
+        {
+            return macroId switch
+            {
+                0 => ApproachTicks,
+                1 => RetreatTicks,
+                2 => JumpAttackTicks,
+                3 => PogoTicks,
+                4 => DashAwayTicks,
+                5 => DashThroughTicks,
+                6 => CastForwardTicks,
+                7 => CastUpTicks,
+                8 => FocusWhenSafeTicks,
+                9 => ShortHopTicks,
+                10 => LongJumpTicks,
+                _ => 1
+            };
+        }
+
         /// <summary>Discard every queued primitive (reset/reconnect safety).</summary>
         public void Clear()
         {
@@ -40,8 +75,8 @@ namespace HKRLEnvMod.Action
         {
             return macroId switch
             {
-                0 => Repeat(new PrimitiveInput(1, 0, 0), 4), // approach
-                1 => Repeat(new PrimitiveInput(-1, 0, 0), 4), // retreat
+                0 => Repeat(new PrimitiveInput(1, 0, 0), ApproachTicks), // approach
+                1 => Repeat(new PrimitiveInput(-1, 0, 0), RetreatTicks), // retreat
                 2 => Sequence(
                     new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpTap)),
                     new PrimitiveInput(1, 0, Button(ActionMasker.ButtonAttack))), // jump_attack
@@ -51,7 +86,7 @@ namespace HKRLEnvMod.Action
                             0,
                             0,
                             Button(ActionMasker.ButtonJumpHold)),
-                        4),
+                        PogoTicks - 1),
                     Sequence(
                         new PrimitiveInput(
                             0,
@@ -66,9 +101,11 @@ namespace HKRLEnvMod.Action
                         0,
                         0,
                         Button(ActionMasker.ButtonFocusHold)),
-                    120), // focus_when_safe: one complete heal attempt
+                    FocusWhenSafeTicks), // focus_when_safe: one complete heal attempt
                 9 => Sequence(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpTap))), // short_hop
-                10 => Repeat(new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpHold)), 4),
+                10 => Repeat(
+                    new PrimitiveInput(0, 0, Button(ActionMasker.ButtonJumpHold)),
+                    LongJumpTicks),
                 _ => Sequence(PrimitiveInput.Noop)
             };
         }

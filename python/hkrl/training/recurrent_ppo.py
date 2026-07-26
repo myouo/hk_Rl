@@ -311,4 +311,5 @@ _FINITE_SEQUENCE_FIELDS: tuple[str, ...] = (
     "returns",
     "rewards",
     "prev_rewards",
+    "discount_exponents",
 )

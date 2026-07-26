@@ -1,5 +1,5 @@
 # Base defaults shared by train configs. Compose via a `defaults:` key
-# (config loader composition lands in phase 2; see hkrl/utils/config.py).
+# implemented by hkrl/utils/config.py.
 # Fields map to hkrl.utils.config.TrainConfig.
 
 algorithm: recurrent_ppo
@@ -34,6 +34,7 @@ model:
   rnn_hidden: 256
 
 learner:
+  batches_per_update: 1          # accepted worker rollouts combined per optimizer update
   amp_dtype: auto                 # CUDA: BF16 when supported, else FP16; CPU: off
   compile_mode: "off"             # quote: bare YAML off is parsed as false
   fused_optimizer: auto           # fused Adam on CUDA when available

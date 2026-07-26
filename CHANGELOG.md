@@ -14,6 +14,34 @@ the project version tracks the **schema_version** + roadmap phase.
   steps, completed epochs, and KL stops while CPU smoke remains FP32. Batched
   finite checks and vectorized per-task statistics avoid repeated GPU-host
   synchronization, and CLI/smoke summaries retain the update metrics.
+- Added episode/task-safe fixed-length APPO sequence reconstruction with
+  recorded GRU boundary state, padding-masked truncated BPTT, fixed compiled
+  minibatch shapes, and multi-worker `learner.batches_per_update` GPU
+  aggregation. The remote starting profile now trains four 2,048-transition
+  rollouts as one 8,192-transition update with 1,024-transition minibatches and
+  two epochs.
+- Added a typed aggregate experiment manifest plus
+  `scripts/run_remote_training.py` and `scripts/run_local_inference.py`.
+  `docs/training_tuning.md` maps every algorithm/model/runtime/action/reward
+  hyperparameter to its owning composed YAML and documents the dry-run/launch
+  workflow.
+
+### Changed
+- Kept the schema-v6/Gym action dimensions compatible after the v0.8.0 Mod
+  audit. Macro selection is now a hierarchical probability branch: ignored
+  primitive samples no longer contribute PPO log-probability or entropy when a
+  Mod macro executes. Ignored fields and episode-start recurrent context use
+  canonical neutral movement/aim ids rather than an all-zero left/down input.
+  Gym STEP repeat is selected per decision so primitive duration and complete
+  macro plans finish before another rollout action is sampled. Variable elapsed
+  ticks now drive semi-Markov
+  `gamma^discount_exponent`/`lambda^discount_exponent` GAE. RolloutBatch
+  NPZ/TCP format is v3 to reject pre-change behavior log-probabilities and carry
+  the exponent. Time-limit bootstrap now uses the terminal observation and
+  stops the trace before the reset episode.
+- Consolidated local action/log-prob/value transfer into one device-to-host
+  synchronization and reused one compressed payload for simultaneous rollout
+  spooling and TCP upload.
 
 ## [0.8.0] - 2026-07-26
 

@@ -38,6 +38,45 @@ def test_action_mask_layout_rejects_negative_macro_count() -> None:
 
 def test_duration_ticks_match_count() -> None:
     assert len(spaces.DURATION_TICKS) == spaces.N_DURATION
+    assert len(spaces.MACRO_DURATION_TICKS) == spaces.DEFAULT_N_MACROS
+
+
+def test_canonical_noop_uses_neutral_discrete_ids() -> None:
+    primitive = spaces.canonical_noop_action_values(enable_macro=False)
+    macro = spaces.canonical_noop_action_values(enable_macro=True)
+
+    assert primitive == (1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    assert macro == (*primitive, 0)
+
+
+def test_action_execution_ticks_finishes_selected_option_before_next_decision() -> None:
+    assert (
+        spaces.action_execution_ticks(
+            {"duration": 3, "macro": 0},
+            minimum_ticks=2,
+            enable_macro=True,
+            n_macros=spaces.DEFAULT_N_MACROS,
+        )
+        == 8
+    )
+    assert (
+        spaces.action_execution_ticks(
+            {"duration": 0, "macro": 9},
+            minimum_ticks=2,
+            enable_macro=True,
+            n_macros=spaces.DEFAULT_N_MACROS,
+        )
+        == 120
+    )
+    assert (
+        spaces.action_execution_ticks(
+            {"duration": 0},
+            minimum_ticks=2,
+            enable_macro=False,
+            n_macros=0,
+        )
+        == 2
+    )
 
 
 def test_make_action_space() -> None:
@@ -103,12 +142,31 @@ def test_csharp_action_masker_constants_match_python_layout() -> None:
 
 
 def test_csharp_macro_scheduler_cases_match_python_macro_count() -> None:
-    text = (Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/MacroActionScheduler.cs").read_text(
-        encoding="utf-8"
-    )
+    path = Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/MacroActionScheduler.cs"
+    text = path.read_text(encoding="utf-8")
     cases = sorted({int(value) for value in re.findall(r"^\s*(\d+)\s*=>", text, re.MULTILINE)})
 
     assert cases == list(range(spaces.DEFAULT_N_MACROS))
+
+
+def test_csharp_macro_durations_match_python_decision_timing() -> None:
+    path = Path(__file__).parents[2] / "mod/HKRLEnvMod/Action/MacroActionScheduler.cs"
+    constants = _csharp_int_constants(path)
+    names = [
+        "ApproachTicks",
+        "RetreatTicks",
+        "JumpAttackTicks",
+        "PogoTicks",
+        "DashAwayTicks",
+        "DashThroughTicks",
+        "CastForwardTicks",
+        "CastUpTicks",
+        "FocusWhenSafeTicks",
+        "ShortHopTicks",
+        "LongJumpTicks",
+    ]
+
+    assert tuple(constants[name] for name in names) == spaces.MACRO_DURATION_TICKS
 
 
 def test_csharp_action_masker_masks_unavailable_macros_after_noop_slot() -> None:

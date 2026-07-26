@@ -37,6 +37,7 @@ class RolloutBatch:
     episode_ids: np.ndarray
     task_ids: np.ndarray
     policy_version: int
+    discount_exponents: np.ndarray | None = None
 
 
 class RolloutBuffer:
@@ -74,6 +75,8 @@ class RolloutBuffer:
         self.action_masks = np.zeros(env_prefix + action_mask_shape, dtype=bool)
         self.prev_actions = np.zeros(env_prefix + action_shape, dtype=np.int64)
         self.prev_rewards = np.zeros(env_prefix, dtype=np.float32)
+        self.discount_exponents = np.ones(env_prefix, dtype=np.float32)
+        self.truncation_values = np.zeros(env_prefix, dtype=np.float32)
         self.advantages = np.zeros(env_prefix, dtype=np.float32)
         self.returns = np.zeros(env_prefix, dtype=np.float32)
         self.episode_ids = np.zeros(env_prefix, dtype=np.uint64)
@@ -112,6 +115,22 @@ class RolloutBuffer:
             transition.get("prev_reward", np.zeros((self.num_envs,), dtype=np.float32)),
             self.num_envs,
         )
+        self.discount_exponents[idx] = _flat_env_array(
+            transition.get(
+                "discount_exponent",
+                np.ones((self.num_envs,), dtype=np.float32),
+            ),
+            self.num_envs,
+        )
+        if not (self.discount_exponents[idx] > 0.0).all():
+            raise ValueError("discount_exponent must be positive")
+        self.truncation_values[idx] = _flat_env_array(
+            transition.get(
+                "truncation_value",
+                np.zeros((self.num_envs,), dtype=np.float32),
+            ),
+            self.num_envs,
+        )
         self.episode_ids[idx] = _flat_env_array(
             transition.get("episode_id", np.zeros((self.num_envs,), dtype=np.uint64)),
             self.num_envs,
@@ -138,6 +157,8 @@ class RolloutBuffer:
             np.asarray(last_value, dtype=np.float32),
             gamma=gamma,
             gae_lambda=gae_lambda,
+            discount_exponents=self.discount_exponents[:length],
+            truncation_values=self.truncation_values[:length],
         )
         _require_finite("advantages", self.advantages[:length])
         _require_finite("returns", self.returns[:length])
@@ -165,6 +186,7 @@ class RolloutBuffer:
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
             policy_version=policy_version,
+            discount_exponents=self.discount_exponents[:length].copy(),
         )
 
     def clear(self) -> None:
@@ -233,4 +255,6 @@ _FINITE_STORED_FIELDS: tuple[str, ...] = (
     "values",
     "rewards",
     "prev_rewards",
+    "discount_exponents",
+    "truncation_values",
 )

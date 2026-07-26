@@ -7,9 +7,10 @@ NEVER crosses the remote network.
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable, Mapping
-from numbers import Integral
+from numbers import Integral, Real
 from typing import Any
 
 import numpy as np
@@ -17,8 +18,14 @@ import torch
 
 from hkrl.models.base import ActorCritic
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
-from hkrl.spaces import N_AIM_Y, N_BUTTONS, N_DURATION, N_MOVEMENT_X, action_mask_layout
-from hkrl.training.numerics import require_finite_tensor
+from hkrl.spaces import (
+    N_AIM_Y,
+    N_BUTTONS,
+    N_DURATION,
+    N_MOVEMENT_X,
+    action_mask_layout,
+    canonical_noop_action_values,
+)
 from hkrl.training.recurrent_buffer import RecurrentRolloutBuffer
 from hkrl.training.rollout_buffer import RolloutBatch, RolloutBuffer
 from hkrl.utils.config import TrainConfig
@@ -44,9 +51,17 @@ class GameWorker:
         task_provider: Callable[[], Any | None] | None = None,
         max_consecutive_failures: int = 3,
         clock: Callable[[], float] | None = None,
+        time_scale: float | None = None,
     ) -> None:
         if max_consecutive_failures < 0:
             raise ValueError("max_consecutive_failures must be non-negative")
+        if time_scale is not None and (
+            isinstance(time_scale, bool)
+            or not isinstance(time_scale, Real)
+            or not math.isfinite(float(time_scale))
+            or float(time_scale) <= 0.0
+        ):
+            raise ValueError("time_scale must be a positive finite number")
 
         self.env = env
         self.model = model
@@ -57,6 +72,8 @@ class GameWorker:
         self.heartbeat_sink = heartbeat_sink
         self.task_provider = task_provider
         self.max_consecutive_failures = max_consecutive_failures
+        self.time_scale = None if time_scale is None else float(time_scale)
+        self._time_scale_needs_apply = self.time_scale is not None
         self._clock = clock or time.monotonic
         self.device = _model_device(model)
         initial_rnn_state = model.initial_state(batch_size=1, device=self.device)
@@ -100,7 +117,10 @@ class GameWorker:
         self._obs: Any | None = None
         self._info: dict[str, Any] = {}
         self._rnn_state = initial_rnn_state
-        self._prev_action: np.ndarray = np.zeros((1, self.action_dim), dtype=np.int64)
+        self._prev_action = np.asarray(
+            [canonical_noop_action_values(enable_macro=self.enable_macro)],
+            dtype=np.int64,
+        )
         self._prev_reward: np.ndarray = np.zeros((1,), dtype=np.float32)
         self.last_batch: RolloutBatch | None = None
         self.worker_crash_count = 0
@@ -175,22 +195,38 @@ class GameWorker:
                     rnn_state=rnn_state,
                     action_mask=action_mask_tensor,
                 )
-            require_finite_tensor("worker log_prob", log_prob)
-            require_finite_tensor("worker value", value)
-            action_array = action.detach().cpu().numpy()
+            action_array, log_prob_array, value_array = _policy_outputs_to_numpy(
+                action,
+                log_prob,
+                value,
+                action_dim=self.action_dim,
+            )
             env_action = action_tensor_to_env_action(
-                action[0],
+                action_array[0],
                 enable_macro=self.enable_macro,
                 n_macros=self.n_macros,
                 action_mask=action_mask,
             )
             next_obs, reward, terminated, truncated, next_info = self.env.step(env_action)
+            discount_exponent = _discount_exponent(self.env, next_info)
+            truncation_value = (
+                self._observation_value(
+                    next_obs,
+                    next_info,
+                    next_rnn_state,
+                    action_array,
+                    np.array([reward], dtype=np.float32),
+                    name="truncation value",
+                )
+                if truncated
+                else np.zeros((1,), dtype=np.float32)
+            )
 
             self.buffer.add(
                 obs=obs,
                 action=action_array,
-                log_prob=log_prob.detach().cpu().numpy(),
-                value=value.detach().cpu().numpy(),
+                log_prob=log_prob_array,
+                value=value_array,
                 reward=np.array([reward], dtype=np.float32),
                 done=np.array([terminated], dtype=bool),
                 truncated=np.array([truncated], dtype=bool),
@@ -200,6 +236,8 @@ class GameWorker:
                 rnn_state=rnn_state,
                 episode_id=np.array([int(info.get("episode_id", 0))], dtype=np.uint64),
                 task_id=np.array([int(info.get("task_id", 0))], dtype=np.int64),
+                discount_exponent=np.array([discount_exponent], dtype=np.float32),
+                truncation_value=truncation_value,
             )
 
             self._obs = next_obs
@@ -358,12 +396,19 @@ class GameWorker:
         reconnect = _find_reconnect(self.env)
         if reconnect is not None:
             reconnect()
+        self._time_scale_needs_apply = self.time_scale is not None
 
     def _ensure_reset(self) -> None:
         if self._obs is None:
             self._reset()
 
     def _reset(self) -> None:
+        if self._time_scale_needs_apply:
+            set_timescale = _find_attr(self.env, "set_timescale")
+            if not callable(set_timescale):
+                raise RuntimeError("configured time_scale requires env.set_timescale(scale)")
+            set_timescale(self.time_scale)
+            self._time_scale_needs_apply = False
         self._obs, self._info = self.env.reset()
         self._rnn_state = self.model.initial_state(batch_size=1, device=self.device)
         self._clear_memory_context()
@@ -378,32 +423,59 @@ class GameWorker:
             raise ValueError(
                 f"action_mask shape must be ({self.action_mask_dim},), got {mask.shape}"
             )
+        _validate_categorical_action_mask(mask, enable_macro=self.enable_macro)
         return mask
 
     def _bootstrap_value(self) -> np.ndarray:
         if self._obs is None:
             return np.zeros((1,), dtype=np.float32)
 
-        with torch.no_grad():
+        return self._observation_value(
+            self._obs,
+            self._info,
+            self._rnn_state,
+            self._prev_action,
+            self._prev_reward,
+            name="bootstrap value",
+        )
+
+    def _observation_value(
+        self,
+        obs: Any,
+        info: dict[str, Any],
+        rnn_state: Any,
+        prev_action: np.ndarray,
+        prev_reward: np.ndarray,
+        *,
+        name: str,
+    ) -> np.ndarray:
+        with torch.inference_mode():
             _, value, _ = self.model.forward(
                 _obs_to_tensor(
-                    self._obs,
+                    obs,
                     self.device,
-                    prev_action=self._prev_action,
-                    prev_reward=self._prev_reward,
+                    prev_action=prev_action,
+                    prev_reward=prev_reward,
                 ),
-                rnn_state=self._rnn_state,
+                rnn_state=rnn_state,
                 action_mask=torch.as_tensor(
-                    self._action_mask(self._info)[None, :],
+                    self._action_mask(info)[None, :],
                     dtype=torch.bool,
                     device=self.device,
                 ),
             )
-        require_finite_tensor("bootstrap value", value)
-        return value.detach().cpu().numpy().reshape(1).astype(np.float32)
+        value_array = value.detach().float().reshape(-1).cpu().numpy()
+        if not np.isfinite(value_array).all():
+            raise ValueError(f"{name} contains non-finite values")
+        if value_array.shape != (1,):
+            raise ValueError(f"{name} must have one element, got {value_array.shape}")
+        return value_array.astype(np.float32, copy=False)
 
     def _clear_memory_context(self) -> None:
-        self._prev_action = np.zeros((1, self.action_dim), dtype=np.int64)
+        self._prev_action = np.asarray(
+            [canonical_noop_action_values(enable_macro=self.enable_macro)],
+            dtype=np.int64,
+        )
         self._prev_reward = np.zeros((1,), dtype=np.float32)
 
     def _record_rollout_timing(self, batch: RolloutBatch, started_at: float) -> None:
@@ -462,10 +534,96 @@ def action_tensor_to_env_action(
     if enable_macro:
         macro = int(values[offset])
         _require_discrete_range("macro", macro, n_macros + 1)
+        if macro > 0 and (movement_x != 1 or aim_y != 1 or bool(buttons.any()) or duration != 0):
+            raise ValueError(
+                "macro actions must use canonical primitive fields "
+                "(neutral movement/aim, no buttons, duration=0)"
+            )
         env_action["macro"] = macro
     if action_mask is not None:
         _require_action_mask_allows(values, action_mask, enable_macro, n_macros)
     return env_action
+
+
+def _policy_outputs_to_numpy(
+    action: torch.Tensor,
+    log_prob: torch.Tensor,
+    value: torch.Tensor,
+    *,
+    action_dim: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Copy one policy decision to CPU with a single device synchronization."""
+    if action.numel() != action_dim:
+        raise ValueError(f"worker action must have {action_dim} elements")
+    if log_prob.numel() != 1:
+        raise ValueError("worker log_prob must have one element")
+    if value.numel() != 1:
+        raise ValueError("worker value must have one element")
+    packed = (
+        torch.cat(
+            (
+                action.detach().reshape(-1).to(dtype=torch.float32),
+                log_prob.detach().reshape(-1).to(dtype=torch.float32),
+                value.detach().reshape(-1).to(dtype=torch.float32),
+            )
+        )
+        .cpu()
+        .numpy()
+    )
+    action_values = packed[:action_dim]
+    log_prob_values = packed[action_dim : action_dim + 1]
+    value_values = packed[action_dim + 1 :]
+    if not np.isfinite(action_values).all():
+        raise ValueError("worker action contains non-finite values")
+    if not np.equal(action_values, np.trunc(action_values)).all():
+        raise ValueError("worker action values must be integer-coded")
+    if not np.isfinite(log_prob_values).all():
+        raise ValueError("worker log_prob contains non-finite values")
+    if not np.isfinite(value_values).all():
+        raise ValueError("worker value contains non-finite values")
+    return (
+        action_values.reshape(1, action_dim).astype(np.int64, copy=False),
+        log_prob_values.astype(np.float32, copy=False),
+        value_values.astype(np.float32, copy=False),
+    )
+
+
+def _validate_categorical_action_mask(mask: np.ndarray, *, enable_macro: bool) -> None:
+    groups = (
+        ("movement_x", mask[:N_MOVEMENT_X]),
+        ("aim_y", mask[N_MOVEMENT_X : N_MOVEMENT_X + N_AIM_Y]),
+    )
+    for name, group in groups:
+        if not group.any():
+            raise ValueError(f"action_mask {name} group has no valid action")
+    duration_start = N_MOVEMENT_X + N_AIM_Y + N_BUTTONS
+    if not mask[duration_start : duration_start + N_DURATION].any():
+        raise ValueError("action_mask duration group has no valid action")
+    if enable_macro and not mask[duration_start + N_DURATION :].any():
+        raise ValueError("action_mask macro group has no valid action")
+
+
+def _discount_exponent(env: Any, next_info: Mapping[str, Any]) -> float:
+    """Convert variable option duration to the task's base decision-time unit."""
+    task = _find_attr(env, "task")
+    action_config = None if task is None else getattr(task, "action", None)
+    base_repeat = 1 if action_config is None else getattr(action_config, "action_repeat", 1)
+    if isinstance(base_repeat, bool) or not isinstance(base_repeat, Integral):
+        raise ValueError("task action_repeat must be an integer")
+    base_repeat = int(base_repeat)
+    if base_repeat <= 0:
+        raise ValueError("task action_repeat must be positive")
+
+    elapsed = next_info.get(
+        "elapsed_ticks",
+        next_info.get("action_repeat", base_repeat),
+    )
+    if isinstance(elapsed, bool) or not isinstance(elapsed, Integral):
+        raise ValueError("elapsed_ticks must be an integer")
+    elapsed_ticks = int(elapsed)
+    if elapsed_ticks <= 0:
+        raise ValueError("elapsed_ticks must be positive")
+    return float(elapsed_ticks) / float(base_repeat)
 
 
 def _require_discrete_range(name: str, value: int, size: int) -> None:
@@ -485,6 +643,17 @@ def _require_action_mask_allows(
         expected_dim += n_macros + 1
     if mask.shape != (expected_dim,):
         raise ValueError(f"action_mask shape must be ({expected_dim},), got {mask.shape}")
+
+    duration_offset = N_MOVEMENT_X + N_AIM_Y + N_BUTTONS
+    if enable_macro:
+        macro = int(values[3 + N_BUTTONS])
+        macro_offset = duration_offset + N_DURATION
+        if not mask[macro_offset + macro]:
+            raise ValueError(f"action_mask disallows macro={macro}")
+        # macro>0 is the option branch: every primitive field is ignored by the
+        # Mod and canonicalized only as recurrent context.
+        if macro > 0:
+            return
 
     offset = 0
     movement_x = int(values[offset])
@@ -508,11 +677,6 @@ def _require_action_mask_allows(
     if not mask[offset + duration]:
         raise ValueError(f"action_mask disallows duration={duration}")
     offset += N_DURATION
-
-    if enable_macro:
-        macro = int(values[3 + N_BUTTONS])
-        if not mask[offset + macro]:
-            raise ValueError(f"action_mask disallows macro={macro}")
 
 
 def _obs_to_tensor(

@@ -75,6 +75,7 @@ internal static class Program
         ExpectNeutral(actions, "unhook");
 
         TestActionExecution(actions);
+        TestMacroDurations();
         TestCapabilityPolicy();
         TestActionMaskReadiness();
         TestRewardHooks();
@@ -298,6 +299,26 @@ internal static class Program
                 enableMacroActions: false,
                 macroCount: 0),
             "disabled macro is rejected");
+    }
+
+    private static void TestMacroDurations()
+    {
+        var scheduler = new MacroActionScheduler();
+        for (var macroId = 0; macroId < ActionMasker.DefaultMacroCount; macroId++)
+        {
+            scheduler.Begin(macroId);
+            var emittedTicks = 0;
+            while (scheduler.IsActive)
+            {
+                scheduler.Tick();
+                emittedTicks++;
+                Expect(emittedTicks <= 120, $"macro {macroId} terminates");
+            }
+
+            Expect(
+                emittedTicks == MacroActionScheduler.ExpectedDurationTicks(macroId),
+                $"macro {macroId} declared duration matches emitted plan");
+        }
     }
 
     private static void TestActionMaskReadiness()

@@ -32,21 +32,29 @@ batched multi-env inference, which we don't need here.
 obs_global, obs_player, obs_entities, entity_mask,
 actions, log_probs, values, advantages, returns,
 rewards, dones, truncateds, action_masks, prev_actions, prev_rewards, rnn_states,
-episode_ids, task_ids, policy_version
+episode_ids, task_ids, discount_exponents, policy_version
 ```
 
 Defined in `hkrl/training/rollout_buffer.py` (+ recurrent variant). Sequences for
 recurrent training preserve `prev_actions`, `prev_rewards`, and `rnn_states` at
 sequence boundaries, and mask padded timesteps.
 When a recurrent worker uploads a flat `RolloutBatch`, `rnn_states` is stored as
-`(time, layers, envs, hidden)` and APPO flattens it to per-sample
-`(layers, batch, hidden)` inputs for one-step actor-critic evaluation. Full
-sequence loss with burn-in/truncated-BPTT remains the responsibility of local
-`RecurrentPPO`. The flat upload format currently supports tensor/GRU recurrent
-states only; LSTM tuple states must stay on the sequence-batch `RecurrentPPO`
-path until the batch format grows an explicit `(h, c)` representation.
+`(time, layers, envs, hidden)`. APPO reconstructs fixed-length contiguous
+chunks, splits on terminal/truncation plus `episode_id`/`task_id` changes,
+starts every chunk from its recorded behavior hidden state, and masks padding
+from policy/value/entropy/KL losses. This supplies real truncated BPTT without
+cross-episode memory leakage. The flat upload format currently supports
+tensor/GRU recurrent states only; LSTM tuple states must stay on the
+sequence-batch `RecurrentPPO` path until the batch format grows an explicit
+`(h, c)` representation.
 `task_ids` are the numeric task `wire_id` values from task YAML, not the
 human-readable task names used in evaluator output.
+`discount_exponents` records elapsed FixedUpdate time in units of the task's
+base `action_repeat`. Worker GAE therefore uses `gamma^exponent` and
+`lambda^exponent`; an 8-tick option in a 2-tick task is discounted as four base
+steps instead of one decision. On time-limit truncation the worker evaluates
+the returned terminal observation once for bootstrap and stops the GAE trace
+before the reset episode.
 Every multi-task learner/worker/evaluator/coordinator entry point now validates
 that the loaded task set has unique human-readable `task_id` values and unique
 numeric `wire_id` values before opening live env connections or writing rollout
@@ -56,15 +64,19 @@ dashboard-only warning.
 
 `hkrl/training/batch_io.py` serializes the same bundle as a compressed,
 pickle-free NPZ file for local spooling, crash recovery, and worker/learner
-integration tests. Format v2 adds explicit `prev_rewards` for recurrent memory
-context. Network transports for batches should preserve this field contract even
-if they use a different envelope. Deserialization rejects batches
+integration tests. Format v3 retains v2's explicit `prev_rewards` and marks the
+hierarchical macro behavior-probability contract from ADR-0009; v2 batches are
+rejected because their stored log probabilities used different semantics.
+Workers that both spool and upload compress once and reuse the same bytes.
+Network transports for batches should preserve this field contract even if they
+use a different envelope. Deserialization rejects batches
 whose fields do not share the same `(time, env)` prefix, and rejects recurrent
 state payloads that are not `(time, layers, envs, hidden)`, so malformed worker
 uploads fail at the intake boundary instead of inside the optimizer.
-APPO additionally runs a no-gradient model-compatibility check during ingest so
-rollouts from a worker with the wrong action/mask/observation layout are counted
-as rejected batches instead of crashing the learner update.
+APPO validates action values and every categorical mask group on CPU. It runs a
+no-gradient model-compatibility check for the first accepted layout and then
+uses a cached shape signature, so incompatible workers are rejected without an
+extra model forward for every upload.
 
 For filesystem-based smoke runs, `scripts/run_worker.py --batch-dir DIR` writes
 each completed rollout batch to NPZ, and `scripts/run_learner.py --batch-dir DIR`
@@ -81,7 +93,7 @@ that the game-host worker used to collect the supplied rollouts; a matching poli
 version number alone is insufficient because independently initialized weights
 would invalidate PPO log probabilities. It also refuses to silently substitute
 synthetic data or reuse a batch recorded in an existing output summary. NPZ
-format v2 does not encode provenance, so a separate game-host collection manifest
+format v3 does not encode provenance, so a separate game-host collection manifest
 is still required to prove that an externally supplied batch came from the live
 game.
 `run_worker.py` validates config/task paths, optional task lists, registry,
@@ -94,14 +106,15 @@ length-prefixed NPZ rollout uploads on `learner.bind` (or `--bind`) before the
 same update cycle, and `scripts/run_worker.py --learner HOST:PORT` sends each
 completed rollout to that intake endpoint. The TCP batch channel is asynchronous
 and carries only completed rollouts, never action-loop inference.
-The TCP envelope type is `hkrl.rollout_batch.v2`, matching the NPZ format that
+The TCP envelope type is `hkrl.rollout_batch.v3`, matching the NPZ format that
 contains explicit recurrent `prev_rewards`.
 `run_worker.py` reports learner upload counters as submitted, accepted, and
 rejected batches; stale policy-version rejections therefore remain visible
 instead of being counted as successful uploads.
 For long-running training, `scripts/run_learner.py --serve-forever` keeps the
 same authenticated intake socket open and calls the learner update/publish path
-after each accepted batch until interrupted.
+after `learner.batches_per_update` accepted batches. Shutdown/finite runs
+force-flush a non-empty partial group.
 Idle listener timeouts are treated as "no worker connected yet" and the learner
 continues waiting, so workers can start late or reconnect without killing the
 remote training process.

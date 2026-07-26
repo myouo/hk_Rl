@@ -18,7 +18,7 @@ import shutil
 import tempfile
 import time
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from numbers import Integral
 from pathlib import Path
 from types import ModuleType
@@ -26,7 +26,6 @@ from typing import Any
 
 import numpy as np
 import torch
-
 from hkrl.learner.checkpoint_payload import validate_checkpoint_payload
 from hkrl.learner.checkpoint_registry import CheckpointMeta, CheckpointRegistry
 from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
@@ -118,11 +117,7 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
         argparse.Namespace(
             config=args.config,
             bind="127.0.0.1:0",
-            batch_dir=(
-                None
-                if synthetic_batch_path is None
-                else str(synthetic_batch_path.parent)
-            ),
+            batch_dir=(None if synthetic_batch_path is None else str(synthetic_batch_path.parent)),
             checkpoint_dir=str(checkpoint_dir),
             disable_macro_actions=False,
             intake_count=0,
@@ -138,12 +133,10 @@ def _run_from_args_unlocked(args: argparse.Namespace, work_dir: Path) -> dict[st
         )
     )
     if synthetic_train_update and (
-        learner_summary["accepted_batches"] != 1
-        or learner_summary["policy_version"] != 1
+        learner_summary["accepted_batches"] != 1 or learner_summary["policy_version"] != 1
     ):
         raise RuntimeError(
-            "synthetic learner update did not produce one accepted batch "
-            "and policy_version 1"
+            "synthetic learner update did not produce one accepted batch and policy_version 1"
         )
     checkpoint_metas = _publish_smoke_checkpoints(checkpoint_dir)
     checkpoint_versions = [meta.version for meta in checkpoint_metas]
@@ -315,7 +308,14 @@ def _write_synthetic_train_batch(
             dtype=np.int64,
         ),
         prev_rewards=np.zeros((time_steps, num_envs), dtype=np.float32),
-        rnn_states=None,
+        rnn_states=(
+            np.zeros(
+                (time_steps, 1, num_envs, config.model.rnn_hidden),
+                dtype=np.float32,
+            )
+            if config.model.rnn_type != "none" and config.model.rnn_hidden > 0
+            else None
+        ),
         episode_ids=np.ones((time_steps, num_envs), dtype=np.uint64),
         task_ids=np.full(
             (time_steps, num_envs),
@@ -372,17 +372,14 @@ def _write_heartbeat_jsonl(
 
 def _write_eval_metrics(path: Path, task_ids: list[str]) -> None:
     metrics = {
-        task_id: {"win_rate": 0.9 if index == 0 else 0.2}
-        for index, task_id in enumerate(task_ids)
+        task_id: {"win_rate": 0.9 if index == 0 else 0.2} for index, task_id in enumerate(task_ids)
     }
     _write_json(path, {"metrics": metrics})
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -390,9 +387,7 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _write_requested_artifacts(
-    summary: dict[str, Any], args: argparse.Namespace
-) -> None:
+def _write_requested_artifacts(summary: dict[str, Any], args: argparse.Namespace) -> None:
     dashboard_html = getattr(args, "dashboard_html", None)
     dashboard_json = getattr(args, "dashboard_json", None)
     if dashboard_html or dashboard_json:
@@ -502,7 +497,7 @@ def _work_dir_lock(
             if time.monotonic() >= deadline:
                 raise TimeoutError(
                     f"timed out waiting for smoke work-dir lock: {lock_path}"
-                )
+                ) from None
             time.sleep(poll_s)
 
     try:
@@ -510,10 +505,8 @@ def _work_dir_lock(
         yield
     finally:
         os.close(fd)
-        try:
+        with suppress(FileNotFoundError):
             lock_path.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def _load_script_module(name: str) -> ModuleType:

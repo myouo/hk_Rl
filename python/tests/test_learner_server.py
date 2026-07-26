@@ -81,6 +81,41 @@ def test_learner_server_serve_drains_queued_batch(tmp_path: Path) -> None:
     assert server.last_checkpoint is not None
 
 
+def test_learner_server_aggregates_worker_batches_before_update(tmp_path: Path) -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    server = LearnerServer(
+        model=model,
+        config=TrainConfig(algorithm="appo", epochs=1, minibatch_size=4),
+        registry=CheckpointRegistry(str(tmp_path)),
+        batches_per_update=2,
+    )
+
+    assert server.submit(_rollout_batch(model, policy_version=0))
+    assert not server.ready_to_update
+    assert server.serve() is False
+    assert server.update_count == 0
+
+    assert server.submit(_rollout_batch(model, policy_version=0))
+    assert server.ready_to_update
+    assert server.serve() is True
+    assert server.update_count == 1
+    assert server.last_metrics["samples"] == 8.0
+
+
+def test_learner_server_force_flushes_partial_batch_group(tmp_path: Path) -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    server = LearnerServer(
+        model=model,
+        config=TrainConfig(algorithm="appo", epochs=1, minibatch_size=2),
+        registry=CheckpointRegistry(str(tmp_path)),
+        batches_per_update=4,
+    )
+
+    assert server.submit(_rollout_batch(model, policy_version=0))
+    assert server.serve(force=True) is True
+    assert server.update_count == 1
+
+
 def _rollout_batch(model: MlpActorCritic, policy_version: int) -> RolloutBatch:
     buffer = RolloutBuffer(
         capacity=4,

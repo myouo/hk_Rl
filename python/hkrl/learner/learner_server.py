@@ -29,9 +29,12 @@ class LearnerServer:
         config: TrainConfig,
         registry: CheckpointRegistry,
         bind: str = "127.0.0.1:5600",
+        batches_per_update: int = 1,
         max_staleness: int = 4,
         publish_every_updates: int = 1,
     ) -> None:
+        if batches_per_update <= 0:
+            raise ValueError("batches_per_update must be positive")
         if publish_every_updates <= 0:
             raise ValueError("publish_every_updates must be positive")
 
@@ -39,6 +42,7 @@ class LearnerServer:
         self.cfg = config
         self.registry = registry
         self.bind = bind
+        self.batches_per_update = batches_per_update
         self.publish_every_updates = publish_every_updates
         self.algo = _build_algorithm(model, config, max_staleness=max_staleness)
         self.policy_version = int(getattr(self.algo, "current_version", 0))
@@ -101,16 +105,24 @@ class LearnerServer:
         optimizer.load_state_dict(dict(state))
         return True
 
-    def serve(self) -> None:
+    @property
+    def ready_to_update(self) -> bool:
+        """Whether enough accepted rollouts are queued for one GPU update."""
+        queued_batches = int(getattr(self.algo, "queued_batches", 0))
+        return queued_batches >= self.batches_per_update
+
+    def serve(self, *, force: bool = False) -> bool:
         """Run the receive->filter->update->publish loop.
 
         The network listener is intentionally separate from the training core.
-        For now this drains any in-process queued batches once; CLI/network
-        wiring can call :meth:`submit` from an authenticated intake endpoint.
+        It combines multiple worker rollouts into one larger GPU update. ``force``
+        flushes a partial queue during finite runs or graceful shutdown.
         """
         queued_batches = int(getattr(self.algo, "queued_batches", 0))
-        if queued_batches > 0:
+        if queued_batches > 0 and (force or self.ready_to_update):
             self.update_once()
+            return True
+        return False
 
 
 def _build_algorithm(model: ActorCritic, config: TrainConfig, *, max_staleness: int) -> Any:

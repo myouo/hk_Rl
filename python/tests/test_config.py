@@ -232,9 +232,10 @@ def test_load_train_config_preserves_distributed_runtime_settings() -> None:
     assert config.algorithm == "appo"
     assert config.learner.bind == "127.0.0.1:5600"
     assert config.learner.device == "auto"
-    assert config.learner.max_staleness == 4
+    assert config.learner.batches_per_update == 4
+    assert config.learner.max_staleness == 2
     assert config.learner.checkpoint_dir == "checkpoints/"
-    assert config.learner.publish_every_updates == 4
+    assert config.learner.publish_every_updates == 1
     assert config.learner.amp_dtype == "auto"
     assert config.learner.compile_mode == "auto"
     assert config.learner.fused_optimizer == "auto"

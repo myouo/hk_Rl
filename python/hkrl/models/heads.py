@@ -44,7 +44,7 @@ class CompositeActionDistribution:
         ]
         if self.macro is not None:
             parts.append(self.macro.sample().unsqueeze(-1))
-        return torch.cat(parts, dim=-1)
+        return self._canonicalize_ignored_primitives(torch.cat(parts, dim=-1))
 
     def mode(self) -> Tensor:
         parts = [
@@ -55,30 +55,37 @@ class CompositeActionDistribution:
         ]
         if self.macro is not None:
             parts.append(self.macro.logits.argmax(dim=-1, keepdim=True))
-        return torch.cat(parts, dim=-1)
+        return self._canonicalize_ignored_primitives(torch.cat(parts, dim=-1))
 
     def log_prob(self, actions: Tensor) -> Tensor:
         movement_x, aim_y, buttons, duration, macro = self._unpack(actions)
-        log_prob = (
+        primitive_log_prob = (
             self.movement_x.log_prob(movement_x)
             + self.aim_y.log_prob(aim_y)
             + self.buttons.log_prob(buttons).sum(dim=-1)
             + self.duration.log_prob(duration)
         )
         if self.macro is not None and macro is not None:
-            log_prob = log_prob + self.macro.log_prob(macro)
-        return log_prob
+            macro_log_prob = self.macro.log_prob(macro)
+            return macro_log_prob + torch.where(
+                macro == 0,
+                primitive_log_prob,
+                torch.zeros_like(primitive_log_prob),
+            )
+        return primitive_log_prob
 
     def entropy(self) -> Tensor:
-        entropy = (
+        primitive_entropy = (
             self.movement_x.entropy()
             + self.aim_y.entropy()
             + self.buttons.entropy().sum(dim=-1)
             + self.duration.entropy()
         )
         if self.macro is not None:
-            entropy = entropy + self.macro.entropy()
-        return entropy
+            # Hierarchical mixture: macro=0 delegates to the primitive policy;
+            # macro>0 executes only the selected mod-side option.
+            return self.macro.entropy() + self.macro.probs[..., 0] * primitive_entropy
+        return primitive_entropy
 
     def _unpack(self, actions: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor | None]:
         if actions.shape[-1] != self.action_dim:
@@ -98,6 +105,16 @@ class CompositeActionDistribution:
         offset += 1
         macro = actions[..., offset] if self.macro is not None else None
         return movement_x, aim_y, buttons, duration, macro
+
+    def _canonicalize_ignored_primitives(self, actions: Tensor) -> Tensor:
+        if self.macro is None:
+            return actions
+        primitive = actions[..., :-1]
+        neutral = torch.zeros_like(primitive)
+        neutral[..., 0] = 1
+        neutral[..., 1] = 1
+        primitive = torch.where(actions[..., -1:] > 0, neutral, primitive)
+        return torch.cat((primitive, actions[..., -1:]), dim=-1)
 
 
 class HybridPolicyHead(nn.Module):
@@ -147,13 +164,13 @@ class HybridPolicyHead(nn.Module):
             movement_logits = _mask_categorical_logits(
                 movement_logits,
                 mask[..., offset : offset + N_MOVEMENT_X],
-                "movement_x",
+                fallback_index=1,
             )
             offset += N_MOVEMENT_X
             aim_logits = _mask_categorical_logits(
                 aim_logits,
                 mask[..., offset : offset + N_AIM_Y],
-                "aim_y",
+                fallback_index=1,
             )
             offset += N_AIM_Y
             button_logits = _mask_button_logits(
@@ -164,14 +181,14 @@ class HybridPolicyHead(nn.Module):
             duration_logits = _mask_categorical_logits(
                 duration_logits,
                 mask[..., offset : offset + N_DURATION],
-                "duration",
+                fallback_index=0,
             )
             offset += N_DURATION
             if macro_logits is not None:
                 macro_logits = _mask_categorical_logits(
                     macro_logits,
                     mask[..., offset:],
-                    "macro",
+                    fallback_index=0,
                 )
 
         return CompositeActionDistribution(
@@ -194,10 +211,25 @@ class ValueHead(nn.Module):
         return self.v(x).squeeze(-1)
 
 
-def _mask_categorical_logits(logits: Tensor, mask: Tensor, name: str) -> Tensor:
-    if not bool(mask.any(dim=-1).all().item()):
-        raise ValueError(f"action_mask has no valid entries for {name}")
-    return torch.where(mask, logits, torch.full_like(logits, _masked_logit_value(logits)))
+def _mask_categorical_logits(
+    logits: Tensor,
+    mask: Tensor,
+    *,
+    fallback_index: int,
+) -> Tensor:
+    # Env and rollout intake validate every categorical group on CPU. Keep the
+    # model graph data-only so local inference and torch.compile do not incur a
+    # device-to-host scalar sync. The fallback is a last-resort safe no-op for
+    # direct model callers that bypass those boundaries.
+    has_valid = mask.any(dim=-1, keepdim=True)
+    fallback = torch.zeros_like(mask)
+    fallback[..., fallback_index] = True
+    safe_mask = torch.where(has_valid, mask, fallback)
+    return torch.where(
+        safe_mask,
+        logits,
+        torch.full_like(logits, _masked_logit_value(logits)),
+    )
 
 
 def _mask_button_logits(logits: Tensor, mask: Tensor) -> Tensor:

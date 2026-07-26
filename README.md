@@ -247,6 +247,19 @@ python scripts/run_coordinator.py \
   --heartbeat-jsonl runs/worker-heartbeats.jsonl \
   --dry-run
 
+# 聚合入口：先用 --dry-run 检查同一份任务/角色/端点配置。
+python scripts/run_remote_training.py \
+  --experiment configs/experiments/godhome_smart.yaml \
+  --dry-run
+python scripts/run_local_inference.py \
+  --experiment configs/experiments/godhome_smart.yaml \
+  --dry-run
+
+# 正式运行时，两端设置同一 HKRL_AUTH_TOKEN；远端先启动，游戏机再启动。
+# python scripts/run_remote_training.py --experiment configs/experiments/godhome_smart.yaml
+# python scripts/run_local_inference.py --experiment configs/experiments/godhome_smart.yaml
+
+# 以下是等价的底层/调试入口。
 python scripts/run_learner.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml configs/tasks/hornet_protector.yaml \
@@ -267,7 +280,7 @@ python scripts/run_learner.py \
   --intake-count 1 \
   --checkpoint-dir checkpoints
 
-# 长跑 learner 使用 --serve-forever 持续接收 rollout，并在 accepted batch 后更新/发布 checkpoint
+# 长跑 learner 按 learner.batches_per_update 聚合 accepted rollout 后更新/发布 checkpoint
 python scripts/run_learner.py \
   --config configs/train/remote_learner.yaml \
   --tasks configs/tasks/gruz_mother.yaml \

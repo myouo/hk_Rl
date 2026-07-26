@@ -64,11 +64,11 @@ def test_hybrid_policy_head_respects_action_mask() -> None:
     dist = head(torch.zeros((1, 4), dtype=torch.float32), action_mask=mask)
     mode = dist.mode()
 
-    assert mode.tolist() == [[2, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 3, 1]]
+    assert mode.tolist() == [[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]]
     assert torch.isfinite(dist.log_prob(mode)).all()
 
 
-def test_hybrid_policy_head_rejects_mask_with_no_valid_discrete_choice() -> None:
+def test_hybrid_policy_head_uses_safe_noop_for_unvalidated_empty_mask_group() -> None:
     head = HybridPolicyHead(in_dim=4, enable_macro=False)
     mask = torch.ones(
         (1, N_MOVEMENT_X + N_AIM_Y + N_BUTTONS + N_DURATION),
@@ -76,8 +76,10 @@ def test_hybrid_policy_head_rejects_mask_with_no_valid_discrete_choice() -> None
     )
     mask[:, :N_MOVEMENT_X] = False
 
-    with pytest.raises(ValueError, match="movement_x"):
-        head(torch.zeros((1, 4), dtype=torch.float32), action_mask=mask)
+    dist = head(torch.zeros((1, 4), dtype=torch.float32), action_mask=mask)
+
+    assert dist.mode()[0, 0].item() == 1
+    assert torch.isfinite(dist.log_prob(dist.mode())).all()
 
 
 def test_hybrid_policy_head_rejects_wrong_mask_length() -> None:
@@ -85,6 +87,34 @@ def test_hybrid_policy_head_rejects_wrong_mask_length() -> None:
 
     with pytest.raises(ValueError, match="action_mask"):
         head(torch.zeros((1, 4), dtype=torch.float32), action_mask=torch.ones((1, 3)))
+
+
+def test_macro_policy_probability_excludes_ignored_primitive_branches() -> None:
+    head = HybridPolicyHead(in_dim=4, enable_macro=True, n_macros=2)
+    for module in head.modules():
+        if isinstance(module, nn.Linear):
+            nn.init.zeros_(module.weight)
+            nn.init.zeros_(module.bias)
+    dist = head(torch.zeros((1, 4), dtype=torch.float32))
+    primitive = torch.zeros((1, 13), dtype=torch.long)
+    macro = primitive.clone()
+    macro[:, -1] = 1
+
+    primitive_log_prob = (
+        -torch.log(torch.tensor(3.0))
+        - torch.log(torch.tensor(3.0))
+        - 9.0 * torch.log(torch.tensor(2.0))
+        - torch.log(torch.tensor(4.0))
+    )
+    macro_log_prob = -torch.log(torch.tensor(3.0))
+    expected_entropy = -macro_log_prob + (1.0 / 3.0) * -primitive_log_prob
+
+    torch.testing.assert_close(
+        dist.log_prob(primitive),
+        (macro_log_prob + primitive_log_prob).reshape(1),
+    )
+    torch.testing.assert_close(dist.log_prob(macro), macro_log_prob.reshape(1))
+    torch.testing.assert_close(dist.entropy(), expected_entropy.reshape(1))
 
 
 def test_value_head_returns_flat_values() -> None:

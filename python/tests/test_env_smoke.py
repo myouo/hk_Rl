@@ -274,7 +274,43 @@ def test_env_step_sends_action_repeat_and_composes_reward() -> None:
     assert reward == pytest.approx(3.0 + task.reward.time_penalty * task.action.action_repeat)
     assert terminated is False
     assert truncated is False
+    assert info["action_repeat"] == task.action.action_repeat
+    assert info["elapsed_ticks"] == task.action.action_repeat
     assert info["reward_events"][0].kind is protocol.RewardEventKind.DAMAGE_DEALT
+
+
+def test_env_step_extends_request_until_duration_finishes() -> None:
+    from hkrl.env import HKRLEnv
+
+    task = load_task_config("../configs/tasks/gruz_mother.yaml")
+    transport = ScriptedTransport(
+        [
+            lambda req: _build_response(req, lifecycle=protocol.LifecycleState.RUNNING),
+            lambda req: _build_response(
+                req,
+                lifecycle=protocol.LifecycleState.RUNNING,
+                # A missing/non-advancing diagnostic tick must fall back to the
+                # per-decision request, not the shorter task minimum.
+                server_tick=100,
+            ),
+        ]
+    )
+    env = HKRLEnv(transport=transport, task=task)
+    env.reset(options={"reset_timeout_s": 1.0, "recv_timeout_s": 0.1})
+
+    _, _, _, _, info = env.step(
+        {
+            "movement_x": 1,
+            "aim_y": 1,
+            "buttons": {"jump_hold": True},
+            "duration": 3,
+            "macro": 0,
+        }
+    )
+
+    assert transport.requests[-1].ActionRepeat() == 8
+    assert info["action_repeat"] == 8
+    assert info["elapsed_ticks"] == 8
 
 
 def test_env_reset_and_step_over_real_tcp_transport_with_auth() -> None:
@@ -323,7 +359,7 @@ def test_env_reset_and_step_over_real_tcp_transport_with_auth() -> None:
         req.EnableMacroActions() is task.action.enable_macro_actions for req in server.requests
     )
     assert all(req.NMacroActions() == task.action.n_macro_actions for req in server.requests)
-    assert server.requests[-1].ActionRepeat() == task.action.action_repeat
+    assert server.requests[-1].ActionRepeat() == 4
     assert server.requests[-1].Action().Buttons() == 1 << 3
     assert server.requests[-1].Action().MacroId() == 0
     assert env.observation_space.contains(obs)

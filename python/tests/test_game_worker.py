@@ -72,6 +72,43 @@ def test_action_tensor_to_env_action_rejects_masked_components() -> None:
         action_tensor_to_env_action(action, enable_macro=False, action_mask=mask)
 
 
+def test_macro_action_mask_ignores_canonical_primitive_fields() -> None:
+    action = np.zeros((13,), dtype=np.int64)
+    action[0] = 1
+    action[1] = 1
+    action[-1] = 1
+    mask = np.ones((22,), dtype=bool)
+    mask[1] = False
+    mask[4] = False
+    mask[15] = False
+
+    decoded = action_tensor_to_env_action(
+        action,
+        enable_macro=True,
+        n_macros=2,
+        action_mask=mask,
+    )
+
+    assert decoded["macro"] == 1
+    mask[20] = False
+    with pytest.raises(ValueError, match="macro=1"):
+        action_tensor_to_env_action(
+            action,
+            enable_macro=True,
+            n_macros=2,
+            action_mask=mask,
+        )
+
+    noncanonical = action.copy()
+    noncanonical[0] = 2
+    with pytest.raises(ValueError, match="canonical primitive"):
+        action_tensor_to_env_action(
+            noncanonical,
+            enable_macro=True,
+            n_macros=2,
+        )
+
+
 def test_game_worker_rejects_masked_policy_action_before_env_step() -> None:
     env = MaskedActionEnv()
     model = MaskedActionModel()
@@ -141,13 +178,40 @@ def test_game_worker_collect_rollout_returns_batch() -> None:
     assert batch.action_masks.shape == (4, 1, 19)
     assert batch.returns.shape == (4, 1)
     assert batch.policy_version == 0
-    np.testing.assert_array_equal(batch.prev_actions[0, 0], np.zeros((12,), dtype=np.int64))
+    np.testing.assert_array_equal(
+        batch.prev_actions[0, 0],
+        np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.int64),
+    )
     np.testing.assert_array_equal(batch.prev_actions[1, 0], batch.actions[0, 0])
     np.testing.assert_allclose(batch.prev_rewards[:, 0], [0.0, 1.0, 1.0, 0.0])
     assert env.reset_count == 2
     assert worker.arena_auto_reset_count == 1
     assert len(env.actions) == 4
     assert set(env.actions[0]) == {"movement_x", "aim_y", "buttons", "duration"}
+
+
+def test_game_worker_records_elapsed_ticks_as_base_step_discount_exponent() -> None:
+    env = VariableDurationEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+    )
+
+    batch = worker.collect_rollout()
+
+    assert batch.discount_exponents is not None
+    assert float(batch.discount_exponents[0, 0]) == pytest.approx(4.0)
 
 
 def test_game_worker_resets_when_rollout_ends_on_terminal_step() -> None:
@@ -428,6 +492,32 @@ def test_game_worker_recovers_after_runtime_failure() -> None:
     assert heartbeats[-1]["worker_crash_count"] == 1
 
 
+def test_game_worker_reapplies_time_scale_after_reconnect() -> None:
+    env = TimeScaledFailOnceEnv()
+    model = MlpActorCritic(
+        {
+            "global": env.observation_space["global"].shape,
+            "player": env.observation_space["player"].shape,
+            "entities": env.observation_space["entities"].shape,
+            "entity_mask": env.observation_space["entity_mask"].shape,
+        },
+        hidden=16,
+        enable_macro=False,
+    )
+    worker = GameWorker(
+        env=env,  # type: ignore[arg-type]
+        model=model,
+        config=TrainConfig(algorithm="ppo", rollout_steps=1),
+        max_consecutive_failures=2,
+        time_scale=2.0,
+    )
+
+    worker.run(total_steps=1)
+
+    assert env.applied_time_scales == [2.0, 2.0]
+    assert env.transport.reconnect_calls == 1
+
+
 def test_game_worker_reports_learner_upload_rejections() -> None:
     env = FakeEnv()
     model = MlpActorCritic(
@@ -690,6 +780,33 @@ class FailOnceEnv(FakeEnv):
             self.failed = True
             raise TimeoutError("simulated transport timeout")
         return super().step(action)
+
+
+class TimeScaledFailOnceEnv(FailOnceEnv):
+    def __init__(self) -> None:
+        super().__init__()
+        self.applied_time_scales: list[float] = []
+
+    def set_timescale(self, scale: float) -> None:
+        self.applied_time_scales.append(scale)
+
+
+class VariableDurationEnv(FakeEnv):
+    def __init__(self) -> None:
+        super().__init__()
+        self.task = TaskConfig(
+            task_id="duration",
+            wire_id=1,
+            scene="Duration",
+            action={"action_repeat": 2},
+        )
+
+    def step(
+        self, action: dict[str, Any]
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        obs, reward, terminated, truncated, info = super().step(action)
+        info["elapsed_ticks"] = 8
+        return obs, reward, terminated, truncated, info
 
 
 class TerminalAtRolloutEndEnv(FakeEnv):

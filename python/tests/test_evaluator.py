@@ -302,7 +302,10 @@ def test_evaluator_preserves_actor_critic_rnn_state_across_steps() -> None:
     evaluator.evaluate(episodes_per_task=1)
 
     assert model.seen_states == [0.0, 1.0]
-    np.testing.assert_array_equal(model.seen_prev_actions[0], np.zeros((1, 12), dtype=np.float32))
+    np.testing.assert_array_equal(
+        model.seen_prev_actions[0],
+        np.array([[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),
+    )
     np.testing.assert_array_equal(
         model.seen_prev_actions[1],
         np.array([[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),

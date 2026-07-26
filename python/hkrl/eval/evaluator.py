@@ -21,7 +21,7 @@ import torch
 
 from hkrl import protocol
 from hkrl.models.base import ActorCritic
-from hkrl.models.heads import ACTION_TENSOR_DIM_NO_MACRO
+from hkrl.spaces import canonical_noop_action_values
 from hkrl.utils.config import TaskConfig
 from hkrl.worker.game_worker import action_tensor_to_env_action
 
@@ -567,8 +567,10 @@ def _obs_to_tensor(
 
 def _zero_prev_action(env: Any) -> np.ndarray:
     enable_macro = "macro" in env.action_space.spaces
-    action_dim = ACTION_TENSOR_DIM_NO_MACRO + (1 if enable_macro else 0)
-    return np.zeros((1, action_dim), dtype=np.int64)
+    return np.asarray(
+        [canonical_noop_action_values(enable_macro=enable_macro)],
+        dtype=np.int64,
+    )
 
 
 def _model_device(model: ActorCritic) -> torch.device:

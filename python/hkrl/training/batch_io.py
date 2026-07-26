@@ -15,7 +15,7 @@ import numpy as np
 
 from hkrl.training.rollout_buffer import RolloutBatch
 
-BATCH_FORMAT_VERSION = 2
+BATCH_FORMAT_VERSION = 3
 
 _ARRAY_FIELDS: tuple[str, ...] = (
     "obs_global",
@@ -35,6 +35,7 @@ _ARRAY_FIELDS: tuple[str, ...] = (
     "prev_rewards",
     "episode_ids",
     "task_ids",
+    "discount_exponents",
 )
 
 _FINITE_FIELDS: tuple[str, ...] = (
@@ -52,12 +53,21 @@ _FINITE_FIELDS: tuple[str, ...] = (
 
 def save_rollout_batch(path: str | Path, batch: RolloutBatch) -> Path:
     """Persist a RolloutBatch atomically as a compressed, pickle-free NPZ file."""
+    return save_serialized_rollout_batch(path, serialize_rollout_batch(batch))
+
+
+def save_serialized_rollout_batch(path: str | Path, payload: bytes) -> Path:
+    """Atomically persist already-serialized rollout bytes.
+
+    Workers that both spool and upload can compress once, then reuse the exact
+    payload for disk and network.
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp")
 
     with open(tmp, "wb") as fh:
-        np.savez_compressed(fh, **_batch_payload(batch))
+        fh.write(payload)
     tmp.replace(target)
     return target
 
@@ -83,7 +93,12 @@ def deserialize_rollout_batch(payload: bytes) -> RolloutBatch:
 
 
 def _batch_payload(batch: RolloutBatch) -> dict[str, Any]:
-    payload: dict[str, Any] = {field: np.asarray(getattr(batch, field)) for field in _ARRAY_FIELDS}
+    payload: dict[str, Any] = {}
+    for field in _ARRAY_FIELDS:
+        value = getattr(batch, field)
+        if field == "discount_exponents" and value is None:
+            value = np.ones_like(batch.rewards, dtype=np.float32)
+        payload[field] = np.asarray(value)
     payload["batch_format_version"] = np.array([BATCH_FORMAT_VERSION], dtype=np.int32)
     payload["policy_version"] = np.array([batch.policy_version], dtype=np.int64)
     payload["rnn_states_present"] = np.array([batch.rnn_states is not None], dtype=np.bool_)
@@ -128,6 +143,7 @@ def _batch_from_npz(data: np.lib.npyio.NpzFile) -> RolloutBatch:
         episode_ids=arrays["episode_ids"],
         task_ids=arrays["task_ids"],
         policy_version=policy_version,
+        discount_exponents=arrays["discount_exponents"],
     )
     _validate_batch_shapes(batch)
     return batch
@@ -161,6 +177,10 @@ def _validate_batch_shapes(batch: RolloutBatch) -> None:
 
     for field in _FINITE_FIELDS:
         _require_finite(field, np.asarray(getattr(batch, field)))
+    discount_exponents = np.asarray(batch.discount_exponents)
+    _require_finite("discount_exponents", discount_exponents)
+    if not (discount_exponents > 0.0).all():
+        raise ValueError("RolloutBatch discount_exponents must be positive")
 
     if batch.rnn_states is not None:
         rnn_states = np.asarray(batch.rnn_states)

@@ -8,8 +8,8 @@ Builds the learner core and checkpoint registry. For filesystem smoke tests,
 ``--batch-dir`` ingests NPZ RolloutBatch files through ``LearnerServer.submit``;
 ``--intake-count`` accepts that many authenticated TCP RolloutBatch uploads
 through the same server method before running one update cycle. ``--serve-forever``
-keeps accepting TCP RolloutBatch uploads and updates after each accepted batch
-until interrupted.
+keeps accepting TCP RolloutBatch uploads and combines the configured number of
+worker batches per GPU update until interrupted.
 """
 
 from __future__ import annotations
@@ -51,9 +51,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="HKRL Learner server")
     p.add_argument("--config", required=True)
     p.add_argument("--task", help="task YAML used to infer learner model layout")
-    p.add_argument(
-        "--tasks", nargs="+", help="task YAMLs used to infer learner model layout"
-    )
+    p.add_argument("--tasks", nargs="+", help="task YAMLs used to infer learner model layout")
     p.add_argument("--bind", default=None, help="override config.learner.bind")
     p.add_argument("--batch-dir", help="directory of NPZ RolloutBatch files to ingest")
     p.add_argument(
@@ -68,15 +66,14 @@ def build_argparser() -> argparse.ArgumentParser:
         help="keep accepting TCP rollout batches and updating until interrupted",
     )
     p.add_argument("--intake-timeout-s", type=float, default=10.0)
-    p.add_argument(
-        "--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir"
-    )
+    p.add_argument("--checkpoint-dir", default=None, help="override config.learner.checkpoint_dir")
     p.add_argument(
         "--device",
         default=None,
         help="override config.learner.device (auto, cpu, cuda, or cuda:N)",
     )
     p.add_argument("--max-staleness", type=int, default=None)
+    p.add_argument("--batches-per-update", type=int, default=None)
     p.add_argument("--publish-every-updates", type=int, default=None)
     p.add_argument("--max-entities", type=int, default=None)
     p.add_argument("--disable-macro-actions", action="store_true")
@@ -105,8 +102,11 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         getattr(args, "device", None) or cfg.learner.device,
     )
     checkpoint_dir = args.checkpoint_dir or cfg.learner.checkpoint_dir
-    max_staleness = (
-        cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    max_staleness = cfg.learner.max_staleness if args.max_staleness is None else args.max_staleness
+    batches_per_update = (
+        cfg.learner.batches_per_update
+        if getattr(args, "batches_per_update", None) is None
+        else args.batches_per_update
     )
     publish_every_updates = (
         cfg.learner.publish_every_updates
@@ -137,6 +137,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         config=cfg,
         registry=registry,
         bind=bind,
+        batches_per_update=batches_per_update,
         max_staleness=max_staleness,
         publish_every_updates=publish_every_updates,
     )
@@ -154,6 +155,7 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "learner_ready",
             {
                 "bind": bind,
+                "batches_per_update": batches_per_update,
                 "checkpoint_dir": registry.root,
                 "device": str(device),
                 "optimizer_restored": optimizer_restored,
@@ -177,12 +179,13 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
             timeout_s=float(getattr(args, "intake_timeout_s", 10.0)),
         )
         network_failed = 0
-    server.serve()
+    server.serve(force=True)
     latest = registry.latest()
     return {
         "accepted_batches": server.accepted_batches,
         "algorithm": cfg.algorithm,
         "batch_dir": args.batch_dir,
+        "batches_per_update": batches_per_update,
         "bind": bind,
         "checkpoint_dir": registry.root,
         "device": str(device),
@@ -310,9 +313,7 @@ def _prepare_startup_checkpoint(
         )
     )
     server.model.load_state_dict(state["model_state_dict"])
-    optimizer_restored = server.restore_optimizer_state(
-        state.get("optimizer_state_dict")
-    )
+    optimizer_restored = server.restore_optimizer_state(state.get("optimizer_state_dict"))
     policy_version = _checkpoint_non_negative_int(
         state.get("policy_version", latest.policy_version),
         name="policy_version",
@@ -371,9 +372,7 @@ def _serve_network_intake(
     validate_service_auth(bind, cfg)
     auth_token = resolve_auth_token(cfg)
     accepted = 0
-    with BatchIntakeServer(
-        server, bind, auth_token=auth_token, timeout_s=timeout_s
-    ) as intake:
+    with BatchIntakeServer(server, bind, auth_token=auth_token, timeout_s=timeout_s) as intake:
         for _ in range(intake_count):
             result = intake.serve_once()
             accepted += int(result.accepted)
@@ -392,9 +391,7 @@ def _serve_network_forever(
     submitted = 0
     accepted = 0
     failed = 0
-    with BatchIntakeServer(
-        server, bind, auth_token=auth_token, timeout_s=timeout_s
-    ) as intake:
+    with BatchIntakeServer(server, bind, auth_token=auth_token, timeout_s=timeout_s) as intake:
         while True:
             try:
                 result = intake.serve_once()
@@ -418,10 +415,10 @@ def _serve_network_forever(
             submitted += 1
             if result.accepted:
                 accepted += 1
-                server.serve()
+                updated = bool(server.serve())
                 last_checkpoint = getattr(server, "last_checkpoint", None)
                 _emit_event(
-                    "learner_update",
+                    "learner_update" if updated else "rollout_queued",
                     {
                         "accepted_batches": accepted,
                         "checkpoint_version": (
@@ -464,9 +461,7 @@ def _load_tasks(args: argparse.Namespace) -> list[TaskConfig]:
     return tasks
 
 
-def _resolve_layout(
-    args: argparse.Namespace, tasks: list[TaskConfig]
-) -> dict[str, Any]:
+def _resolve_layout(args: argparse.Namespace, tasks: list[TaskConfig]) -> dict[str, Any]:
     task = tasks[0] if tasks else None
     max_entities = args.max_entities
     if max_entities is None:
@@ -510,6 +505,9 @@ def _validate_learner_args(args: argparse.Namespace) -> None:
         getattr(args, "checkpoint_dir", None),
         name="checkpoint_dir",
     )
+    batches_per_update = getattr(args, "batches_per_update", None)
+    if batches_per_update is not None:
+        _positive_int(batches_per_update, name="batches_per_update")
     intake_count = getattr(args, "intake_count", 0)
     if intake_count is None:
         intake_count = 0
@@ -521,9 +519,7 @@ def _validate_learner_args(args: argparse.Namespace) -> None:
         getattr(args, "intake_timeout_s", 10.0),
         name="intake_timeout_s",
     )
-    _optional_non_negative_int(
-        getattr(args, "max_staleness", None), name="max_staleness"
-    )
+    _optional_non_negative_int(getattr(args, "max_staleness", None), name="max_staleness")
     _optional_positive_int(
         getattr(args, "publish_every_updates", None),
         name="publish_every_updates",

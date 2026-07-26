@@ -143,6 +143,7 @@ def test_run_phase8_smoke_runs_synthetic_train_update(tmp_path: Path) -> None:
     assert summary["learner"]["metrics"]["fused_optimizer"] == 0.0
     assert summary["learner"]["metrics"]["task_count"] == 1.0
     assert summary["learner"]["metrics"]["optimizer_steps"] > 0.0
+    assert summary["learner"]["metrics"]["bptt_enabled"] == 1.0
     assert Path(summary["artifacts"]["synthetic_batch"]).is_file()
     registry = CheckpointRegistry(summary["artifacts"]["checkpoint_dir"])
     checkpoint_state = torch.load(

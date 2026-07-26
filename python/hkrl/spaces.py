@@ -8,6 +8,7 @@ cause of high invalid_action_ratio (docs/troubleshooting.md).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -33,6 +34,9 @@ N_AIM_Y = 3  # down / neutral / up
 DURATION_TICKS: tuple[int, ...] = (1, 2, 4, 8)
 N_DURATION = len(DURATION_TICKS)
 DEFAULT_N_MACROS = 11
+# Primitive ticks emitted by MacroActionScheduler for macro ids 0..10. Python's
+# Gym action uses 0=no macro and 1..11 for these entries.
+MACRO_DURATION_TICKS: tuple[int, ...] = (4, 4, 2, 5, 1, 1, 1, 1, 120, 1, 4)
 
 # Normalization constants (docs/observation_schema.md §2). Tune per-arena.
 ARENA_SCALE = 30.0
@@ -95,6 +99,12 @@ ENTITY_FEATURE_DIMS: dict[str, int] = {
     "reduced": 18,
     "human_visible": 12,
 }
+
+
+def canonical_noop_action_values(*, enable_macro: bool) -> tuple[int, ...]:
+    """Return the packed no-op used for recurrent context at episode start."""
+    values = (1, 1, *(0 for _ in range(N_BUTTONS)), 0)
+    return (*values, 0) if enable_macro else values
 
 
 def make_action_space(
@@ -178,3 +188,43 @@ def action_mask_layout(enable_macro: bool = True, n_macros: int = DEFAULT_N_MACR
     if enable_macro:
         layout += [f"macro:{i}" for i in range(n_macros + 1)]
     return layout
+
+
+def action_execution_ticks(
+    action: object,
+    *,
+    minimum_ticks: int,
+    enable_macro: bool,
+    n_macros: int,
+) -> int:
+    """Return ticks needed to finish one sampled primitive or macro action.
+
+    A policy decision must not return before its duration/macro plan completes;
+    otherwise later sampled actions are recorded even though the mod is still
+    executing the previous one. The protocol field remains ``action_repeat``:
+    this helper only chooses its per-decision value.
+    """
+    if minimum_ticks <= 0:
+        raise ValueError("minimum_ticks must be positive")
+    if n_macros < 0:
+        raise ValueError("n_macros must be non-negative")
+    if not isinstance(action, Mapping):
+        return minimum_ticks
+
+    if enable_macro:
+        macro_value = action.get("macro")
+        if macro_value is None and "macro_id" in action:
+            macro_value = int(action["macro_id"]) + 1
+        macro = 0 if macro_value is None else int(macro_value)
+        if not 0 <= macro <= n_macros:
+            raise ValueError(f"macro must be in [0, {n_macros}], got {macro}")
+        if macro > 0:
+            if macro > len(MACRO_DURATION_TICKS):
+                raise ValueError(f"macro must be in [0, {n_macros}], got {macro}")
+            return max(minimum_ticks, MACRO_DURATION_TICKS[macro - 1])
+
+    duration_value = action.get("duration_idx", action.get("duration", 0))
+    duration = 0 if duration_value is None else int(duration_value)
+    if not 0 <= duration < N_DURATION:
+        raise ValueError(f"duration must be in [0, {N_DURATION}), got {duration}")
+    return max(minimum_ticks, DURATION_TICKS[duration])

@@ -6,13 +6,21 @@ defaults:
 
 algorithm: appo
 
+# Four 2,048-step workers produce an 8,192-transition update. Larger sequence
+# minibatches and two epochs keep the GPU busy while limiting policy staleness.
+minibatch_size: 1024
+epochs: 2
+sequence_length: 32
+burn_in: 0
+
 # Learner / distributed settings consumed by hkrl.learner / hkrl.coordinator.
 learner:
   bind: 127.0.0.1:5600
   device: auto                    # auto | cpu | cuda | cuda:N
-  max_staleness: 4              # drop rollouts older than this many versions
+  batches_per_update: 4           # one rollout per worker -> one large GPU update
+  max_staleness: 2                # clipped PPO has no V-trace yet; keep lag bounded
   checkpoint_dir: checkpoints/
-  publish_every_updates: 4       # must be <= max_staleness + 1 for APPO
+  publish_every_updates: 1       # workers pull after each 8,192-transition update
   amp_dtype: auto                 # BF16 on supported CUDA, otherwise FP16
   compile_mode: auto              # CUDA: compile; CPU smoke/CI: eager
   fused_optimizer: auto

@@ -39,8 +39,9 @@ This follows PyTorch's official
 [AMP](https://docs.pytorch.org/docs/stable/amp.html) and
 [performance-tuning](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html)
 guidance. It does not claim that bounded-staleness clipped PPO is the final
-distributed algorithm. Sequence-preserving recurrent APPO plus V-trace remains
-the next correctness milestone, following the
+distributed algorithm. Sequence-preserving recurrent APPO landed in
+[ADR-0009](./0009-action-aligned-sequence-appo.md); V-trace remains the next
+algorithm experiment, following the
 [IMPALA paper](https://arxiv.org/abs/1802.01561).
 
 ## Consequences
@@ -53,7 +54,6 @@ the next correctness milestone, following the
 - CPU tests and smoke runs retain deterministic FP32 behavior.
 - CUDA speedup must be measured on the actual learner GPU; compile cold-start
   time and steady-state learner SPS are reported separately.
-- Until sequence-aware off-policy correction lands, recurrent APPO still
-  evaluates uploaded transitions with their recorded hidden states. Do not
-  present it as the final high-ceiling recurrent result; use recurrent PPO for
-  sequence/BPTT baselines.
+- ADR-0009 supersedes the former one-step recurrent limitation with
+  episode-safe truncated BPTT. APPO still lacks V-trace, so recurrent PPO
+  remains the strict on-policy sequence baseline.

@@ -61,6 +61,7 @@ def test_run_worker_dry_run_builds_summary(tmp_path: Path, monkeypatch: object) 
         "registry": str(tmp_path / "checkpoints"),
         "task_id": "gruz_mother",
         "task_ids": ["gruz_mother"],
+        "time_scale": None,
         "worker_id": "game-pc-1",
     }
 
@@ -135,6 +136,9 @@ def test_run_worker_rejects_duplicate_task_wire_ids(
         ("max_consecutive_failures", False, "max_consecutive_failures"),
         ("inference_threads", 0, "inference_threads"),
         ("inference_threads", False, "inference_threads"),
+        ("time_scale", 0.0, "time_scale"),
+        ("time_scale", float("inf"), "time_scale"),
+        ("time_scale", False, "time_scale"),
         ("env_host", "", "env_host"),
         ("env_host", "   ", "env_host"),
         ("env_port", 0, "env_port"),
@@ -292,6 +296,38 @@ def test_run_worker_batch_uploader_sends_to_learner(monkeypatch: object) -> None
     assert written == []
     assert submitted_versions == [7]
     assert uploaded == [True]
+
+
+def test_run_worker_batch_uploader_compresses_once_for_spool_and_network(
+    monkeypatch: object,
+    tmp_path: Path,
+) -> None:
+    module = _load_script("run_worker.py")
+    payloads: list[bytes] = []
+
+    class FakeBatchClient:
+        def __init__(self, endpoint: str, *, auth_token: str | None = None) -> None:
+            pass
+
+        def submit_payload(self, payload: bytes) -> bool:
+            payloads.append(payload)
+            return True
+
+    monkeypatch.setattr(module, "BatchIntakeClient", FakeBatchClient)
+    written: list[str] = []
+    uploader = module._make_batch_uploader(
+        str(tmp_path),
+        "game-pc-1",
+        written,
+        learner_endpoint="127.0.0.1:5600",
+    )
+    assert uploader is not None
+
+    assert uploader(_sample_batch(policy_version=8)) is True
+
+    assert len(payloads) == 1
+    assert len(written) == 1
+    assert Path(written[0]).read_bytes() == payloads[0]
 
 
 def test_run_worker_upload_summary_counts_accepted_and_rejected() -> None:

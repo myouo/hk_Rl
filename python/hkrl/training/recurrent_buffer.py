@@ -43,6 +43,7 @@ class RecurrentSequenceBatch:
     loss_mask: np.ndarray
     episode_ids: np.ndarray
     task_ids: np.ndarray
+    discount_exponents: np.ndarray
 
 
 class RecurrentRolloutBuffer:
@@ -100,6 +101,8 @@ class RecurrentRolloutBuffer:
         self.action_masks = np.zeros(env_prefix + action_mask_shape, dtype=bool)
         self.prev_actions = np.zeros(env_prefix + action_shape, dtype=np.int64)
         self.prev_rewards = np.zeros(env_prefix, dtype=np.float32)
+        self.discount_exponents = np.ones(env_prefix, dtype=np.float32)
+        self.truncation_values = np.zeros(env_prefix, dtype=np.float32)
         self.advantages = np.zeros(env_prefix, dtype=np.float32)
         self.returns = np.zeros(env_prefix, dtype=np.float32)
         self.episode_ids = np.zeros(env_prefix, dtype=np.uint64)
@@ -139,6 +142,22 @@ class RecurrentRolloutBuffer:
             transition.get("prev_reward", np.zeros((self.num_envs,), dtype=np.float32)),
             self.num_envs,
         )
+        self.discount_exponents[idx] = _flat_env_array(
+            transition.get(
+                "discount_exponent",
+                np.ones((self.num_envs,), dtype=np.float32),
+            ),
+            self.num_envs,
+        )
+        if not (self.discount_exponents[idx] > 0.0).all():
+            raise ValueError("discount_exponent must be positive")
+        self.truncation_values[idx] = _flat_env_array(
+            transition.get(
+                "truncation_value",
+                np.zeros((self.num_envs,), dtype=np.float32),
+            ),
+            self.num_envs,
+        )
         self.episode_ids[idx] = _flat_env_array(
             transition.get("episode_id", np.zeros((self.num_envs,), dtype=np.uint64)),
             self.num_envs,
@@ -167,6 +186,8 @@ class RecurrentRolloutBuffer:
             np.asarray(last_value, dtype=np.float32),
             gamma=gamma,
             gae_lambda=gae_lambda,
+            discount_exponents=self.discount_exponents[:length],
+            truncation_values=self.truncation_values[:length],
         )
         _require_finite("advantages", self.advantages[:length])
         _require_finite("returns", self.returns[:length])
@@ -195,6 +216,7 @@ class RecurrentRolloutBuffer:
             episode_ids=self.episode_ids[:length].copy(),
             task_ids=self.task_ids[:length].copy(),
             policy_version=policy_version,
+            discount_exponents=self.discount_exponents[:length].copy(),
         )
 
     def iter_sequences(
@@ -295,6 +317,7 @@ class RecurrentRolloutBuffer:
         loss_mask = np.zeros((batch_size, max_len), dtype=bool)
         episode_ids = np.zeros((batch_size, max_len), dtype=np.uint64)
         task_ids = np.zeros((batch_size, max_len), dtype=np.int64)
+        discount_exponents = np.ones((batch_size, max_len), dtype=np.float32)
         rnn_states: list[Any] = []
 
         for batch_idx, (env_idx, input_start, valid_len, loss_offset, loss_len) in enumerate(
@@ -319,6 +342,7 @@ class RecurrentRolloutBuffer:
             prev_rewards[batch_idx, target] = self.prev_rewards[source, env_idx]
             episode_ids[batch_idx, target] = self.episode_ids[source, env_idx]
             task_ids[batch_idx, target] = self.task_ids[source, env_idx]
+            discount_exponents[batch_idx, target] = self.discount_exponents[source, env_idx]
             loss_mask[batch_idx, loss_offset : loss_offset + loss_len] = True
             rnn_states.append(
                 _select_rnn_state(self.rnn_states[input_start], env_idx, self.num_envs)
@@ -353,6 +377,7 @@ class RecurrentRolloutBuffer:
             loss_mask=loss_mask,
             episode_ids=episode_ids,
             task_ids=task_ids,
+            discount_exponents=discount_exponents,
         )
 
 
@@ -469,4 +494,6 @@ _FINITE_STORED_FIELDS: tuple[str, ...] = (
     "values",
     "rewards",
     "prev_rewards",
+    "discount_exponents",
+    "truncation_values",
 )

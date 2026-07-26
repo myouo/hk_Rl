@@ -213,7 +213,7 @@ def test_batch_intake_rejects_invalid_auth_token() -> None:
 
 def test_batch_intake_rejects_legacy_envelope_type() -> None:
     with pytest.raises(ValueError, match="header type"):
-        _validate_header({"type": "hkrl.rollout_batch.v1", "token": "secret"}, "secret")
+        _validate_header({"type": "hkrl.rollout_batch.v2", "token": "secret"}, "secret")
 
 
 def test_batch_intake_ack_requires_accepted_boolean() -> None:

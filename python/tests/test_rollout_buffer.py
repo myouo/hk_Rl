@@ -11,6 +11,7 @@ from hkrl.training.batch_io import (
     deserialize_rollout_batch,
     load_rollout_batch,
     save_rollout_batch,
+    save_serialized_rollout_batch,
     serialize_rollout_batch,
 )
 from hkrl.training.gae import compute_gae
@@ -39,6 +40,7 @@ def test_rollout_batch_has_required_fields() -> None:
         "episode_ids",
         "task_ids",
         "policy_version",
+        "discount_exponents",
     }
     assert required <= names
 
@@ -86,6 +88,38 @@ def test_compute_gae_truncated_step_bootstraps() -> None:
 
     np.testing.assert_allclose(advantages, np.array([[11.0]], dtype=np.float32))
     np.testing.assert_allclose(returns, np.array([[11.0]], dtype=np.float32))
+
+
+def test_compute_gae_truncation_bootstrap_does_not_leak_next_episode_trace() -> None:
+    advantages, returns = compute_gae(
+        rewards=np.array([[1.0], [100.0]], dtype=np.float32),
+        values=np.zeros((2, 1), dtype=np.float32),
+        dones=np.array([[False], [True]]),
+        truncateds=np.array([[True], [False]]),
+        last_value=np.array([0.0], dtype=np.float32),
+        gamma=1.0,
+        gae_lambda=1.0,
+        truncation_values=np.array([[10.0], [0.0]], dtype=np.float32),
+    )
+
+    np.testing.assert_allclose(advantages[:, 0], [11.0, 100.0])
+    np.testing.assert_allclose(returns[:, 0], [11.0, 100.0])
+
+
+def test_compute_gae_discounts_variable_duration_in_base_step_units() -> None:
+    advantages, returns = compute_gae(
+        rewards=np.zeros((2, 1), dtype=np.float32),
+        values=np.array([[0.0], [0.0]], dtype=np.float32),
+        dones=np.zeros((2, 1), dtype=bool),
+        truncateds=np.zeros((2, 1), dtype=bool),
+        last_value=np.array([1.0], dtype=np.float32),
+        gamma=0.5,
+        gae_lambda=1.0,
+        discount_exponents=np.array([[1.0], [2.0]], dtype=np.float32),
+    )
+
+    np.testing.assert_allclose(advantages[:, 0], [0.125, 0.25])
+    np.testing.assert_allclose(returns[:, 0], [0.125, 0.25])
 
 
 def test_compute_gae_rejects_non_finite_inputs() -> None:
@@ -145,6 +179,7 @@ def test_rollout_buffer_add_compute_batch_and_clear() -> None:
     np.testing.assert_allclose(buffer.returns[:, 0], [2.0, 1.0])
     np.testing.assert_array_equal(batch.episode_ids[:, 0], np.array([7, 7], dtype=np.uint64))
     np.testing.assert_array_equal(batch.task_ids[:, 0], np.array([3, 3]))
+    np.testing.assert_array_equal(batch.discount_exponents[:, 0], np.array([1.0, 1.0]))
 
     batch.obs_global[0, 0, 0] = 99.0
     assert buffer.obs_global[0, 0, 0] == 0.0
@@ -260,6 +295,16 @@ def test_rollout_batch_memory_roundtrip_with_rnn_state() -> None:
     _assert_batch_arrays_equal(loaded, batch)
 
 
+def test_rollout_batch_reuses_serialized_payload_for_spooling(tmp_path: Path) -> None:
+    batch = _sample_batch(policy_version=11)
+    payload = serialize_rollout_batch(batch)
+
+    path = save_serialized_rollout_batch(tmp_path / "reused.npz", payload)
+
+    assert path.read_bytes() == payload
+    _assert_batch_arrays_equal(load_rollout_batch(path), batch)
+
+
 def test_rollout_batch_deserialize_rejects_mismatched_time_env_shapes() -> None:
     batch = _sample_batch(policy_version=12)
     batch.rewards = np.ones((1, 1), dtype=np.float32)
@@ -367,4 +412,8 @@ def _assert_batch_arrays_equal(left: RolloutBatch, right: RolloutBatch) -> None:
     for field in dataclasses.fields(RolloutBatch):
         if field.name in {"policy_version", "rnn_states"}:
             continue
-        np.testing.assert_array_equal(getattr(left, field.name), getattr(right, field.name))
+        left_value = getattr(left, field.name)
+        right_value = getattr(right, field.name)
+        if field.name == "discount_exponents" and right_value is None:
+            right_value = np.ones_like(right.rewards, dtype=np.float32)
+        np.testing.assert_array_equal(left_value, right_value)

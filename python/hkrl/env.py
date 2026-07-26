@@ -30,6 +30,7 @@ from hkrl.spaces import (
     N_DURATION,
     N_MOVEMENT_X,
     PLAYER_FEATURE_DIMS,
+    action_execution_ticks,
     action_mask_layout,
     make_action_space,
     make_observation_space,
@@ -128,10 +129,16 @@ class HKRLEnv(gym.Env):
         if not self._running:
             raise EnvProtocolError("reset must complete before step()")
 
+        action_repeat = action_execution_ticks(
+            action,
+            minimum_ticks=self.task.action.action_repeat,
+            enable_macro=self.task.action.enable_macro_actions,
+            n_macros=self.task.action.n_macro_actions,
+        )
         response = self._exchange(
             protocol.Command.STEP,
             action=action,
-            action_repeat=self.task.action.action_repeat,
+            action_repeat=action_repeat,
             timeout_s=self._step_timeout_s,
         )
         self._raise_for_error(response, context="step")
@@ -144,7 +151,10 @@ class HKRLEnv(gym.Env):
         self._validate_observation(response.observation)
         obs = self._to_gym_observation(response.observation)
         self._episode_id = self._episode_id_from(obs)
-        elapsed_ticks = self._server_tick_delta(response)
+        elapsed_ticks = self._server_tick_delta(
+            response,
+            fallback_ticks=action_repeat,
+        )
         reward = self.reward_fn(response.reward_events, dt=float(elapsed_ticks))
         self._last_server_tick = response.server_tick
         terminated = bool(response.terminated or self._is_terminal(response.lifecycle_state))
@@ -154,6 +164,8 @@ class HKRLEnv(gym.Env):
         truncated = bool(response.truncated or time_limit_reached)
         self._running = not (terminated or truncated)
         info = self._info_from_response(response, observation=obs)
+        info["action_repeat"] = action_repeat
+        info["elapsed_ticks"] = elapsed_ticks
         info["time_limit_reached"] = time_limit_reached
         return obs, reward, terminated, truncated, info
 
@@ -430,12 +442,22 @@ class HKRLEnv(gym.Env):
         self._tick_id += 1
         return tick_id
 
-    def _server_tick_delta(self, response: protocol.DecodedStepResponse) -> int:
+    def _server_tick_delta(
+        self,
+        response: protocol.DecodedStepResponse,
+        *,
+        fallback_ticks: int | None = None,
+    ) -> int:
+        fallback = (
+            int(self.task.action.action_repeat) if fallback_ticks is None else int(fallback_ticks)
+        )
+        if fallback <= 0:
+            raise ValueError("fallback_ticks must be positive")
         if self._last_server_tick is None:
-            return int(self.task.action.action_repeat)
+            return fallback
         delta = int(response.server_tick) - int(self._last_server_tick)
         if delta <= 0:
-            return int(self.task.action.action_repeat)
+            return fallback
         return delta
 
     @staticmethod

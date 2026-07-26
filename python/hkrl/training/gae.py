@@ -17,6 +17,8 @@ def compute_gae(
     last_value: np.ndarray,
     gamma: float = 0.995,
     gae_lambda: float = 0.95,
+    discount_exponents: np.ndarray | None = None,
+    truncation_values: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(advantages, returns)`` along the time axis.
 
@@ -27,6 +29,13 @@ def compute_gae(
         raise ValueError("rewards, values, and dones must have matching shapes")
     if rewards.shape != truncateds.shape:
         raise ValueError("truncateds must match rewards shape")
+    if discount_exponents is None:
+        discount_exponents = np.ones_like(rewards, dtype=np.float32)
+    if discount_exponents.shape != rewards.shape:
+        raise ValueError("discount_exponents must match rewards shape")
+    if truncation_values is not None and truncation_values.shape != rewards.shape:
+        raise ValueError("truncation_values must match rewards shape")
+    truncated_mask = np.asarray(truncateds, dtype=bool)
     if rewards.ndim != 2:
         raise ValueError("GAE inputs must have shape (T, N)")
     if last_value.shape != rewards.shape[1:]:
@@ -39,19 +48,35 @@ def compute_gae(
         ("rewards", rewards),
         ("values", values),
         ("last_value", last_value),
+        ("discount_exponents", discount_exponents),
     ):
         if not np.isfinite(array).all():
             raise ValueError(f"{name} must contain only finite values")
+    if not (discount_exponents > 0.0).all():
+        raise ValueError("discount_exponents must be positive")
+    if truncation_values is not None and not np.isfinite(truncation_values[truncated_mask]).all():
+        raise ValueError("truncation_values must be finite on truncated steps")
 
     advantages = np.zeros_like(rewards, dtype=np.float32)
     last_gae = np.zeros(rewards.shape[1], dtype=np.float32)
     next_value = last_value.astype(np.float32, copy=False)
 
     for step in range(rewards.shape[0] - 1, -1, -1):
-        terminated = np.logical_and(dones[step], np.logical_not(truncateds[step]))
-        next_non_terminal = 1.0 - terminated.astype(np.float32)
-        delta = rewards[step] + gamma * next_value * next_non_terminal - values[step]
-        last_gae = delta + gamma * gae_lambda * next_non_terminal * last_gae
+        truncated = truncated_mask[step]
+        terminated = np.logical_and(dones[step], np.logical_not(truncated))
+        bootstrap_value = next_value
+        if truncation_values is not None:
+            bootstrap_value = np.where(
+                truncated,
+                truncation_values[step],
+                bootstrap_value,
+            )
+        bootstrap_mask = 1.0 - terminated.astype(np.float32)
+        trace_continuation = 1.0 - np.logical_or(terminated, truncated).astype(np.float32)
+        step_gamma = np.power(gamma, discount_exponents[step]).astype(np.float32)
+        step_lambda = np.power(gae_lambda, discount_exponents[step]).astype(np.float32)
+        delta = rewards[step] + step_gamma * bootstrap_value * bootstrap_mask - values[step]
+        last_gae = delta + step_gamma * step_lambda * trace_continuation * last_gae
         advantages[step] = last_gae
         next_value = values[step]
 

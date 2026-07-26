@@ -100,11 +100,10 @@ def _safe_attention_inputs(
         raise ValueError("entity_mask must have shape (B, N)")
 
     valid_mask = entity_mask.to(dtype=torch.bool, device=entity_embs.device)
-    safe_mask = valid_mask.clone()
-    empty_rows = ~safe_mask.any(dim=-1)
-    safe_embs = entity_embs
-    if bool(empty_rows.any().item()):
-        safe_mask[empty_rows, 0] = True
-        safe_embs = entity_embs.clone()
-        safe_embs[empty_rows, 0] = 0.0
+    empty_rows = ~valid_mask.any(dim=-1)
+    fallback_slot = torch.zeros_like(valid_mask)
+    fallback_slot[..., 0] = True
+    injected_slot = empty_rows.unsqueeze(-1) & fallback_slot
+    safe_mask = valid_mask | injected_slot
+    safe_embs = entity_embs.masked_fill(injected_slot.unsqueeze(-1), 0.0)
     return valid_mask, safe_mask, safe_embs, empty_rows

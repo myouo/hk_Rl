@@ -14,7 +14,8 @@ explained_variance    SPS                   reset_success_rate
 reset_duration        worker_crash_count
 optimizer_steps       epochs_completed      kl_early_stop
 amp_enabled           compile_enabled       fused_optimizer
-task_count
+task_count            sequence_count         sequence_length
+bptt_enabled
 worker_learner_upload_submitted_batches
 worker_learner_upload_accepted_batches
 worker_learner_upload_rejected_batches
@@ -114,11 +115,11 @@ limit: Unity can run zero or multiple fixed updates around a rendered frame.
 
 Learner throughput must be profiled separately from game SPS. APPO emits its
 actual optimizer-step/epoch counts, KL guard state, mixed-task count, and active
-AMP/compile/fused-Adam flags in learner summaries, update events, and checkpoint
-metrics. The hot path batches finite-value checks and task-wise advantage
-statistics to avoid per-tensor or per-Boss GPU-to-CPU synchronization. Compare
-compile cold start separately from steady-state learner samples/second on the
-target CUDA host.
+AMP/compile/fused-Adam flags plus sequence/BPTT counts in learner summaries,
+update events, and checkpoint metrics. The hot path batches finite-value checks
+and task-wise advantage statistics, combines worker rollouts per update, and
+keeps the final compiled minibatch shape fixed. Compare compile cold start
+separately from steady-state learner samples/second on the target CUDA host.
 
 For real-game hot-path changes, run
 `python scripts/live_performance_benchmark.py --steps 400 --action-repeat 2`

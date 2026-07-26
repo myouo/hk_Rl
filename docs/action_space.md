@@ -96,9 +96,24 @@ unavailable jump, dash, attack, cast, or focus input.
 ## 4. Duration & action_repeat
 
 `duration` selects how many ticks a button is held (tap vs hold vs nail-art
-charge). Distinct from `action_repeat` (protocol-level, repeats the *same*
-StepRequest N FixedUpdate ticks before returning the StepResponse, unless a
-terminal reward event ends the episode early). Both exist; don't conflate them.
+charge). `action_repeat` is the protocol-level count of FixedUpdate ticks before
+returning the StepResponse, unless a terminal event ends it early. They remain
+different fields, but the Gym environment aligns them per policy decision:
+
+```text
+request.action_repeat =
+    max(task.action_repeat, selected duration ticks, selected macro-plan ticks)
+```
+
+This prevents the next sampled/recorded PPO action from overtaking a hold or
+macro that the Mod is still executing. The task value is a minimum cadence; a
+1-tick primitive in a 2-tick task is still repeated for two physics ticks.
+`info.action_repeat` reports the requested value and `info.elapsed_ticks`
+reports the actual server-tick delta.
+The GameWorker converts that delta to `discount_exponent =
+elapsed_ticks / task.action_repeat`, so GAE applies time-aware
+`gamma^discount_exponent` and `lambda^discount_exponent`. Long holds/macros are
+therefore not treated as zero-cost one-step transitions.
 
 ## 5. Macro actions (PRD §6.4)
 
@@ -119,6 +134,14 @@ Phase 3: mostly primitive with learned duration
 
 Macros expand to primitive sequences in the mod's `MacroActionScheduler`, so the
 environment contract stays primitive-based.
+
+The policy treats macros hierarchically. `macro=0` selects the primitive path
+and its behavior probability includes all primitive branches. For `macro>0`,
+the Mod ignores sampled primitive values, so PPO log-probability includes only
+the selected macro branch; the stored primitive fields are canonicalized to
+neutral values. This avoids noisy recurrent context and assigning gradient to
+actions the game did not execute. See
+[ADR-0009](./adr/0009-action-aligned-sequence-appo.md).
 
 ## 6. Semantic combination discovery
 

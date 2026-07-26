@@ -80,10 +80,13 @@ sequence_length = 32 or 64,  burn_in = optional 8
 
 `initial_state()` returns zeroed hidden state; it is reset at episode boundaries
 (and optionally between bosses in a linear sequence — config-controlled). The
-`GameWorker` stores the pre-action hidden state for each transition when
-`algorithm: recurrent_ppo`. The recurrent buffer
+`GameWorker` stores the pre-action hidden state for each transition when using
+recurrent PPO or recurrent APPO. The recurrent buffer
 (`training/recurrent_buffer.py`) handles sequence chunking, masking of padded
 timesteps, and burn-in.
+Remote APPO reconstructs episode-safe chunks from uploaded `RolloutBatch`
+tensors. Because every transition carries its exact pre-action GRU state, APPO
+starts directly at each chunk boundary and does not need burn-in.
 
 ## 5. Performance
 
@@ -96,11 +99,17 @@ timesteps, and burn-in.
   from dominating a mixed rollout update.
 - `target_kl` can end the remaining PPO epochs before a destructive policy
   jump; updates report the actual optimizer-step and early-stop counts.
-- Batch sequences contiguously to keep GPU utilization high.
+- APPO combines `learner.batches_per_update` worker rollouts, batches sequences
+  contiguously, and padding-masks the final minibatch to keep compiled shapes
+  stable.
+- Local inference copies action/log-prob/value to CPU in one synchronization;
+  rollout spooling and TCP upload reuse one compressed payload.
 
-These optimizations do not run in the local game action loop. Sequence-aware
-off-policy recurrent training remains a separate milestone; see
-[ADR-0008](./adr/0008-configured-learner-acceleration.md).
+Learner acceleration does not move inference onto the remote network. APPO now
+has sequence-aware truncated BPTT; V-trace remains a separately gated
+off-policy experiment. See
+[ADR-0008](./adr/0008-configured-learner-acceleration.md) and
+[ADR-0009](./adr/0009-action-aligned-sequence-appo.md).
 
 ## 6. Ablations (PRD Phase 5)
 

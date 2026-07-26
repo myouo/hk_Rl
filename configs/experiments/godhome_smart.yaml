@@ -1,0 +1,29 @@
+# Aggregate launch manifest. Algorithm/model hyperparameters live in the two
+# composed TrainConfig files; this file only binds roles, tasks, and endpoints.
+name: godhome-smart-v1
+project_root: ../..
+
+tasks:
+  - configs/tasks/gruz_mother.yaml
+  - configs/tasks/hornet_protector.yaml
+  - configs/tasks/mantis_lords.yaml
+
+remote:
+  train_config: configs/train/ssh_remote_learner.yaml
+  # Keep both services loopback-only and reach them through an SSH tunnel.
+  learner_bind: 127.0.0.1:5600
+  registry_bind: 127.0.0.1:5601
+
+local:
+  train_config: configs/train/linux_game_worker.yaml
+  env_host: 127.0.0.1
+  env_port: 5555
+  learner_endpoint: 127.0.0.1:5600
+  registry_endpoint: http://127.0.0.1:5601/
+  worker_id: linux-game-0
+  inference_threads: 1
+  # Raise only after live_performance_benchmark confirms stable SPS/resets.
+  time_scale: 1.0
+  batch_dir: runs/godhome-smart/local-batches
+  heartbeat_jsonl: runs/godhome-smart/heartbeats.jsonl
+  max_consecutive_failures: 3

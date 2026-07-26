@@ -104,6 +104,7 @@ class LearnerRuntimeConfig(StrictConfigModel):
         min_length=1,
         pattern=r"^(?:auto|cpu|cuda(?::[0-9]+)?)$",
     )
+    batches_per_update: int = Field(default=1, ge=1)
     max_staleness: int = Field(default=4, ge=0)
     checkpoint_dir: str = Field(default="checkpoints", min_length=1)
     publish_every_updates: int = Field(default=1, ge=1)
@@ -210,6 +211,10 @@ def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[st
 def load_train_config(path: str | Path) -> TrainConfig:
     """Load and validate a training config."""
     config = TrainConfig.model_validate(load_yaml(path))
+    if config.algorithm == "appo" and config.burn_in != 0:
+        raise ValueError(
+            "APPO starts each chunk from its recorded hidden state and requires burn_in=0"
+        )
     if (
         config.algorithm == "appo"
         and config.learner.publish_every_updates > config.learner.max_staleness + 1

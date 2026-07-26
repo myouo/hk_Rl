@@ -17,7 +17,7 @@ from hkrl.learner.learner_server import LearnerServer
 from hkrl.training.batch_io import deserialize_rollout_batch, serialize_rollout_batch
 from hkrl.training.rollout_buffer import RolloutBatch
 
-BATCH_INTAKE_TYPE = "hkrl.rollout_batch.v2"
+BATCH_INTAKE_TYPE = "hkrl.rollout_batch.v3"
 MAX_FRAME_BYTES = 512 * 1024 * 1024
 
 
@@ -151,6 +151,10 @@ class BatchIntakeClient:
         self.timeout_s = timeout_s
 
     def submit(self, batch: RolloutBatch) -> bool:
+        return self.submit_payload(serialize_rollout_batch(batch))
+
+    def submit_payload(self, payload: bytes) -> bool:
+        """Upload pre-serialized NPZ bytes without recompressing the rollout."""
         host, port = split_endpoint(self.endpoint)
         with socket.create_connection((host, port), timeout=self.timeout_s) as sock:
             sock.settimeout(self.timeout_s)
@@ -161,7 +165,7 @@ class BatchIntakeClient:
                     "token": self.auth_token,
                 },
             )
-            _send_frame(sock, serialize_rollout_batch(batch))
+            _send_frame(sock, payload)
             ack = _decode_json_frame(_recv_frame(sock))
         return _accepted_from_ack(ack)
 
