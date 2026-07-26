@@ -118,8 +118,13 @@ def _resolve_compile_mode(mode: str, *, device: torch.device) -> str | None:
     if mode == "off":
         return None
     if mode == "auto":
-        return "default" if device.type == "cuda" else None
+        return "default" if device.type == "cuda" and _torch_compile_supported() else None
     if mode in {"default", "reduce-overhead", "max-autotune"}:
+        if not _torch_compile_supported():
+            raise ValueError(
+                f"learner.compile_mode={mode!r} requires a Python/PyTorch "
+                "runtime supported by TorchDynamo"
+            )
         return mode
     raise ValueError(f"unsupported learner.compile_mode {mode!r}")
 
@@ -170,6 +175,15 @@ def _cuda_bf16_supported(device: torch.device) -> bool:
         return False
     with torch.cuda.device(device):
         return bool(torch.cuda.is_bf16_supported())
+
+
+def _torch_compile_supported() -> bool:
+    try:
+        import torch._dynamo as dynamo
+    except (ImportError, RuntimeError):
+        return False
+    checker = getattr(dynamo, "is_dynamo_supported", None)
+    return bool(checker()) if callable(checker) else hasattr(torch, "compile")
 
 
 __all__ = ["TorchLearnerRuntime"]

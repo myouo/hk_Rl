@@ -1,0 +1,8 @@
+# Deployment overlay for CUDA learner images without TorchDynamo support.
+defaults:
+  - ./godhome_smart.yaml
+
+name: godhome-smart-eager-v1
+
+remote:
+  train_config: configs/train/ssh_remote_learner_eager.yaml

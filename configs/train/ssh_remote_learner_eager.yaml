@@ -1,0 +1,8 @@
+# Compatibility role for CUDA images whose Python/PyTorch pair cannot run
+# TorchDynamo (for example PyTorch 2.3 on Python 3.12). AMP and fused Adam stay
+# enabled; only compiled model evaluation is disabled.
+defaults:
+  - ./ssh_remote_learner.yaml
+
+learner:
+  compile_mode: "off"

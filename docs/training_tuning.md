@@ -55,6 +55,11 @@ The remote profile groups four 2,048-transition worker rollouts into one
 AMP `auto` selects native BF16 on Ampere-or-newer GPUs and FP16 plus GradScaler
 on Volta GPUs such as V100; it does not treat a software BF16 fallback as native
 support.
+If the installed Python/PyTorch pair cannot run TorchDynamo (notably PyTorch
+2.3 on Python 3.12), launch
+`configs/experiments/godhome_smart_eager.yaml`. It keeps CUDA AMP and fused Adam
+but selects the explicit eager learner role instead of deferring failure until
+the first update.
 The last sequence minibatch is padding-masked to keep the compiled learner shape
 stable. The four batches may come from four game instances or sequentially from
 fewer workers; four parallel instances reduce update latency when the game host

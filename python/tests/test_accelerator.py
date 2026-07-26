@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 
+import pytest
 import torch
+from hkrl.training import accelerator
 from hkrl.training.accelerator import _cuda_bf16_supported, _resolve_amp_dtype
 
 
@@ -32,3 +34,22 @@ def test_auto_amp_uses_bfloat16_on_supported_ampere_cuda(
     dtype = _resolve_amp_dtype("auto", device=torch.device("cuda:0"))
 
     assert dtype == torch.bfloat16
+
+
+def test_auto_compile_falls_back_to_eager_when_dynamo_is_unsupported(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(accelerator, "_torch_compile_supported", lambda: False)
+
+    assert (
+        accelerator._resolve_compile_mode(
+            "auto",
+            device=torch.device("cuda:0"),
+        )
+        is None
+    )
+    with pytest.raises(ValueError, match="TorchDynamo"):
+        accelerator._resolve_compile_mode(
+            "reduce-overhead",
+            device=torch.device("cuda:0"),
+        )

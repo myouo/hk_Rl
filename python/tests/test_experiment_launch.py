@@ -11,6 +11,7 @@ from hkrl.utils.experiment import load_experiment
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "configs/experiments/godhome_smart.yaml"
+EAGER_MANIFEST = ROOT / "configs/experiments/godhome_smart_eager.yaml"
 
 
 def test_aggregate_experiment_resolves_one_training_contract() -> None:
@@ -38,6 +39,17 @@ def test_remote_training_plan_is_loopback_and_sequence_aware() -> None:
     assert plan["batches_per_update"] == 4
     assert plan["sequence_length"] == 32
     assert "--serve-forever" in plan["learner_command"]
+
+
+def test_eager_remote_overlay_preserves_contract_without_compile() -> None:
+    experiment = load_experiment(EAGER_MANIFEST)
+    plan = _load_script("run_remote_training.py").build_plan(experiment)
+
+    assert experiment.config.name == "godhome-smart-eager-v1"
+    assert experiment.remote_train.learner.device == "cuda"
+    assert plan["compile_mode"] == "off"
+    assert plan["model"] == "entity_attention_gru"
+    assert plan["learner_bind"] == "127.0.0.1:5600"
 
 
 def test_local_inference_plan_keeps_action_loop_on_game_host() -> None:

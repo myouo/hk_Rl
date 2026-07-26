@@ -7,6 +7,10 @@ the project version tracks the **schema_version** + roadmap phase.
 ## [Unreleased]
 
 ### Added
+- Added a composed eager-CUDA remote role/experiment overlay for images whose
+  Python/PyTorch pair cannot run TorchDynamo, while retaining AMP and fused
+  Adam. Compile `auto` now detects unsupported Dynamo runtimes and falls back
+  to eager execution; explicitly requested compile modes fail early.
 - Began the post-v0.8.0 smart-training scaffold with config-driven APPO learner
   acceleration: CUDA BF16/FP16 AMP, optional compiled action evaluation, fused
   Adam, per-task advantage normalization, and a target-KL early-stop guard.
