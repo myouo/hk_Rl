@@ -112,9 +112,11 @@ class APPO:
             "action_entropy": 0.0,
             "policy_kl": 0.0,
             "grad_norm": 0.0,
+            "amp_step_skipped": 0.0,
         }
         seen = 0
         optimizer_steps = 0
+        optimizer_steps_skipped = 0
         epochs_completed = 0
         kl_early_stop = False
 
@@ -138,6 +140,7 @@ class APPO:
                     totals[key] += value * valid_count
                 seen += valid_count
                 optimizer_steps += 1
+                optimizer_steps_skipped += int(metrics["amp_step_skipped"] > 0.5)
                 target_kl = self.cfg.learner.target_kl
                 if target_kl is not None and metrics["policy_kl"] > target_kl:
                     kl_early_stop = True
@@ -146,7 +149,8 @@ class APPO:
             if kl_early_stop:
                 break
 
-        self.current_version += 1
+        optimizer_steps_succeeded = optimizer_steps - optimizer_steps_skipped
+        self.current_version += int(optimizer_steps_succeeded > 0)
         metrics = {key: value / seen for key, value in totals.items()}
         metrics["explained_variance"] = self._explained_variance(batch)
         metrics["policy_version"] = float(self.current_version)
@@ -158,6 +162,8 @@ class APPO:
             batch.rnn_state is not None and self.cfg.sequence_length > 1
         )
         metrics["optimizer_steps"] = float(optimizer_steps)
+        metrics["optimizer_steps_skipped"] = float(optimizer_steps_skipped)
+        metrics["optimizer_steps_succeeded"] = float(optimizer_steps_succeeded)
         metrics["epochs_completed"] = float(epochs_completed)
         metrics["kl_early_stop"] = float(kl_early_stop)
         metrics.update(self.runtime.metric_flags())
@@ -245,7 +251,7 @@ class APPO:
             )
         )
 
-        grad_norm = self.runtime.backward_step(
+        grad_norm, amp_step_skipped = self.runtime.backward_step(
             loss,
             max_grad_norm=self.cfg.max_grad_norm,
         )
@@ -255,6 +261,7 @@ class APPO:
             "action_entropy",
             "policy_kl",
             "grad_norm",
+            "amp_step_skipped",
         )
         metric_values = (
             torch.stack(
@@ -264,6 +271,7 @@ class APPO:
                     entropy_mean.detach().float(),
                     approx_kl.detach().float(),
                     grad_norm.detach().float(),
+                    amp_step_skipped.detach().float(),
                 )
             )
             .cpu()

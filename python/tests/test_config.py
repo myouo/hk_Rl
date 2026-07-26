@@ -82,6 +82,7 @@ def test_windows_ssh_role_configs_keep_live_action_loop_local() -> None:
     assert remote.model == worker.model
     assert remote.learner.bind == "127.0.0.1:5600"
     assert remote.learner.device == "cuda"
+    assert remote.learner.amp_init_scale == 1024.0
     assert remote.learner.compile_mode == "reduce-overhead"
     assert worker.learner.bind == "127.0.0.1:5600"
     assert worker.transport.name == "tcp"

@@ -13,7 +13,9 @@ policy_kl             value_loss            policy_loss
 explained_variance    SPS                   reset_success_rate
 reset_duration        worker_crash_count
 optimizer_steps       epochs_completed      kl_early_stop
-amp_enabled           compile_enabled       fused_optimizer
+optimizer_steps_succeeded optimizer_steps_skipped
+amp_enabled           amp_loss_scale        amp_step_skipped
+compile_enabled       fused_optimizer
 task_count            sequence_count         sequence_length
 bptt_enabled
 worker_learner_upload_submitted_batches

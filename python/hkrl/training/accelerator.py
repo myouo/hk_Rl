@@ -37,6 +37,7 @@ class TorchLearnerRuntime:
         self.scaler = torch.amp.GradScaler(
             "cuda",
             enabled=self.device.type == "cuda" and self.amp_dtype == torch.float16,
+            init_scale=config.learner.amp_init_scale,
         )
         compile_mode = _resolve_compile_mode(
             config.learner.compile_mode,
@@ -67,7 +68,12 @@ class TorchLearnerRuntime:
             enabled=self.amp_enabled,
         )
 
-    def backward_step(self, loss: Tensor, *, max_grad_norm: float) -> Tensor:
+    def backward_step(
+        self,
+        loss: Tensor,
+        *,
+        max_grad_norm: float,
+    ) -> tuple[Tensor, Tensor]:
         """Backpropagate, unscale before clipping, and take one optimizer step."""
 
         self.optimizer.zero_grad(set_to_none=True)
@@ -75,20 +81,31 @@ class TorchLearnerRuntime:
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
             grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
-            require_finite_tensor("grad_norm", grad_norm)
+            # GradScaler owns FP16 overflow recovery: ``step`` skips the
+            # optimizer mutation and ``update`` lowers the scale. Preserve that
+            # standard behavior instead of turning a recoverable overflow into
+            # a learner crash. The device-side flag joins the existing metric
+            # transfer, so this adds no GPU-host synchronization.
+            step_skipped = torch.logical_not(torch.isfinite(grad_norm)).to(dtype=torch.float32)
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            return grad_norm
+            safe_grad_norm = torch.where(
+                torch.isfinite(grad_norm),
+                grad_norm,
+                torch.zeros_like(grad_norm),
+            )
+            return safe_grad_norm, step_skipped
 
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
         require_finite_tensor("grad_norm", grad_norm)
         self.optimizer.step()
-        return grad_norm
+        return grad_norm, torch.zeros_like(grad_norm, dtype=torch.float32)
 
     def metric_flags(self) -> dict[str, float]:
         return {
             "amp_enabled": float(self.amp_enabled),
+            "amp_loss_scale": float(self.scaler.get_scale()),
             "compile_enabled": float(self.compile_enabled),
             "fused_optimizer": float(self.fused_optimizer),
         }

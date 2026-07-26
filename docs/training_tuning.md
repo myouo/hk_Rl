@@ -30,7 +30,7 @@ contract.
 | remote GPU aggregation | `learner.batches_per_update` | remote train config |
 | stale rollout bound | `learner.max_staleness` | remote train config |
 | checkpoint cadence | `learner.publish_every_updates` | remote train config |
-| CUDA acceleration | `amp_dtype`, `compile_mode`, `fused_optimizer` | remote train config |
+| CUDA acceleration | `amp_dtype`, `amp_init_scale`, `compile_mode`, `fused_optimizer` | remote train config |
 | model capacity | `model.entity_hidden`, attention layers/heads, `rnn_hidden` | train config |
 | game decision cadence | `action.action_repeat` | task config |
 | simulation wall-clock multiplier | `local.time_scale` | experiment manifest |
@@ -55,6 +55,9 @@ The remote profile groups four 2,048-transition worker rollouts into one
 AMP `auto` selects native BF16 on Ampere-or-newer GPUs and FP16 plus GradScaler
 on Volta GPUs such as V100; it does not treat a software BF16 fallback as native
 support.
+The SSH profile starts FP16 scaling at 1,024 on Volta. Recoverable scaled-gradient
+overflow skips only that optimizer step, lowers the scale, and reports
+`amp_step_skipped` plus exact succeeded/skipped step counts.
 If the installed Python/PyTorch pair cannot run TorchDynamo (notably PyTorch
 2.3 on Python 3.12), launch
 `configs/experiments/godhome_smart_eager.yaml`. It keeps CUDA AMP and fused Adam

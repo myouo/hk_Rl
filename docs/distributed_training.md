@@ -202,6 +202,7 @@ possible.
 Learner acceleration is explicit and observable:
 
 - `amp_dtype`: `off`, `auto`, `float16`, or `bfloat16`;
+- `amp_init_scale`: positive FP16 GradScaler starting scale;
 - `compile_mode`: `off`, `auto`, `default`, `reduce-overhead`, or
   `max-autotune`;
 - `fused_optimizer`: `off`, `auto`, or `on`;
@@ -210,6 +211,7 @@ Learner acceleration is explicit and observable:
 
 The remote GPU profile enables `reduce-overhead`; generic CPU/local profiles
 keep compilation off. Every APPO update reports `amp_enabled`,
+`amp_loss_scale`, `amp_step_skipped`, exact succeeded/skipped optimizer steps,
 `compile_enabled`, `fused_optimizer`, `task_count`, `optimizer_steps`,
 `epochs_completed`, and `kl_early_stop`. See
 [ADR-0008](./adr/0008-configured-learner-acceleration.md).

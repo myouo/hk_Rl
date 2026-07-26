@@ -31,6 +31,11 @@ the project version tracks the **schema_version** + roadmap phase.
   workflow.
 
 ### Changed
+- FP16 APPO now lets GradScaler recover from scaled-gradient overflow instead
+  of crashing before its skip/backoff step. Metrics expose the current loss
+  scale and exact successful/skipped optimizer attempts; a policy version only
+  advances after at least one successful mutation. The SSH CUDA profile uses a
+  V100-validated initial scale of 1,024.
 - AMP `auto` now requires native Ampere-or-newer CUDA capability before
   selecting BF16. Volta GPUs such as V100 use FP16 plus GradScaler even when a
   PyTorch/CUDA build advertises a software BF16 fallback.

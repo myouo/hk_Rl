@@ -167,9 +167,13 @@ def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> No
         "sequence_length",
         "bptt_enabled",
         "optimizer_steps",
+        "optimizer_steps_skipped",
+        "optimizer_steps_succeeded",
         "epochs_completed",
         "kl_early_stop",
         "amp_enabled",
+        "amp_loss_scale",
+        "amp_step_skipped",
         "compile_enabled",
         "fused_optimizer",
     ):
@@ -178,6 +182,9 @@ def test_appo_update_returns_metrics_changes_parameters_and_clears_queue() -> No
     assert metrics["samples"] == 4.0
     assert metrics["task_count"] == 1.0
     assert metrics["amp_enabled"] == 0.0
+    assert metrics["amp_step_skipped"] == 0.0
+    assert metrics["optimizer_steps_skipped"] == 0.0
+    assert metrics["optimizer_steps_succeeded"] == metrics["optimizer_steps"]
     assert metrics["compile_enabled"] == 0.0
     assert metrics["fused_optimizer"] == 0.0
     assert any(
@@ -291,6 +298,46 @@ def test_appo_kl_guard_stops_remaining_optimizer_steps() -> None:
     assert metrics["optimizer_steps"] == 1.0
     assert metrics["epochs_completed"] == 1.0
     assert metrics["policy_kl"] > 0.01
+
+
+def test_appo_does_not_advance_policy_when_all_amp_steps_skip(
+    monkeypatch,
+) -> None:
+    model = MlpActorCritic(_obs_spec(), hidden=16, enable_macro=False)
+    appo = APPO(
+        model,
+        TrainConfig(
+            algorithm="appo",
+            epochs=1,
+            minibatch_size=4,
+            sequence_length=4,
+        ),
+    )
+    batch = _rollout_batch(model)
+    batch.policy_version = 0
+
+    def skip_step(
+        loss: torch.Tensor,
+        *,
+        max_grad_norm: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        del max_grad_norm
+        return (
+            torch.zeros((), device=loss.device),
+            torch.ones((), device=loss.device),
+        )
+
+    monkeypatch.setattr(appo.runtime, "backward_step", skip_step)
+    assert appo.ingest(batch, current_version=0)
+
+    metrics = appo.update()
+
+    assert appo.current_version == 0
+    assert metrics["policy_version"] == 0.0
+    assert metrics["optimizer_steps"] == 1.0
+    assert metrics["optimizer_steps_skipped"] == 1.0
+    assert metrics["optimizer_steps_succeeded"] == 0.0
+    assert metrics["amp_step_skipped"] == 1.0
 
 
 def test_appo_rejects_cuda_only_acceleration_on_cpu() -> None:

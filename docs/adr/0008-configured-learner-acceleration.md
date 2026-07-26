@@ -20,7 +20,10 @@ The project still requires local action inference: no optimization here may move
 Add a config-driven `TorchLearnerRuntime` for learner-side APPO updates:
 
 1. `amp_dtype: auto` enables BF16 on compatible CUDA devices and otherwise
-   FP16 with `torch.amp.GradScaler`; CPU auto mode stays FP32.
+   FP16 with `torch.amp.GradScaler`; CPU auto mode stays FP32. The initial
+   scale is config-driven, and recoverable FP16 gradient overflow follows
+   GradScaler semantics: skip the optimizer mutation, reduce scale, and report
+   the skipped step without advancing the policy version if every step skipped.
 2. `compile_mode` can compile `evaluate_actions` while retaining the original
    model object for stable checkpoint keys. Generic/local configs default off;
    the fixed-shape remote GPU profile selects `reduce-overhead`.

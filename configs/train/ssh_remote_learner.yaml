@@ -7,6 +7,9 @@ defaults:
 learner:
   bind: 127.0.0.1:5600
   device: cuda
+  # A conservative FP16 starting scale avoids first-step overflow on Volta;
+  # BF16 devices do not instantiate an enabled GradScaler.
+  amp_init_scale: 1024.0
   compile_mode: reduce-overhead
   checkpoint_dir: runs/ssh-distributed/checkpoints
 
